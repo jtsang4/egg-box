@@ -22,7 +22,7 @@ import (
 	"github.com/jtsang4/sing-box-ui/internal/version"
 )
 
-const devUsage = "  dev        run the development agent: simulated OS, loopback proxy instead of a TUN\n"
+const devUsage = "  dev          run the development agent: simulated OS, loopback proxy instead of a TUN\n"
 
 // run dispatches the command line of a development build.
 func run(args []string) int {

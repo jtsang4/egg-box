@@ -20,7 +20,7 @@ func main() {
 func usage(w *os.File, extra string) {
 	fmt.Fprintln(w, "usage: agentd <command>")
 	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  version    print the version")
+	fmt.Fprintln(w, "  version      print the version")
 	if extra != "" {
 		fmt.Fprint(w, extra)
 	}

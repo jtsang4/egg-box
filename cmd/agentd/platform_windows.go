@@ -20,17 +20,17 @@ import (
 	"github.com/jtsang4/sing-box-ui/internal/winsys"
 )
 
-const platformUsage = `  service    run as the Windows service (the system starts it this way)
-  install    register the service and its protected data folder (administrator)
-  uninstall  disconnect, clean up and remove the service; --purge also removes its data (administrator)
-  authorize  allow a user to control the service, then restart it (administrator)
-             --sid S-1-5-... --name DOMAIN\user; without them, the user signed in here
-             --if-unowned: only when nobody is allowed yet (an upgrade changes nothing)
-  set-boot   on | off: whether the service starts with the computer (administrator)
-  start      start the service (administrator)
-  stop       stop the service: disconnect and clean up first (administrator)
-  status     say whether the service is installed and running
-  cleanup    remove what a service that died left behind (administrator)
+const platformUsage = `  service      run as the Windows service (the system starts it this way)
+  install      register the service and its protected data folder (administrator)
+  uninstall    disconnect, clean up and remove the service; --purge also removes its data (administrator)
+  authorize    allow a user to control the service, then restart it (administrator)
+               --sid S-1-5-... --name DOMAIN\user; without them, the user signed in here
+               --if-unowned: only when nobody is allowed yet (an upgrade changes nothing)
+  set-boot     on | off: whether the service starts with the computer (administrator)
+  start        start the service (administrator)
+  stop         stop the service: disconnect and clean up first (administrator)
+  status       say whether the service is installed and running
+  cleanup      remove what a service that died left behind (administrator)
 `
 
 // Exit codes an elevated run reports; the application only sees these.
