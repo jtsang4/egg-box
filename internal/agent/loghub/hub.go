@@ -27,6 +27,12 @@ const (
 // Levels, lowest to highest.
 var levelRank = map[string]int{"trace": 0, "debug": 1, "info": 2, "warn": 3, "error": 4, "fatal": 5, "panic": 6}
 
+// ValidLevel reports whether level is one of the known level names.
+func ValidLevel(level string) bool {
+	_, ok := levelRank[strings.ToLower(level)]
+	return ok
+}
+
 // Rank returns the numeric rank of a level name (unknown names rank as info).
 func Rank(level string) int {
 	if r, ok := levelRank[strings.ToLower(level)]; ok {

@@ -30,3 +30,7 @@ mygo_windows_*.syso
 .env
 .env.*
 !.env.example
+
+# Binaries built at the repo root by a bare `go build ./cmd/...`.
+/agentd
+/sing-box-ui

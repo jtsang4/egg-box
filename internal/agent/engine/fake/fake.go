@@ -35,6 +35,7 @@ type Engine struct {
 	groups    *agentapi.Groups
 	groupSubs map[chan *agentapi.Groups]struct{}
 	conns     map[string]*agentapi.Connection
+	connSubs  map[chan *agentapi.ConnectionEvents]struct{}
 	uplink    int64
 	downlink  int64
 }
@@ -51,6 +52,7 @@ func New() *Engine {
 			Items: []*agentapi.GroupItem{{Tag: "node-a", Type: "shadowsocks", DelayMs: 80}, {Tag: "node-b", Type: "vmess"}},
 		}}},
 		conns:     map[string]*agentapi.Connection{},
+		connSubs:  map[chan *agentapi.ConnectionEvents]struct{}{},
 		groupSubs: map[chan *agentapi.Groups]struct{}{},
 	}
 }
@@ -174,11 +176,23 @@ func (e *Engine) SetGroups(g *agentapi.Groups) {
 	}
 }
 
-// AddConnection registers a live connection for WatchConnections.
+// AddConnection registers a live connection: new watchers see it in their
+// first (reset) message, current ones get a NEW event.
 func (e *Engine) AddConnection(c *agentapi.Connection) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.conns[c.Id] = c
+	e.emitLocked(&agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_NEW, Id: c.Id, Connection: c})
+}
+
+// emitLocked tells the current connection watchers about an event.
+func (e *Engine) emitLocked(ev *agentapi.ConnectionEvent) {
+	for ch := range e.connSubs {
+		select {
+		case ch <- &agentapi.ConnectionEvents{Events: []*agentapi.ConnectionEvent{ev}}:
+		default:
+		}
+	}
 }
 
 // ----------------------------------------------------------------- engine API
@@ -350,13 +364,32 @@ func (e *Engine) WatchConnections(ctx context.Context, _ time.Duration) (<-chan 
 		reset.Events = append(reset.Events, &agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_NEW, Id: c.Id, Connection: c})
 	}
 	out <- reset
+	live := make(chan *agentapi.ConnectionEvents, 32)
+	e.connSubs[live] = struct{}{}
 	done := e.runDone
 	go func() {
-		select {
-		case <-ctx.Done():
-		case <-done:
+		defer close(out)
+		defer func() {
+			e.mu.Lock()
+			delete(e.connSubs, live)
+			e.mu.Unlock()
+		}()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-done:
+				return
+			case ev := <-live:
+				select {
+				case out <- ev:
+				case <-ctx.Done():
+					return
+				case <-done:
+					return
+				}
+			}
 		}
-		close(out)
 	}()
 	return out, nil
 }
@@ -427,11 +460,13 @@ func (e *Engine) CloseConnection(id string) error {
 	if err := e.requireRunning(); err != nil {
 		return err
 	}
-	if _, ok := e.conns[id]; !ok {
+	c, ok := e.conns[id]
+	if !ok {
 		return fmt.Errorf("%w: connection %s", engine.ErrNotFound, id)
 	}
 	delete(e.conns, id)
 	e.record("close-conn %s", id)
+	e.emitLocked(&agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_CLOSED, Id: id, Connection: c})
 	return nil
 }
 
@@ -440,6 +475,9 @@ func (e *Engine) CloseAllConnections() error {
 	defer e.mu.Unlock()
 	if err := e.requireRunning(); err != nil {
 		return err
+	}
+	for id, c := range e.conns {
+		e.emitLocked(&agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_CLOSED, Id: id, Connection: c})
 	}
 	e.conns = map[string]*agentapi.Connection{}
 	e.record("close-all-conns")
