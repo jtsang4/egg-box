@@ -3,8 +3,6 @@ package configgen
 import (
 	"regexp"
 	"strconv"
-
-	"eggbox/internal/subscription"
 )
 
 // PathIssue is a problem the agent reported at a JSON path of the configuration.
@@ -42,7 +40,7 @@ func Heal(in Input, out *Output, issues []PathIssue) (Input, []Dropped, bool) {
 	if len(drop) == 0 {
 		return in, nil, false
 	}
-	var kept []subscription.Node
+	var kept []Node
 	var dropped []Dropped
 	for _, n := range in.Nodes {
 		if reason, ok := drop[n.Key()]; ok {

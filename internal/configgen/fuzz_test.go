@@ -10,6 +10,7 @@ import (
 	"eggbox/internal/agent/policy"
 	"eggbox/internal/configgen"
 	"eggbox/internal/subscription"
+	"eggbox/internal/testsupport/srs"
 )
 
 // FuzzProviderContent follows what a provider sends all the way to the agent:
@@ -37,12 +38,24 @@ func FuzzProviderContent(f *testing.F) {
 	f.Add([]byte("\x00\xff\xfe"))
 
 	pol := policy.New(singbox.PolicyOptions(singbox.RegistryOptions{}))
+	srsFixture := srs.DomainSuffixes(f, "i.example")
 	f.Fuzz(func(t *testing.T, data []byte) {
 		res, err := subscription.Parse(data)
 		if err != nil {
 			return
 		}
-		in := configgen.Input{Nodes: res.Nodes, Prefs: configgen.DefaultPrefs()}
+		var nodes []configgen.Node
+		for _, n := range res.Nodes {
+			nodes = append(nodes, configgen.Node{Node: n, Region: subscription.Region(n.Name)})
+		}
+		in := configgen.Input{Nodes: nodes, Prefs: configgen.DefaultPrefs(), Main: configgen.Exit{Kind: configgen.ExitAuto}, Fallback: configgen.Exit{Kind: configgen.ExitMain}}
+		if len(nodes) > 0 {
+			// Pinned exits exercise the groups with stand-ins, in the main exit, an item and an exception.
+			pinned := configgen.Exit{Kind: configgen.ExitNode, Node: nodes[0].Key()}
+			in.Main = pinned
+			in.Items = []configgen.Item{{ID: "i", Name: "I", Exit: pinned, Domain: srsFixture, DNS: srsFixture}}
+			in.Exceptions = []configgen.Exception{{ID: "e", Rule: hostRule("suffix", "e.example"), Exit: pinned}}
+		}
 		for round := 0; round < 12; round++ {
 			out, err := configgen.Generate(in)
 			if err != nil {

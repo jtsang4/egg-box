@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -78,31 +77,4 @@ func dnsServerFor(spec string) (dnsServer, error) {
 	}
 	_, err := netip.ParseAddr(host)
 	return dnsServer{obj: obj, hostname: err != nil}, nil
-}
-
-func compileRegex(s string) (*regexp.Regexp, error) { return regexp.Compile(s) }
-
-func validCIDR(s string) bool {
-	if strings.Contains(s, "/") {
-		_, err := netip.ParsePrefix(s)
-		return err == nil
-	}
-	_, err := netip.ParseAddr(s)
-	return err == nil
-}
-
-func validPort(s string) bool {
-	lo, hi, ranged := strings.Cut(s, ":")
-	if !ranged {
-		lo, hi, ranged = strings.Cut(s, "-")
-	}
-	a, err := strconv.Atoi(lo)
-	if err != nil || a < 1 || a > 65535 {
-		return false
-	}
-	if !ranged {
-		return true
-	}
-	b, err := strconv.Atoi(hi)
-	return err == nil && b >= a && b <= 65535
 }
