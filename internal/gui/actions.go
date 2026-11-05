@@ -2,6 +2,8 @@ package gui
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -56,12 +58,22 @@ func (a *App) disconnect() {
 
 // authorize asks the system to let this application use the service.
 func (a *App) authorize() {
-	if a.opt.Authorize == nil {
+	if a.opt.Authorize == nil || a.busy("authorize") {
 		return
 	}
+	a.boot.err = nil
 	a.job("authorize", func(ctx context.Context) error { return a.opt.Authorize(ctx) }, func(err error) {
 		if err != nil {
-			a.fail(err)
+			if !errors.Is(err, context.Canceled) {
+				a.boot.err = err
+				a.pushToast(&toast{tone: toneBad, icon: "alert-circle", title: a.t("toast.failed"),
+					body: a.explain(err), ttl: 12 * time.Second, action: a.t("nav.logs"), do: func() {
+						a.dlgOpen = false
+						a.goTo(pageLogs)
+						a.reveal()
+						a.closePanel()
+					}})
+			}
 			return
 		}
 		a.toastInfo(a.t("hero.authorize.done"))

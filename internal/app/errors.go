@@ -12,12 +12,12 @@ import (
 	"eggbox/internal/subscription"
 )
 
-// ErrAuthorizationDeclined means the person said no to the system's prompt
-// to set the service up. Nothing was changed.
+// ErrAuthorizationDeclined means the service is still waiting for the
+// person's approval when the authorization wait ends.
 var ErrAuthorizationDeclined = errors.New("permission to set up the service was not given")
 
-// ErrServiceSetup means the service could not be set up or changed even
-// though the person agreed. The platform adds what it knows.
+// ErrServiceSetup means the service could not be set up or reached. The
+// platform adds the system's error details.
 var ErrServiceSetup = errors.New("the service could not be set up")
 
 // Issue is a problem the service found in a configuration.

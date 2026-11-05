@@ -511,6 +511,50 @@ func TestDiagnosticsLeakNothing(t *testing.T) {
 	}
 }
 
+func TestServiceDiagnosticsExistWithoutAnAgentAndAreBounded(t *testing.T) {
+	s := app.New(app.Config{})
+	s.RecordServiceLog("error", "SMAppServiceErrorDomain: registration failed (code 42)")
+	before := s.Snapshot()
+	if len(before.Logs) != 1 || before.Logs[0].Level != "error" || before.Logs[0].Source != "service" ||
+		!strings.Contains(before.Logs[0].Message, "code 42") {
+		t.Fatalf("missing setup diagnostic: %+v", before.Logs)
+	}
+	for i := 0; i < 700; i++ {
+		s.RecordServiceLog("info", fmt.Sprintf("Attempt %d", i))
+	}
+	if len(s.Snapshot().Logs) != 600 || !strings.Contains(before.Logs[0].Message, "code 42") {
+		t.Fatal("the log must be bounded and previous snapshots must stay immutable")
+	}
+}
+
+func TestServiceDiagnosticsSurviveAgentLogReplay(t *testing.T) {
+	h := newHarness(t, nil)
+	h.svc.RecordServiceLog("error", "Registration failed (code 42)")
+	generation := h.svc.Snapshot().Link.Generation
+	h.net.cut()
+	h.waitFor("the lost agent", func(s *app.Snapshot) bool { return !s.Link.Ready() })
+	h.net.restore()
+	h.waitFor("the new agent connection", func(s *app.Snapshot) bool { return s.Link.Generation > generation && s.Link.Ready() })
+	h.agent.Engine.Log("info", "log after reconnect")
+	snap := h.waitFor("replayed agent logs", func(s *app.Snapshot) bool {
+		for _, line := range s.Logs {
+			if line.Message == "log after reconnect" {
+				return true
+			}
+		}
+		return false
+	})
+	count := 0
+	for _, line := range snap.Logs {
+		if line.Message == "Registration failed (code 42)" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("setup error appears %d times after agent replay, want 1", count)
+	}
+}
+
 func TestExplainClassifiesErrors(t *testing.T) {
 	cases := []struct {
 		err  error

@@ -13,6 +13,7 @@ import (
 type onboardState struct {
 	step    int
 	checked bool // the first-run check ran in this session
+	err     error
 }
 
 const welcomeSteps = 3
@@ -31,6 +32,7 @@ func (a *App) maybeWelcome() {
 // openWelcome starts the introduction from its first step.
 func (a *App) openWelcome() {
 	a.boot.step = 0
+	a.boot.err = nil
 	a.openDialog(&welcomeDialog{})
 }
 
@@ -169,6 +171,9 @@ func (a *App) welcomeService(c *ui.Context) {
 	if a.busy("authorize") {
 		title = a.t("welcome.service.pending")
 	}
+	if a.boot.err != nil {
+		tn, ic, title, body = toneBad, "alert-circle", a.t("toast.failed"), a.explain(a.boot.err)
+	}
 	if ok {
 		tn, ic, title, body = toneGood, "check-circle", a.t("welcome.service.ready"), a.t("welcome.service.ready.body")
 	}
@@ -221,6 +226,12 @@ func (a *App) welcomeButtons(c *ui.Context, step int) {
 	case 1:
 		if a.btn(c, btnSpec{kind: btnGhost, label: a.t("welcome.back")}).Clicked() {
 			a.boot.step = 0
+		}
+		if a.boot.err != nil {
+			if a.btn(c, btnSpec{kind: btnGhost, label: a.t("nav.logs"), icon: "terminal"}).Clicked() {
+				a.closeDialog()
+				a.goTo(pageLogs)
+			}
 		}
 		grow()
 		if !a.serviceAllowed() && a.opt.Authorize != nil {

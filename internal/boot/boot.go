@@ -115,7 +115,25 @@ func (r *Runtime) Authorize(ctx context.Context) error {
 	if r.authorize == nil {
 		return nil
 	}
-	return r.authorize(ctx)
+	r.Service.RecordServiceLog("info", "Requesting authorization for the background service")
+	err := r.authorize(ctx)
+	if err == nil {
+		readyCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		if waitErr := r.Agent.WaitReady(readyCtx); waitErr != nil {
+			cause := r.Agent.Link().Err
+			if cause == nil {
+				cause = waitErr
+			}
+			err = fmt.Errorf("%w: the background service was approved but could not be reached: %v", app.ErrServiceSetup, cause)
+		}
+	}
+	if err != nil {
+		r.Service.RecordServiceLog("error", "Background service authorization failed: "+err.Error())
+		return err
+	}
+	r.Service.RecordServiceLog("info", "The background service is authorized and reachable")
+	return nil
 }
 
 // Start assembles and starts everything. The context bounds the startup only;

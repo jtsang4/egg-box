@@ -48,14 +48,55 @@ func TestAlreadyAllowedChangesNothing(t *testing.T) {
 	}
 }
 
-func TestAServiceTheApplicationDoesNotContain(t *testing.T) {
+func TestMissingRegistrationIsAttemptedBeforeReportingNotFound(t *testing.T) {
 	f := &fake{statuses: []bridge.ServiceStatus{bridge.ServiceNotFound}}
 	err := Authorize(context.Background(), f, "x.plist", quick)
 	if !errors.Is(err, app.ErrServiceSetup) {
 		t.Fatalf("got %v", err)
 	}
-	if f.regs != 0 {
-		t.Error("registered a service that is not there")
+	if f.regs != 1 {
+		t.Errorf("registration attempts = %d, want 1", f.regs)
+	}
+}
+
+func TestFirstRunNotFoundRegistersAndOpensApproval(t *testing.T) {
+	f := &fake{statuses: []bridge.ServiceStatus{
+		bridge.ServiceNotFound, bridge.ServiceRequiresApproval, bridge.ServiceEnabled,
+	}, regErr: &bridge.RegisterError{Code: 1, Message: "Operation not permitted"}}
+	if err := Authorize(context.Background(), f, "x.plist", quick); err != nil {
+		t.Fatal(err)
+	}
+	if f.regs != 1 || f.opened != 1 {
+		t.Errorf("regs %d opened %d, want 1 each", f.regs, f.opened)
+	}
+}
+
+func TestPendingApprovalOpensSettingsWithoutRegisteringAgain(t *testing.T) {
+	f := &fake{statuses: []bridge.ServiceStatus{bridge.ServiceRequiresApproval, bridge.ServiceEnabled}}
+	if err := Authorize(context.Background(), f, "x.plist", quick); err != nil {
+		t.Fatal(err)
+	}
+	if f.regs != 0 || f.opened != 1 {
+		t.Errorf("regs %d opened %d", f.regs, f.opened)
+	}
+}
+
+func TestRegistrationErrorWithEnabledStatusIsSuccessful(t *testing.T) {
+	f := &fake{statuses: []bridge.ServiceStatus{bridge.ServiceNotFound, bridge.ServiceEnabled},
+		regErr: &bridge.RegisterError{Code: 12, Message: "already registered"}}
+	if err := Authorize(context.Background(), f, "x.plist", quick); err != nil {
+		t.Fatal(err)
+	}
+	if f.regs != 1 || f.opened != 0 {
+		t.Errorf("regs %d opened %d", f.regs, f.opened)
+	}
+}
+
+func TestUnregisteredServiceTimeoutIsNotAnApprovalRefusal(t *testing.T) {
+	f := &fake{statuses: []bridge.ServiceStatus{bridge.ServiceNotRegistered}}
+	err := Authorize(context.Background(), f, "x.plist", quick)
+	if !errors.Is(err, app.ErrServiceSetup) || errors.Is(err, app.ErrAuthorizationDeclined) {
+		t.Fatalf("got %v", err)
 	}
 }
 

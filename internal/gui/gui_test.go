@@ -2,6 +2,7 @@ package gui
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"eggbox/internal/agentapi"
 	"eggbox/internal/agentclient"
+	"eggbox/internal/app"
 	"eggbox/internal/subscription"
 )
 
@@ -461,6 +463,65 @@ func TestIntroductionIsShownOnce(t *testing.T) {
 	// A second window of the same settings does not repeat it.
 	h2 := newHarness(t, harnessOpt{setup: func(be *fixtureBackend, o *Options) { be.set.OnboardingDone = true }})
 	h2.mustNotHave("Welcome to EggBox")
+}
+
+func TestWelcomeAuthorizationFailureCanOpenLogs(t *testing.T) {
+	calls := 0
+	h := newHarness(t, harnessOpt{setup: func(be *fixtureBackend, o *Options) {
+		introduction(be, o)
+		be.snap.Logs = nil
+		o.Authorize = func(context.Context) error {
+			calls++
+			return fmt.Errorf("%w: registration refused (code 42)", app.ErrServiceSetup)
+		}
+	}})
+	h.click("Continue")
+	// The dashboard behind the modal has the same button label. Click the
+	// footer button beside Not now, inside the modal's input scope.
+	skip, ok := h.ui.Find("Not now")
+	if !ok {
+		t.Fatal("missing welcome footer")
+	}
+	h.ui.ClickAt(skip.X+skip.W+80, skip.Y+skip.H/2)
+	h.settle()
+	if calls != 1 {
+		t.Fatalf("authorization requests = %d", calls)
+	}
+	h.mustHave("Open Logs for the system's error details.")
+	toast := h.app.toasts[len(h.app.toasts)-1]
+	if toast.action != "Logs" || toast.do == nil {
+		t.Fatal("the setup failure needs an action to open Logs")
+	}
+	// The error remains in the welcome panel, whose footer offers Logs
+	// even while the modal prevents interaction with the sidebar.
+	back, ok := h.ui.Find("Back")
+	if !ok {
+		t.Fatal("missing welcome footer after failure")
+	}
+	h.ui.ClickAt(back.X+back.W+48, back.Y+back.H/2)
+	h.settle()
+	h.mustNotHave("Allow the network service")
+	h.mustHave("Service setup, connection and network engine logs")
+}
+
+func TestDashboardAuthorizationChecksTheService(t *testing.T) {
+	calls := 0
+	h := newHarness(t, harnessOpt{setup: func(be *fixtureBackend, o *Options) {
+		introduction(be, o)
+		be.set.OnboardingDone = true
+		o.Authorize = func(context.Context) error {
+			calls++
+			be.set_(be.disconnectedSnapshot())
+			return nil
+		}
+	}})
+	h.click("Authorize service")
+	h.settle()
+	if calls != 1 {
+		t.Fatalf("authorization requests = %d", calls)
+	}
+	h.mustHave("The network service is ready.")
+	h.mustNotHave("Service unavailable")
 }
 
 // A key that leaked to the screen is a missing translation.

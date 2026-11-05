@@ -146,6 +146,7 @@ type LogLine struct {
 	Level   string
 	Source  string
 	Message string
+	local   bool // application diagnostics survive a replay from the agent
 }
 
 // Level of a notice.

@@ -42,24 +42,33 @@ var DefaultTiming = Timing{Poll: time.Second, Patience: 3 * time.Minute}
 // opens the page of System Settings where it is switched on, and waits for the
 // person to do it.
 func Authorize(ctx context.Context, c Control, plist string, t Timing) error {
-	switch c.ServiceStatus(plist) {
-	case bridge.ServiceEnabled:
-		return nil
-	case bridge.ServiceNotFound:
-		return fmt.Errorf("%w: this copy of the application does not contain the service; install the application with its installer", app.ErrServiceSetup)
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	if err := c.Register(plist); err != nil {
-		return fmt.Errorf("%w: %w", app.ErrServiceSetup, err)
+	state := c.ServiceStatus(plist)
+	if state == bridge.ServiceEnabled {
+		return nil
+	}
+	if state != bridge.ServiceRequiresApproval {
+		// NotFound can mean there is no registration yet. Only register can
+		// distinguish that from a missing or invalid bundled service.
+		err := c.Register(plist)
+		state = c.ServiceStatus(plist)
+		// macOS can return an error even though registration succeeded and
+		// is waiting for approval. Follow its status to System Settings.
+		if err != nil && state != bridge.ServiceRequiresApproval && state != bridge.ServiceEnabled {
+			return fmt.Errorf("%w: %w", app.ErrServiceSetup, err)
+		}
 	}
 
 	opened := false
 	deadline := time.Now().Add(t.Patience)
 	for {
-		switch c.ServiceStatus(plist) {
+		switch state {
 		case bridge.ServiceEnabled:
 			return nil
 		case bridge.ServiceNotFound:
-			return fmt.Errorf("%w: the system lost track of the service", app.ErrServiceSetup)
+			return fmt.Errorf("%w: macOS cannot find the registered background service; reinstall the application", app.ErrServiceSetup)
 		case bridge.ServiceRequiresApproval:
 			if !opened {
 				opened = true
@@ -67,7 +76,10 @@ func Authorize(ctx context.Context, c Control, plist string, t Timing) error {
 			}
 		}
 		if time.Now().After(deadline) {
-			return app.ErrAuthorizationDeclined
+			if state == bridge.ServiceRequiresApproval {
+				return app.ErrAuthorizationDeclined
+			}
+			return fmt.Errorf("%w: macOS did not enable the background service (status %s)", app.ErrServiceSetup, state)
 		}
 		select {
 		case <-ctx.Done():
@@ -77,5 +89,6 @@ func Authorize(ctx context.Context, c Control, plist string, t Timing) error {
 			return ctx.Err()
 		case <-time.After(t.Poll):
 		}
+		state = c.ServiceStatus(plist)
 	}
 }

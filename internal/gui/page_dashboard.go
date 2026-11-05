@@ -177,9 +177,6 @@ func (a *App) eyebrowDot(c *ui.Context, s string, t tone, glow bool) {
 
 // agentProblem explains why the service cannot be used.
 func (a *App) agentProblem() string {
-	if e := a.snap.Link.Error; e != "" {
-		return a.t("hero.noagent.body") + " " + e
-	}
 	return a.t("hero.noagent.body")
 }
 

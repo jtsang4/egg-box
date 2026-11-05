@@ -47,7 +47,8 @@ const (
 	// ServiceRequiresApproval: registered, waiting for the person to switch it
 	// on in System Settings.
 	ServiceRequiresApproval
-	// ServiceNotFound: this application does not contain such a service.
+	// ServiceNotFound: macOS could not find a matching service. This can
+	// also precede the service's first registration.
 	ServiceNotFound
 )
 

@@ -3,11 +3,15 @@ package boot_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"eggbox/internal/agentclient"
 	"eggbox/internal/app"
 	"eggbox/internal/boot"
 	"eggbox/internal/library"
@@ -22,6 +26,46 @@ func within(t *testing.T, what string, ok func() bool) {
 			t.Fatalf("timed out waiting for %s", what)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestAuthorizationFailureIsLoggedWithoutTheBackgroundService(t *testing.T) {
+	want := fmt.Errorf("%w: SMAppServiceErrorDomain: registration refused (code 42)", app.ErrServiceSetup)
+	rt, err := boot.Start(context.Background(), boot.Config{
+		Mode: boot.Installed, DataDir: t.TempDir(), Secrets: library.NewMemorySecrets(),
+		Dial:      func(context.Context) (net.Conn, error) { return nil, os.ErrNotExist },
+		Authorize: func(context.Context) error { return want },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(rt.Close)
+	if err := rt.Authorize(context.Background()); !errors.Is(err, want) {
+		t.Fatalf("got %v", err)
+	}
+	for _, line := range rt.Service.Snapshot().Logs {
+		if line.Level == "error" && strings.Contains(line.Message, "SMAppServiceErrorDomain") && strings.Contains(line.Message, "code 42") {
+			return
+		}
+	}
+	t.Fatal("the system's registration error is missing from Logs")
+}
+
+func TestAuthorizationWaitsForAReachableService(t *testing.T) {
+	rt, err := boot.Start(context.Background(), boot.Config{
+		Mode: boot.Installed, DataDir: t.TempDir(), Secrets: library.NewMemorySecrets(),
+		Dial:      func(context.Context) (net.Conn, error) { return nil, os.ErrNotExist },
+		Authorize: func(context.Context) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(rt.Close)
+	within(t, "the unavailable service", func() bool { return rt.Agent.Link().State == agentclient.LinkUnavailable })
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if err := rt.Authorize(ctx); !errors.Is(err, app.ErrServiceSetup) {
+		t.Fatalf("approval without a working service was reported as success: %v", err)
 	}
 }
 

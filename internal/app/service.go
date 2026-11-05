@@ -16,8 +16,10 @@ import (
 
 	"eggbox/internal/agentapi"
 	"eggbox/internal/agentclient"
+	"eggbox/internal/brand"
 	"eggbox/internal/configgen"
 	"eggbox/internal/library"
+	"eggbox/internal/redact"
 	"eggbox/internal/ruledata"
 	"eggbox/internal/subscription"
 )
@@ -176,6 +178,7 @@ func (s *Service) Close() {
 
 func (s *Service) watchLink(ctx context.Context) {
 	var gen uint64
+	var lastProblem string
 	for l := range s.agent.Updates(ctx) {
 		info := LinkInfo{State: l.State, Generation: l.Generation}
 		if l.Err != nil {
@@ -193,6 +196,13 @@ func (s *Service) watchLink(ctx context.Context) {
 		}
 		s.update(func(sn *Snapshot) {
 			sn.Link = info
+			if info.Error != "" && info.Error != lastProblem {
+				s.recordServiceLog(sn, "error", "Cannot reach the background service: "+info.Error)
+				lastProblem = info.Error
+			} else if info.Ready() && lastProblem != "" {
+				s.recordServiceLog(sn, "info", "Connected to the background service")
+				lastProblem = ""
+			}
 			if !info.Ready() {
 				// What the service told us is stale once it is out of reach.
 				sn.Status = nil
@@ -343,17 +353,36 @@ const maxLogLines = 600
 func (s *Service) onLogs(b *agentapi.LogBatch) {
 	s.update(func(sn *Snapshot) {
 		var lines []LogLine
-		if !b.GetReset_() {
-			lines = append(lines, sn.Logs...)
+		for _, line := range sn.Logs {
+			if !b.GetReset_() || line.local {
+				lines = append(lines, line)
+			}
 		}
 		for _, e := range b.GetEntries() {
 			lines = append(lines, LogLine{Time: time.UnixMilli(e.GetTimeUnixMs()), Level: e.GetLevel(), Source: e.GetSource(), Message: e.GetMessage()})
 		}
-		if n := len(lines); n > maxLogLines {
-			lines = append([]LogLine(nil), lines[n-maxLogLines:]...)
-		}
-		sn.Logs = lines
+		sn.Logs = logTail(lines)
 	})
+}
+
+// RecordServiceLog keeps setup and IPC diagnostics available before the
+// privileged service can supply its own logs.
+func (s *Service) RecordServiceLog(level, message string) {
+	s.update(func(sn *Snapshot) { s.recordServiceLog(sn, level, message) })
+}
+
+func (s *Service) recordServiceLog(sn *Snapshot, level, message string) {
+	line := LogLine{Time: s.cfg.Clock(), Level: level, Source: "service", local: true,
+		Message: redact.New(brand.AppID).String(message)}
+	sn.Logs = logTail(append(append([]LogLine(nil), sn.Logs...), line))
+}
+
+func logTail(lines []LogLine) []LogLine {
+	sort.SliceStable(lines, func(i, j int) bool { return lines[i].Time.Before(lines[j].Time) })
+	if n := len(lines); n > maxLogLines {
+		return append([]LogLine(nil), lines[n-maxLogLines:]...)
+	}
+	return lines
 }
 
 // WatchConnections starts or stops following the connection list. The list is
