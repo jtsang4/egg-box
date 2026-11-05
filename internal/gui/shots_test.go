@@ -1,0 +1,70 @@
+package gui
+
+import (
+	"context"
+	"testing"
+
+	"github.com/jtsang4/sing-box-ui/internal/app"
+)
+
+// shot is a screen to photograph, reached the way a person would reach it:
+// by clicking.
+type shot struct {
+	name  string
+	w, h  int
+	setup func(*fixtureBackend, *Options)
+	run   func(h *harness)
+}
+
+func introduction(be *fixtureBackend, o *Options) {
+	be.set.OnboardingDone = false
+	be.snap = be.disconnectedSnapshot()
+	be.snap.Phase = app.PhaseNoAgent
+	be.snap.Status = nil
+	be.snap.AgentSettings = nil
+	o.Authorize = func(context.Context) error { return nil }
+}
+
+var shots = []shot{
+	{name: "dashboard"},
+	{name: "dashboard-off", setup: func(be *fixtureBackend, _ *Options) { be.snap = be.disconnectedSnapshot() }},
+	{name: "nodes", run: func(h *harness) { h.click("Nodes") }},
+	{name: "subscriptions", run: func(h *harness) { h.click("Subscriptions") }},
+	{name: "subscription-add", run: func(h *harness) { h.click("Subscriptions"); h.click("Add subscription") }},
+	{name: "import", run: func(h *harness) { h.click("Subscriptions"); h.click("Import nodes") }},
+	{name: "rules", run: func(h *harness) { h.click("Rules") }},
+	{name: "connections", run: func(h *harness) { h.click("Connections") }},
+	{name: "logs", run: func(h *harness) { h.click("Logs") }},
+	{name: "settings", h: 2700, run: func(h *harness) { h.click("Settings") }},
+	{name: "welcome-1", setup: introduction},
+	{name: "welcome-2", setup: introduction, run: func(h *harness) { h.click("Continue") }},
+	{name: "welcome-3", setup: introduction, run: func(h *harness) { h.click("Continue"); h.click("Not now") }},
+}
+
+// TestShots renders the screens in both themes; with SBUI_SHOTS set the
+// images are written for review.
+func TestShots(t *testing.T) {
+	for _, s := range shots {
+		for _, dark := range []bool{true, false} {
+			name := s.name + "-light"
+			if dark {
+				name = s.name + "-dark"
+			}
+			t.Run(name, func(t *testing.T) {
+				w, hh := s.w, s.h
+				if w == 0 {
+					w = 1180
+				}
+				if hh == 0 {
+					hh = 860
+				}
+				h := newHarness(t, harnessOpt{dark: dark, w: w, h: hh, setup: s.setup})
+				if s.run != nil {
+					s.run(h)
+				}
+				h.settle()
+				h.shot(name)
+			})
+		}
+	}
+}

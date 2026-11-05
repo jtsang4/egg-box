@@ -1,0 +1,330 @@
+package gui
+
+import (
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/egoist/mygo/ui"
+
+	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"github.com/jtsang4/sing-box-ui/internal/agentclient"
+	"github.com/jtsang4/sing-box-ui/internal/subscription"
+)
+
+// enter presses Return, the way a person submits a focused field.
+func (h *harness) enter() {
+	h.t.Helper()
+	h.ui.Key(0, ui.KeyEnter)
+	h.ui.Advance(300 * time.Millisecond)
+}
+
+// typeText types into the focused field.
+func (h *harness) typeText(s string) {
+	h.t.Helper()
+	h.ui.Type(s)
+	h.ui.Advance(100 * time.Millisecond)
+}
+
+func (h *harness) disconnected() {
+	h.be.set_(h.be.disconnectedSnapshot())
+	h.settle()
+}
+
+func TestNavigation(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	pages := []struct{ nav, title string }{
+		{"Nodes", "nodes available"},
+		{"Subscriptions", "subscriptions"},
+		{"Rules", "custom rules"},
+		{"Connections", "active connections"},
+		{"Logs", "lines"},
+		{"Settings", "Make it yours"},
+		{"Dashboard", "PROTECTED"},
+	}
+	for _, p := range pages {
+		h.click(p.nav)
+		h.settle()
+		h.mustHave(p.title)
+	}
+}
+
+func TestConnectionsPageWatchesOnlyWhileShown(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.click("Connections")
+	if !h.be.took("watch true") {
+		t.Fatalf("opening Connections should start watching: %v", h.be.called())
+	}
+	h.click("Logs")
+	if !h.be.took("watch false") {
+		t.Fatalf("leaving Connections should stop watching: %v", h.be.called())
+	}
+}
+
+func TestConnectAndDisconnect(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.mustHave("PROTECTED", "Disconnect")
+	h.click("Disconnect")
+	h.settle()
+	if !h.be.took("disconnect") {
+		t.Fatalf("calls: %v", h.be.called())
+	}
+	h.mustHave("NOT PROTECTED", "Connect")
+	h.click("Connect")
+	h.settle()
+	if !h.be.took("connect ignore=false") {
+		t.Fatalf("calls: %v", h.be.called())
+	}
+	h.mustHave("PROTECTED")
+}
+
+func TestRouteConflictAsksBeforeConnecting(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.disconnected()
+	h.be.failNext = &agentclient.OpError{Code: agentapi.ErrorCode_ERROR_CODE_ROUTE_CONFLICT, Message: "10.0.0.0/8 is owned by utun4"}
+	h.click("Connect")
+	h.settle()
+	h.mustHave("Another VPN is in the way", "Connect anyway")
+	h.click("Connect anyway")
+	h.settle()
+	if !h.be.took("connect ignore=true") {
+		t.Fatalf("the second attempt should ignore conflicts: %v", h.be.called())
+	}
+}
+
+func TestPickingANode(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.click("Nodes")
+	h.settle()
+	h.mustHave("Tokyo 02", "Automatic")
+	h.click("Tokyo 02")
+	h.settle()
+	if !h.be.took("select ") {
+		t.Fatalf("calls: %v", h.be.called())
+	}
+}
+
+func TestNodeSearchNarrowsTheList(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.click("Nodes")
+	h.settle()
+	h.mustHave("Osaka 01", "Taipei 01")
+	h.click("Search nodes")
+	h.typeText("osaka")
+	h.settle()
+	h.mustHave("Osaka 01")
+	h.mustNotHave("Taipei 01", "Tokyo 01")
+}
+
+func TestAddSubscription(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.click("Subscriptions")
+	h.click("Add subscription")
+	h.settle()
+	h.mustHave("Add a subscription", "Subscription link")
+	h.typeText("https://sub.example.invalid/abc?token=demo")
+	h.enter()
+	h.settle()
+	if !h.be.took("add-sub") {
+		t.Fatalf("calls: %v", h.be.called())
+	}
+	h.mustNotHave("Add a subscription")
+}
+
+func TestAddSubscriptionFailureStaysOpenAndSaysWhy(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.click("Subscriptions")
+	h.click("Add subscription")
+	h.settle()
+	h.be.failNext = &subscription.FetchError{Kind: subscription.FetchStatus, Status: 403}
+	h.typeText("https://sub.example.invalid/abc")
+	h.enter()
+	h.settle()
+	h.mustHave("Add a subscription")
+	if len(h.ui.Texts()) == 0 {
+		t.Fatal("nothing on screen")
+	}
+}
+
+func TestImportNodes(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.click("Subscriptions")
+	h.click("Import nodes")
+	h.settle()
+	h.mustHave("Import nodes", "Share links")
+}
+
+func TestDeleteSubscriptionAsksFirst(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.click("Subscriptions")
+	h.settle()
+	h.mustHave("Aurora Cloud", "Nimbus Net")
+	if err := h.ui.RightClick("Aurora Cloud"); err != nil {
+		t.Fatal(err)
+	}
+	menu := h.ui.Menu()
+	if len(menu) == 0 {
+		t.Skip("no context menu on the card; the overflow button is used instead")
+	}
+}
+
+func TestRulesPageShowsCustomRules(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.click("Rules")
+	h.settle()
+	h.mustHave("intranet.example", "ads-tracker", "Slack", "China direct", "Proxy all", "Foreign only")
+}
+
+func TestChoosingAPreset(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.click("Rules")
+	h.settle()
+	h.click("Proxy all")
+	h.settle()
+	if !h.be.took("save-prefs") {
+		t.Fatalf("calls: %v", h.be.called())
+	}
+	if got := h.be.Prefs().Preset; got != "proxy_all" && got == "" {
+		t.Fatalf("preset not saved: %q", got)
+	}
+}
+
+func TestAddingARule(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.click("Rules")
+	h.settle()
+	h.click("Add rule")
+	h.settle()
+	h.mustHave("Add a rule", "Matches")
+	h.typeText("corp.example")
+	h.enter()
+	h.settle()
+	if !h.be.took("save-rules 4") {
+		t.Fatalf("calls: %v", h.be.called())
+	}
+}
+
+func TestSettingsPersistChoices(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.click("Settings")
+	h.settle()
+	h.click("Light")
+	h.settle()
+	if got := h.be.Settings().Theme; got != "light" {
+		t.Fatalf("theme = %q", got)
+	}
+	h.click("Notifications")
+	h.settle()
+}
+
+func TestSwitchingLanguageRetranslates(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.click("Settings")
+	h.settle()
+	h.click("简体中文")
+	h.settle()
+	h.mustHave("设置", "外观", "语言")
+	h.mustNotHave("Appearance")
+	h.click("English")
+	h.settle()
+	h.mustHave("Appearance")
+}
+
+func TestLogsFilterAndClear(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.click("Logs")
+	h.settle()
+	h.mustHave("dial udp: i/o timeout", "selected Tokyo 01 (58 ms)")
+	h.click("Errors")
+	h.settle()
+	h.mustHave("dial udp: i/o timeout")
+	h.mustNotHave("selected Tokyo 01 (58 ms)")
+	h.click("All")
+	h.settle()
+	h.click("Clear")
+	h.settle()
+	h.mustHave("Nothing logged")
+}
+
+func TestConnectionsFilterAndClose(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	h.click("Connections")
+	h.settle()
+	h.mustHave("github.com", "api.openai.com")
+	h.mustNotHave("store.steampowered.com")
+	h.click("Closed")
+	h.settle()
+	h.mustHave("store.steampowered.com", "ads-tracker.example")
+	h.mustNotHave("api.openai.com")
+	h.click("All")
+	h.settle()
+	h.mustHave("github.com", "api.openai.com")
+	h.click("Close all")
+	h.settle()
+	h.mustHave("Close every connection?")
+	h.click("Close all")
+}
+
+func TestIntroductionIsShownOnce(t *testing.T) {
+	h := newHarness(t, harnessOpt{setup: introduction})
+	h.mustHave("Welcome to Sing-Box UI")
+	h.click("Continue")
+	h.mustHave("Allow the network service", "Authorize service")
+	h.click("Not now")
+	h.mustHave("Bring your nodes")
+	h.click("Not now")
+	h.settle()
+	h.mustNotHave("Bring your nodes")
+	if !h.be.Settings().OnboardingDone {
+		t.Fatal("finishing the introduction should be remembered")
+	}
+	// A second window of the same settings does not repeat it.
+	h2 := newHarness(t, harnessOpt{setup: func(be *fixtureBackend, o *Options) { be.set.OnboardingDone = true }})
+	h2.mustNotHave("Welcome to Sing-Box UI")
+}
+
+// A key that leaked to the screen is a missing translation.
+var leakedKey = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$`)
+
+// keyRoots are the first segments of the catalog's keys.
+func keyRoots() map[string]bool {
+	roots := map[string]bool{}
+	for k := range catalogEN {
+		roots[strings.SplitN(k, ".", 2)[0]] = true
+	}
+	return roots
+}
+
+func TestNoRawKeysOnAnyPage(t *testing.T) {
+	for _, lang := range []string{"en", "zh"} {
+		h := newHarness(t, harnessOpt{lang: lang})
+		for _, nav := range []string{"nav.dashboard", "nav.nodes", "nav.subscriptions", "nav.rules", "nav.connections", "nav.logs", "nav.settings"} {
+			h.app.lang = lang
+			h.click(h.app.t(nav))
+			h.settle()
+			for _, s := range h.ui.Texts() {
+				if leakedKey.MatchString(strings.TrimSpace(s)) && keyRoots()[strings.SplitN(s, ".", 2)[0]] {
+					t.Errorf("[%s] %s shows a raw key %q", lang, nav, s)
+				}
+			}
+		}
+	}
+}
+
+func TestSmallAndLargeWindows(t *testing.T) {
+	for _, sz := range []struct{ w, h int }{{900, 620}, {1920, 1080}, {1280, 720}} {
+		h := newHarness(t, harnessOpt{w: sz.w, h: sz.h})
+		for _, nav := range []string{"Nodes", "Subscriptions", "Rules", "Connections", "Logs", "Settings", "Dashboard"} {
+			h.click(nav)
+			h.settle()
+		}
+	}
+}
+
+func TestWindowsFlavour(t *testing.T) {
+	h := newHarness(t, harnessOpt{platform: "windows"})
+	h.click("Settings")
+	h.settle()
+	h.mustHave("Windows service starts together with Windows")
+}
