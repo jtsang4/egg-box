@@ -1,0 +1,122 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # What the release is built with; the same tags are checked here so that a
+  # change that only breaks the release build is found before the release.
+  SBUI_TAGS: with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_clash_api,badlinkname
+
+jobs:
+  # Everything that does not depend on the operating system, and the checks of
+  # the rules of the project.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: The interface is native, not a web page
+        run: |
+          found="$(git ls-files | grep -E '\.(js|jsx|mjs|cjs|ts|tsx)$|(^|/)package(-lock)?\.json$|(^|/)node_modules/' || true)"
+          if [ -n "$found" ]; then
+            echo "JavaScript or a web front end has no place in this project:" >&2
+            echo "$found" >&2
+            exit 1
+          fi
+
+      - name: Formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt would change:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+
+      - name: Modules are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Vet
+        run: |
+          go vet ./...
+          go vet -tags "$SBUI_TAGS" ./...
+          go tool mygo vet
+
+      - name: Tests (race detector)
+        run: go test -race -short -count=1 ./...
+
+      - name: Tests with the real engine
+        run: go test -short -count=1 -tags "$SBUI_TAGS" ./internal/agent/engine/... ./internal/agent/e2e/...
+
+  # The platform layers run for real on their own platform.
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Tests (including the Swift bridge and real XPC)
+        run: go test -race -short -count=1 ./...
+      - name: Package (unsigned)
+        run: packaging/macos/build.sh --arch universal
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-unsigned
+          path: build/macos/*.pkg
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Tests
+        run: go test -short -count=1 ./...
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+      - name: Installer (unsigned)
+        shell: bash
+        run: |
+          export PATH="/c/Program Files (x86)/NSIS:$PATH"
+          packaging/windows/build.sh --arch amd64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-unsigned
+          path: build/windows/*.exe
+          if-no-files-found: error
+
+  # Everything builds for every platform that is supported, from one machine.
+  cross:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [windows/amd64, windows/arm64, darwin/amd64, darwin/arm64, linux/amd64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          export GOOS="${{ matrix.target }}"; export GOARCH="${GOOS#*/}"; export GOOS="${GOOS%/*}"
+          go build -trimpath -tags "$SBUI_TAGS" ./...

@@ -1,0 +1,102 @@
+name: release
+
+# A tag such as v1.2.3 builds the installers and attaches them to a release.
+#
+# They are signed when the secrets below exist. Without them they are signed
+# ad hoc on macOS and not at all on Windows: good to try, not good to hand to
+# anybody (macOS will not let the service be approved without a Developer ID).
+#
+#   SBUI_SIGN_IDENTITY       Developer ID Application identity (macOS)
+#   SBUI_INSTALLER_IDENTITY  Developer ID Installer identity (macOS)
+#   SBUI_CERTIFICATE         base64 of the .p12 holding both
+#   SBUI_CERTIFICATE_PASSWORD
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    env:
+      # Here, because a step cannot ask whether a secret exists, only whether
+      # an environment variable is not empty.
+      SBUI_CERTIFICATE: ${{ secrets.SBUI_CERTIFICATE }}
+      SBUI_CERTIFICATE_PASSWORD: ${{ secrets.SBUI_CERTIFICATE_PASSWORD }}
+      SBUI_SIGN_IDENTITY: ${{ secrets.SBUI_SIGN_IDENTITY }}
+      SBUI_INSTALLER_IDENTITY: ${{ secrets.SBUI_INSTALLER_IDENTITY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Import the signing certificate
+        if: env.SBUI_CERTIFICATE != ''
+        run: |
+          keychain="$RUNNER_TEMP/sbui.keychain-db"
+          password="$(uuidgen)"
+          echo "$SBUI_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$SBUI_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          rm -f "$RUNNER_TEMP/certificate.p12"
+
+      - name: Build
+        run: |
+          export SBUI_VERSION="${GITHUB_REF_NAME#v}"
+          [ -n "$SBUI_SIGN_IDENTITY" ] || unset SBUI_SIGN_IDENTITY
+          [ -n "$SBUI_INSTALLER_IDENTITY" ] || unset SBUI_INSTALLER_IDENTITY
+          packaging/macos/build.sh --arch universal
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: build/macos/*.pkg
+          if-no-files-found: error
+
+  windows:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install NSIS
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq nsis
+      - name: Build
+        run: |
+          export SBUI_VERSION="${GITHUB_REF_NAME#v}"
+          packaging/windows/build.sh --arch "${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: build/windows/*.exe
+          if-no-files-found: error
+
+  publish:
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
