@@ -7,7 +7,7 @@
 ; folder only administrators can write in.
 ;
 ; Built by packaging/windows/build.sh:
-;   makensis -DVERSION=1.2.3 -DARCH=amd64 -DAGENT=agentd.exe -DGUI=app.exe -DOUTFILE=setup.exe installer.nsi
+;   makensis -DVERSION=1.2.3 -DARCH=amd64 -DAGENT=agentd.exe -DGUI=app.exe -DNOTICES=notices.txt -DOUTFILE=setup.exe installer.nsi
 ;
 ; Run it with /S for an installation without questions.
 
@@ -30,6 +30,9 @@ SetCompressor /SOLID lzma
 !ifndef GUI
   !error "pass -DGUI=path of the application's exe"
 !endif
+!ifndef NOTICES
+  !error "pass -DNOTICES=path of the third-party notices"
+!endif
 !ifndef OUTFILE
   !define OUTFILE "SingBoxUI-Setup-${VERSION}-${ARCH}.exe"
 !endif
@@ -39,6 +42,7 @@ SetCompressor /SOLID lzma
 !define SERVICE   "SingBoxUIAgent"
 !define GUI_EXE   "Sing-Box UI.exe"       ; the service looks for this exact name next to itself
 !define AGENT_EXE "agentd.exe"
+!define NOTICES_FILE "THIRD-PARTY-NOTICES.txt"   ; the application's Settings looks for this name next to itself
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${SLUG}"
 
 !include "MUI2.nsh"
@@ -118,6 +122,7 @@ Section "Install"
   SetOutPath "$INSTDIR"
   File "/oname=${AGENT_EXE}" "${AGENT}"
   File "/oname=${GUI_EXE}" "${GUI}"
+  File "/oname=${NOTICES_FILE}" "${NOTICES}"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 
   ; Register the service. Failing here is the one thing that must stop the
@@ -168,6 +173,7 @@ Section "Uninstall"
 
   Delete "$INSTDIR\${GUI_EXE}"
   Delete "$INSTDIR\${AGENT_EXE}"
+  Delete "$INSTDIR\${NOTICES_FILE}"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
 

@@ -13,6 +13,7 @@
 #   Contents/MacOS/agentd                                 the service
 #   Contents/Frameworks/ServiceBridge.dylib               what only Swift can do
 #   Contents/Library/LaunchDaemons/<label>.plist          how launchd runs it
+#   Contents/Resources/THIRD-PARTY-NOTICES.txt            the licenses of what is inside
 #
 # Environment:
 #
@@ -116,6 +117,14 @@ cp "$work/agentd" "$app/Contents/MacOS/agentd"
 cp "$work/ServiceBridge.dylib" "$app/Contents/Frameworks/ServiceBridge.dylib"
 cp "$work/$agent_id.plist" "$app/Contents/Library/LaunchDaemons/$agent_id.plist"
 chmod 755 "$app/Contents/MacOS/agentd"
+
+# The licenses of everything compiled into the programs: nearly all of them
+# ask to travel with the program. The application's Settings opens this file.
+say "third-party notices"
+goarchs=""
+for a in "${archs[@]}"; do goarchs="${goarchs:+$goarchs,}$(goarch "$a")"; done
+mkdir -p "$app/Contents/Resources"
+go run ./scripts/notices -goos darwin -goarch "$goarchs" -tags "$tags" -out "$app/Contents/Resources/THIRD-PARTY-NOTICES.txt"
 
 # Extended attributes (quarantine, Finder information, ...) do not belong in
 # the signature or in the installer, which would carry them as "._" files.

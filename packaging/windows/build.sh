@@ -64,11 +64,16 @@ go tool mygo build -platform "windows/$arch" -skip-installer -skip-build-command
 gui="$(find "$work/mygo" -maxdepth 3 -name '*.exe' | head -1)"
 [ -n "$gui" ] || { echo "mygo build produced no .exe; see $work/mygo.log" >&2; exit 1; }
 
+# The licenses of everything compiled into the programs: nearly all of them
+# ask to travel with the program. The application's Settings opens this file.
+say "third-party notices"
+go run ./scripts/notices -goos windows -goarch "$arch" -tags "$tags" -out "$work/THIRD-PARTY-NOTICES.txt"
+
 say "installer"
 mkdir -p "$out"
 setup="$out/SingBoxUI-Setup-$version-$arch.exe"
 numeric="$(printf '%s' "$version" | sed -E 's/^([0-9]+)\.([0-9]+)\.([0-9]+).*/\1.\2.\3.0/')"
-makensis -V2 -DVERSION="$version" -DVERSION_NUMERIC="$numeric" -DARCH="$arch" -DAGENT="$work/agentd.exe" -DGUI="$gui" -DOUTFILE="$setup" \
+makensis -V2 -DVERSION="$version" -DVERSION_NUMERIC="$numeric" -DARCH="$arch" -DAGENT="$work/agentd.exe" -DGUI="$gui" -DNOTICES="$work/THIRD-PARTY-NOTICES.txt" -DOUTFILE="$setup" \
   packaging/windows/installer.nsi
 
 say "built $setup"
