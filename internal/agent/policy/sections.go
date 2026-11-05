@@ -179,6 +179,7 @@ func (n *normalizer) dns(val any, path string) {
 			n.errorf(keyPath(sp, "type"), "type_not_allowed", "DNS server type %q is not available", typ)
 			continue
 		}
+		n.tlsFeatures(srv, sp)
 	}
 	n.walk(obj, path, "dns")
 }
@@ -230,6 +231,7 @@ func (n *normalizer) outbounds(val any, path string) {
 			n.errorf(keyPath(op, "type"), "type_not_allowed", "outbound type %q is not available", typ)
 			continue
 		}
+		n.tlsFeatures(obj, op)
 		n.walk(obj, op, "outbound:"+typ)
 	}
 }
@@ -412,4 +414,27 @@ func stringsToAny(in []string) []any {
 		out[i] = s
 	}
 	return out
+}
+
+// tlsFeatures rejects TLS options that need parts of the core this build does
+// not contain. The core would refuse the whole configuration at start with a
+// message that does not say which node is to blame; here the finding carries
+// the node's JSON path.
+func (n *normalizer) tlsFeatures(obj map[string]any, path string) {
+	if n.p.opts.UTLS {
+		return
+	}
+	tls, ok := asObject(obj["tls"])
+	if !ok {
+		return
+	}
+	for _, feature := range []string{"utls", "reality"} {
+		sub, ok := asObject(tls[feature])
+		if !ok {
+			continue
+		}
+		if on, _ := sub["enabled"].(bool); on {
+			n.errorf(keyPath(keyPath(path, "tls"), feature), "feature_not_available", "tls.%s needs uTLS, which is not part of this build", feature)
+		}
+	}
 }

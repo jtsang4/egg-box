@@ -18,9 +18,9 @@ var testEnv = Env{
 	},
 }
 
-func prod() *Policy { return New(Options{WireGuard: true, QUIC: true, DHCP: true}) }
+func prod() *Policy { return New(Options{WireGuard: true, QUIC: true, DHCP: true, UTLS: true}) }
 func dev() *Policy {
-	return New(Options{WireGuard: true, QUIC: true, DHCP: true, AllowServerInbounds: true})
+	return New(Options{WireGuard: true, QUIC: true, DHCP: true, UTLS: true, AllowServerInbounds: true})
 }
 
 // normalize runs the policy and returns the normalized document as a generic tree.
@@ -561,5 +561,39 @@ func TestSandboxDoesNotAffectConfigsWithoutTun(t *testing.T) {
 	res := prod().Normalize([]byte(minimal), env)
 	if res.HasErrors() || res.SandboxTun || res.HasTun {
 		t.Fatalf("result = %+v %s", res, dump(res))
+	}
+}
+
+func TestUTLSAndRealityFollowTheBuild(t *testing.T) {
+	cfg := `{
+	  "outbounds": [
+	    {"type": "direct", "tag": "direct"},
+	    {"type": "vless", "tag": "plain", "server": "a.example.com", "server_port": 443, "uuid": "u", "tls": {"enabled": true}},
+	    {"type": "vless", "tag": "fp", "server": "b.example.com", "server_port": 443, "uuid": "u",
+	     "tls": {"enabled": true, "utls": {"enabled": true, "fingerprint": "chrome"}}},
+	    {"type": "vless", "tag": "reality", "server": "c.example.com", "server_port": 443, "uuid": "u",
+	     "tls": {"enabled": true, "utls": {"enabled": true}, "reality": {"enabled": true, "public_key": "k", "short_id": "ab"}}},
+	    {"type": "vless", "tag": "off", "server": "d.example.com", "server_port": 443, "uuid": "u",
+	     "tls": {"enabled": true, "utls": {"enabled": false}}}
+	  ]
+	}`
+	if res, _ := normalize(t, prod(), cfg, testEnv); res.HasErrors() {
+		t.Fatalf("a build with uTLS must accept fingerprints and REALITY:\n%s", dump(res))
+	}
+	res, _ := normalize(t, New(Options{}), cfg, testEnv)
+	paths := map[string]bool{}
+	for _, i := range res.Errors() {
+		if i.Code != "feature_not_available" {
+			t.Fatalf("unexpected issue: %s", i)
+		}
+		paths[i.Path] = true
+	}
+	for _, want := range []string{"$.outbounds[2].tls.utls", "$.outbounds[3].tls.utls", "$.outbounds[3].tls.reality"} {
+		if !paths[want] {
+			t.Errorf("missing finding at %s, got %v", want, paths)
+		}
+	}
+	if len(paths) != 3 {
+		t.Errorf("only the nodes that use the feature may be flagged, got %v", paths)
 	}
 }

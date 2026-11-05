@@ -11,5 +11,6 @@ func PolicyOptions(reg RegistryOptions) policy.Options {
 		WireGuard:           WireGuardCompiled,
 		QUIC:                QUICCompiled,
 		DHCP:                DHCPCompiled,
+		UTLS:                UTLSCompiled,
 	}
 }

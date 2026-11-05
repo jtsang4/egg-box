@@ -61,10 +61,12 @@ type Options struct {
 	// AllowServerInbounds permits socks/http/shadowsocks/... listeners (still loopback only).
 	// It exists for tests and the demo backend; production leaves it false.
 	AllowServerInbounds bool
-	// WireGuard, QUIC and DHCP mirror the build tags compiled into the core.
+	// WireGuard, QUIC, DHCP and UTLS mirror the build tags compiled into the
+	// core. UTLS covers uTLS client fingerprints and REALITY, which needs them.
 	WireGuard bool
 	QUIC      bool
 	DHCP      bool
+	UTLS      bool
 }
 
 // Policy is stateless and safe for concurrent use.
