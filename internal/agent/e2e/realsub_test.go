@@ -114,14 +114,11 @@ func TestRealSubscriptionEveryNodeWorksInTheSandbox(t *testing.T) {
 	if err := svc.TestLatency(ctx(t), configgen.TagProxy); err != nil {
 		t.Fatalf("latency test: %s", scrub(err))
 	}
-	until(t, "every node was measured", 90*time.Second, func() bool {
-		for _, n := range liveNodes(svc.Snapshot()) {
-			if !n.tested.After(started) {
-				return false
-			}
-		}
-		return true
-	})
+	stamped, total := delayTestSettled(svc, started)
+	t.Logf("delay test: %d of %d nodes show a fresh measurement", stamped, total)
+	if stamped == 0 {
+		t.Fatal("the delay test measured no node at all")
+	}
 	var slow, unreachable []string
 	reachable := 0
 	for _, n := range liveNodes(svc.Snapshot()) {
@@ -184,14 +181,11 @@ func TestRealSubscriptionEveryNodeWorksInTheSandbox(t *testing.T) {
 	if err := svc.TestLatency(ctx(t), configgen.TagProxy); err != nil {
 		t.Fatalf("second latency test: %s", scrub(err))
 	}
-	until(t, "every node was measured again", 90*time.Second, func() bool {
-		for _, n := range liveNodes(svc.Snapshot()) {
-			if !n.tested.After(warm) {
-				return false
-			}
-		}
-		return true
-	})
+	stamped, total = delayTestSettled(svc, warm)
+	t.Logf("delay test, second round: %d of %d nodes show a fresh measurement", stamped, total)
+	if stamped == 0 {
+		t.Fatal("the second delay test measured no node at all")
+	}
 	var delays []string
 	for _, n := range liveNodes(svc.Snapshot()) {
 		delays = append(delays, fmt.Sprintf("#%d %dms", n.index, n.delay))
@@ -208,6 +202,32 @@ func TestRealSubscriptionEveryNodeWorksInTheSandbox(t *testing.T) {
 	}
 	if after := interfaces(t); after != interfacesBefore {
 		t.Errorf("the host's interfaces changed:\n%s\n---\n%s", interfacesBefore, after)
+	}
+}
+
+// delayTestSettled waits for a delay test that began at began to show in the
+// groups, and says how many of the nodes carry its measurement.
+//
+// The core stamps a measurement with whole seconds, so "since the test began"
+// is the second it began in; and a node that does not answer is not stamped at
+// all, so waiting for every node would wait for ever for the one that failed.
+// The delays are read after this, and the requests of the next step decide
+// whether a node works.
+func delayTestSettled(svc *app.Service, began time.Time) (stamped, total int) {
+	since := began.Truncate(time.Second)
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		nodes := liveNodes(svc.Snapshot())
+		stamped = 0
+		for _, n := range nodes {
+			if !n.tested.Before(since) {
+				stamped++
+			}
+		}
+		if stamped == len(nodes) || time.Now().After(deadline) {
+			return stamped, len(nodes)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
