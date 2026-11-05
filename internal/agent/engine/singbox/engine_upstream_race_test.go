@@ -7,7 +7,8 @@ package singbox_test
 // how the caller uses them:
 //
 //   - clashmode.Manager.SetMode writes the mode string while the router reads it;
-//   - group.URLTest.Selected reads the selected outbound while a URL test replaces it.
+//   - the URL test group (urltestgroup, adapted from sing-box's group.URLTest)
+//     reads the selected outbound in Selected while a URL test replaces it.
 //
 // The functionality is still verified here; everything else in this package
 // (lifecycle, check, connections, selectors, traffic, logs) runs under -race.
@@ -78,6 +79,37 @@ func TestURLTestFillsInLatency(t *testing.T) {
 		return false
 	})
 	_ = g
+}
+
+// TestURLTestOfASelectorMeasuresItsMembers is "test all": the Proxy selector
+// is not a URL test group, so each of its members is measured.
+func TestURLTestOfASelectorMeasuresItsMembers(t *testing.T) {
+	r := newRigWith(t, true)
+	r.startClient()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	groups, err := r.client.WatchGroups(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.client.URLTest(ctx, "proxy"); err != nil {
+		t.Fatal(err)
+	}
+	recvUntil(t, groups, 10*time.Second, "latency of the selector's members", func(g *agentapi.Groups) bool {
+		for _, x := range g.Groups {
+			if x.Tag != "proxy" {
+				continue
+			}
+			n := 0
+			for _, it := range x.Items {
+				if it.DelayMs > 0 {
+					n++
+				}
+			}
+			return n == len(x.Items)
+		}
+		return false
+	})
 }
 
 func TestModesSwitchRouting(t *testing.T) {

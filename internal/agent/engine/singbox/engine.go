@@ -26,6 +26,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"eggbox/internal/agent/engine"
+	"eggbox/internal/agent/engine/singbox/urltestgroup"
 	"eggbox/internal/agentapi"
 )
 
@@ -668,11 +669,25 @@ func (e *Engine) SelectOutbound(group, outbound string) error {
 }
 
 // URLTest starts a latency test of an outbound or a whole group. Results show
-// up in the group stream.
+// up in the group stream. The measurement is urltestgroup's (the round trip
+// on an open connection), the same one the automatic groups use; the daemon's
+// own call, which times a new connection, only serves a configuration
+// without such a group.
 func (e *Engine) URLTest(ctx context.Context, tag string) error {
 	s, err := e.running()
 	if err != nil {
 		return err
+	}
+	if inst := s.svc.Instance(); inst != nil && inst.Box() != nil {
+		err := urltestgroup.Test(inst.Box().Outbound(), tag)
+		switch {
+		case err == nil:
+			return nil
+		case errors.Is(err, urltestgroup.ErrUnknownOutbound):
+			return fmt.Errorf("%w: %v", engine.ErrNotFound, err)
+		case !errors.Is(err, urltestgroup.ErrNoGroup):
+			return err
+		}
 	}
 	_, err = s.svc.URLTest(ctx, &daemon.URLTestRequest{OutboundTag: tag})
 	return mapErr(err)

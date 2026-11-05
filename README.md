@@ -27,6 +27,8 @@ agentd (Windows Service / macOS LaunchDaemon)  ──▶  embedded sing-box core
   (including Reality), VMess, Trojan, Shadowsocks, Hysteria2, TUIC, AnyTLS, WireGuard, SOCKS and HTTP. Links are
   credentials: they live in the system keychain, never in an ordinary file, a log or a diagnostic report.
 - **Nodes.** Grouped by region, latency tests, an "Auto" choice that follows the fastest node, per-region fastest groups.
+  Latency is the round trip of a request on a connection already open through the node (what mihomo calls "unified
+  delay"), so it compares with other clients; the handshakes of a new connection are not counted.
 - **Routing.** Rule, Global and Direct modes; presets (mainland China direct, proxy everything, proxy only foreign
   sites); ad blocking; your own rules (domain, suffix, keyword, regex, IP range, port, process) that win over the
   preset; rule data (geosite / geoip) fetched from a mirror you choose and refreshed on a schedule.
@@ -207,3 +209,4 @@ tested; that is not a substitute for running it.
 EggBox embeds [sing-box](https://github.com/SagerNet/sing-box), which is GPL-3.0-or-later with an added condition
 restricting use of its name or implied association without prior consent. EggBox is an independent product.
 The combined program must be distributed under GPL-compatible terms; this repository has no license file yet.
+`internal/agent/engine/singbox/urltestgroup` is adapted from sing-box's URL test group and carries its notice.

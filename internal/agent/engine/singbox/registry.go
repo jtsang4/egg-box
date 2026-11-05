@@ -36,6 +36,8 @@ import (
 	"github.com/sagernet/sing-box/protocol/tun"
 	"github.com/sagernet/sing-box/protocol/vless"
 	"github.com/sagernet/sing-box/protocol/vmess"
+
+	"eggbox/internal/agent/engine/singbox/urltestgroup"
 )
 
 // RegistryOptions tunes which optional protocols are registered.
@@ -82,7 +84,7 @@ func OutboundRegistry() *outbound.Registry {
 	direct.RegisterOutbound(registry)
 	block.RegisterOutbound(registry)
 	group.RegisterSelector(registry)
-	group.RegisterURLTest(registry)
+	urltestgroup.RegisterURLTest(registry)
 	socks.RegisterOutbound(registry)
 	http.RegisterOutbound(registry)
 	shadowsocks.RegisterOutbound(registry)
