@@ -118,6 +118,8 @@ Documentation-only changes skip CI. The weekly schedule runs `govulncheck`; code
 vulnerabilities. Installers are built when their scripts, native bridge, metadata, dependencies or icons change, on a
 manual CI run with **installers** enabled, and on release tags. CI artifacts expire after three days; release workflow
 transfer artifacts expire after one day. Only standard hosted runners are used.
+Native macOS tests and universal packaging use the fixed `macos-15-intel` image; packages contain both Intel and Apple
+Silicon executables.
 
 The interface is tested without a window (`ui.NewTester`). Interaction fixtures use reduced motion and half-resolution
 backing pixels at the full logical window size; normal-motion interactions have their own regression tests. The complete

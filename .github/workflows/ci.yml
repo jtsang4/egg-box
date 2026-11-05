@@ -128,7 +128,7 @@ jobs:
   macos:
     needs: [scope, check]
     if: needs.scope.outputs.macos_native == 'true' || needs.scope.outputs.macos_package == 'true'
-    runs-on: macos-latest
+    runs-on: macos-15-intel
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

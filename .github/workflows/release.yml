@@ -24,7 +24,7 @@ env:
 
 jobs:
   macos:
-    runs-on: macos-latest
+    runs-on: macos-15-intel
     env:
       # Here, because a step cannot ask whether a secret exists, only whether
       # an environment variable is not empty.
