@@ -307,6 +307,39 @@ func (a *App) toggle(c *ui.Context, key string, on *bool, label string) bool {
 	return sw.Changed()
 }
 
+// toggleRow is a settings row that is itself the switch: the whole row takes
+// the click, its title names it for assistive technology, and the track
+// sits at its end. It reports whether the user flipped it.
+func (a *App) toggleRow(c *ui.Context, key, title, desc string, on *bool, disabled bool) bool {
+	p := a.pl
+	row := ui.SwitchBase(c.Key(key), on)
+	row.Label(title).Padding(14, 0).Gap(16).AlignItems(ui.Center).Cursor(boolOr(disabled, ui.CursorDefault, ui.CursorPointer)).Disabled(disabled)
+	k := row.AnimateTo("on", boolf(*on), ui.Animation{Duration: 200 * time.Millisecond})
+	knob := row.AnimateTo("x", boolf(*on), ui.Snappy)
+	hov := row.AnimateTo("hov", boolf(row.Hovered()), ui.Animation{Duration: 120 * time.Millisecond})
+	row.Children(func() {
+		ui.Column(c).Grow(1).Basis(0).Gap(3).Children(func() {
+			a.txt(c, title, 13.5, 600, p.Text)
+			if desc != "" {
+				a.txt(c, desc, 12, 400, p.Text3).LineHeight(1.4)
+			}
+		})
+		off := p.Line.Mix(p.LineHi, 0.7+0.3*hov)
+		if !p.Dark {
+			off = p.LineHi.Mix(p.Text3, 0.35+0.2*hov)
+		}
+		track := ui.Box(c).Size(44, 26).Radius(13).Padding(3).Background(off.Mix(p.Blue, k))
+		if k > 0.02 {
+			track.Shadow(0, 0, 14*k, 0, p.Glow.Alpha(0.55*k))
+		}
+		track.Children(func() {
+			ui.Box(c).Size(20, 20).Radius(10).Background(ui.Hex("#FFFFFF")).
+				Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.28)).Translate(18*knob, 0)
+		})
+	})
+	return row.Changed()
+}
+
 // segItem is one option of a segmented control.
 type segItem struct {
 	label string

@@ -206,7 +206,7 @@ func TestAddingARule(t *testing.T) {
 }
 
 func TestSettingsPersistChoices(t *testing.T) {
-	h := newHarness(t, harnessOpt{})
+	h := newHarness(t, harnessOpt{h: 2800})
 	h.click("Settings")
 	h.settle()
 	h.click("Light")
@@ -214,8 +214,87 @@ func TestSettingsPersistChoices(t *testing.T) {
 	if got := h.be.Settings().Theme; got != "light" {
 		t.Fatalf("theme = %q", got)
 	}
+	before := h.be.Settings()
 	h.click("Notifications")
+	h.click("Keep running in the tray")
+	h.click("Refresh subscriptions automatically")
+	h.click("Apply new nodes while connected")
+	h.click("Open Sing-Box UI at login")
 	h.settle()
+	after := h.be.Settings()
+	if after.Notifications == before.Notifications || after.CloseToTray == before.CloseToTray ||
+		after.AutoRefresh == before.AutoRefresh || after.ReapplyAfterRefresh == before.ReapplyAfterRefresh {
+		t.Fatalf("switches did not flip: before %+v after %+v", before, after)
+	}
+	if !after.LaunchAtLogin || !h.be.took("launch-at-login true") {
+		t.Fatalf("login item: %+v, calls %v", after, h.be.called())
+	}
+}
+
+func TestServiceSwitchesReachTheService(t *testing.T) {
+	h := newHarness(t, harnessOpt{h: 2800})
+	h.click("Settings")
+	h.settle()
+	h.click("Run the network service at startup")
+	h.click("Connect automatically")
+	h.click("Reconnect when the network changes")
+	h.click("Warnings")
+	h.settle()
+	if !h.be.took("service-boot false") {
+		t.Fatalf("calls: %v", h.be.called())
+	}
+	n := 0
+	for _, c := range h.be.called() {
+		if c == "agent-settings" {
+			n++
+		}
+	}
+	if n != 3 {
+		t.Fatalf("expected three service setting changes, got %d: %v", n, h.be.called())
+	}
+}
+
+func TestNetworkEditsApplyTogether(t *testing.T) {
+	h := newHarness(t, harnessOpt{h: 2800})
+	h.click("Settings")
+	h.settle()
+	h.mustNotHave("Apply changes")
+	h.click("1500")
+	h.ui.Key(ui.Cmd, ui.KeyA)
+	h.typeText("1400")
+	h.settle()
+	h.mustHave("Apply changes", "Discard")
+	h.click("Apply changes")
+	h.settle()
+	if got := h.be.Prefs().MTU; got != 1400 {
+		t.Fatalf("MTU = %d; calls %v", got, h.be.called())
+	}
+	h.mustNotHave("Apply changes")
+}
+
+func TestNetworkEditsAreValidated(t *testing.T) {
+	h := newHarness(t, harnessOpt{h: 2800})
+	h.click("Settings")
+	h.settle()
+	h.click("1500")
+	h.ui.Key(ui.Cmd, ui.KeyA)
+	h.typeText("abc")
+	h.settle()
+	h.mustHave("The MTU must be a number.")
+	h.click("Discard")
+	h.settle()
+	h.mustNotHave("The MTU must be a number.")
+}
+
+func TestExportDiagnostics(t *testing.T) {
+	h := newHarness(t, harnessOpt{h: 2800})
+	h.click("Settings")
+	h.settle()
+	h.click("Export report")
+	h.settle()
+	if !h.be.took("diagnostics") || !h.be.took("save-file sing-box-ui-diagnostics.json") {
+		t.Fatalf("calls: %v", h.be.called())
+	}
 }
 
 func TestSwitchingLanguageRetranslates(t *testing.T) {

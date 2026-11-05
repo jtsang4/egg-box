@@ -74,7 +74,7 @@ type App struct {
 	opt Options
 	be  Backend
 	win *mygo.Window
-	cx  *ui.Context // the context of the frame being built
+	svc atomic.Pointer[ui.Services] // the window's persistent services: redraws from any goroutine
 
 	// Resolved at the start of every frame.
 	snap     *app.Snapshot
@@ -151,15 +151,13 @@ func (a *App) Close() {
 
 // invalidate asks for a redraw from any goroutine, coalescing bursts.
 func (a *App) invalidate() {
-	if a.win == nil {
-		return
-	}
-	if !a.pending.CompareAndSwap(false, true) {
+	s := a.svc.Load()
+	if s == nil || !a.pending.CompareAndSwap(false, true) {
 		return
 	}
 	time.AfterFunc(24*time.Millisecond, func() {
 		a.pending.Store(false)
-		a.win.Update(func() {})
+		s.Invalidate()
 	})
 }
 
@@ -220,7 +218,10 @@ func (a *App) View(c *ui.Context) {
 // frame reads everything the frame needs, once, so that the pieces of the
 // view agree with each other.
 func (a *App) frame(c *ui.Context) {
-	a.cx = c
+	if a.svc.Load() == nil {
+		s := c.Services()
+		a.svc.Store(&s)
+	}
 	a.now = a.opt.Now()
 	a.sysDark = c.Theme().Dark
 	a.bar = c.TitleBar()
@@ -304,8 +305,8 @@ func (a *App) pruneFlash() {
 // again asks for another frame: state that changed while the view was being
 // built shows in the next one.
 func (a *App) again() {
-	if a.cx != nil {
-		a.cx.Invalidate()
+	if s := a.svc.Load(); s != nil {
+		s.Invalidate()
 	}
 }
 

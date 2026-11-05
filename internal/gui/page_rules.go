@@ -110,14 +110,12 @@ func (a *App) optionsCard(c *ui.Context) {
 
 // prefToggle is a settings row bound to a routing preference.
 func (a *App) prefToggle(c *ui.Context, key, title, desc string, val bool, set func(*configgen.Prefs, bool)) {
-	a.settingRow(c, a.t(title), a.t(desc), func() {
-		on := val
-		if a.toggle(c, "pref-"+key, &on, a.t(title)) {
-			pr := a.prefs
-			set(&pr, on)
-			a.savePrefs(pr)
-		}
-	})
+	on := val
+	if a.toggleRow(c, "pref-"+key, a.t(title), a.t(desc), &on, false) {
+		pr := a.prefs
+		set(&pr, on)
+		a.savePrefs(pr)
+	}
 }
 
 // ------------------------------------------------------------ rule data

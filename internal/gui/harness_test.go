@@ -5,6 +5,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -34,7 +35,10 @@ type harnessOpt struct {
 func newHarness(t *testing.T, o harnessOpt) *harness {
 	t.Helper()
 	if o.w == 0 {
-		o.w, o.h = 1180, 760
+		o.w = 1180
+	}
+	if o.h == 0 {
+		o.h = 760
 	}
 	if o.lang == "" {
 		o.lang = "en"
@@ -95,7 +99,7 @@ func (h *harness) settle() {
 func (h *harness) click(text string) {
 	h.t.Helper()
 	if err := h.ui.Click(text); err != nil {
-		h.t.Fatalf("click %q: %v\ntexts: %q", text, err, h.ui.Texts())
+		h.t.Fatalf("click %q: %v\ntexts: %s", text, err, h.digest())
 	}
 	h.ui.Advance(400 * time.Millisecond)
 }
@@ -107,7 +111,7 @@ func (h *harness) mustHave(texts ...string) {
 	h.t.Helper()
 	for _, s := range texts {
 		if !h.ui.HasText(s) {
-			h.t.Errorf("missing %q on screen; have %q", s, h.ui.Texts())
+			h.t.Errorf("missing %q on screen; have %s", s, h.digest())
 		}
 	}
 }
@@ -149,4 +153,23 @@ func writePNG(t *testing.T, path string, img image.Image) {
 // slug turns a test name into a file name.
 func slug(s string) string {
 	return strings.NewReplacer("/", "-", " ", "-").Replace(strings.ToLower(s))
+}
+
+// digest is the texts on screen, shortened for a failure message.
+func (h *harness) digest() string {
+	var b strings.Builder
+	seen := map[string]bool{}
+	for _, s := range h.ui.Texts() {
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		if b.Len() > 700 {
+			b.WriteString(" …")
+			break
+		}
+		b.WriteString(strconv.Quote(s))
+		b.WriteByte(' ')
+	}
+	return b.String()
 }

@@ -22,6 +22,11 @@ type settingsState struct {
 	testURL string
 	mtu     string
 	port    string
+
+	pending   map[string]bool // switches the service is still applying
+	bootKnown bool            // the startup choice was read
+	boot      bool
+	bootErr   bool
 }
 
 // ServiceStartup lets the user choose whether the privileged service starts
@@ -123,72 +128,102 @@ func (a *App) startupSection(c *ui.Context) {
 		}
 		if a.opt.SetLaunchAtLogin != nil {
 			sep()
-			a.settingRow(c, a.t("settings.login"), a.t("settings.login.desc"), func() {
-				on := a.set.LaunchAtLogin
-				if a.toggle(c, "set-login", &on, a.t("settings.login")) {
-					a.job("login-item", func(context.Context) error { return a.opt.SetLaunchAtLogin(on) }, func(err error) {
-						if err != nil {
-							a.fail(err)
-							return
-						}
-						a.updateSettings(func(s *settingsT) { s.LaunchAtLogin = on })
-					})
-				}
-			})
+			on := a.pendingOr("login", "login-item", a.set.LaunchAtLogin)
+			if a.toggleRow(c, "set-login", a.t("settings.login"), a.t("settings.login.desc"), &on, false) {
+				a.setPending("login", on)
+				a.job("login-item", func(context.Context) error { return a.opt.SetLaunchAtLogin(on) }, func(err error) {
+					a.clearPending("login")
+					if err != nil {
+						a.fail(err)
+						return
+					}
+					a.updateSettings(func(s *settingsT) { s.LaunchAtLogin = on })
+				})
+			}
 		}
 		sep()
 		a.agentToggle(c, "autoconnect", "settings.autoconnect", "settings.autoconnect.desc",
 			func(s *agentapi.Settings) bool { return s.GetAutoConnect() },
 			func(r *agentapi.UpdateSettingsRequest, v bool) { r.AutoConnect = &v })
 		sep()
-		a.settingRow(c, a.t("settings.tray"), a.t("settings.tray.desc"), func() {
-			on := a.set.CloseToTray
-			if a.toggle(c, "set-tray", &on, a.t("settings.tray")) {
-				a.updateSettings(func(s *settingsT) { s.CloseToTray = on })
-			}
-		})
+		on := a.set.CloseToTray
+		if a.toggleRow(c, "set-tray", a.t("settings.tray"), a.t("settings.tray.desc"), &on, false) {
+			a.updateSettings(func(s *settingsT) { s.CloseToTray = on })
+		}
 		sep()
-		a.settingRow(c, a.t("settings.notify"), a.t("settings.notify.desc"), func() {
-			on := a.set.Notifications
-			if a.toggle(c, "set-notify", &on, a.t("settings.notify")) {
-				a.updateSettings(func(s *settingsT) { s.Notifications = on })
-			}
-		})
+		notify := a.set.Notifications
+		if a.toggleRow(c, "set-notify", a.t("settings.notify"), a.t("settings.notify.desc"), &notify, false) {
+			a.updateSettings(func(s *settingsT) { s.Notifications = notify })
+		}
 	})
 }
 
 // serviceBootRow is the choice to start the privileged service with the
-// computer. What the platform says is asked once and shown until changed.
+// computer. What the platform says is asked once, off the main thread, and
+// kept until the choice changes.
 func (a *App) serviceBootRow(c *ui.Context) {
-	a.settingRow(c, a.t("settings.boot"), a.pk("settings.boot.desc"), func() {
-		on, err := a.opt.ServiceStartup.Get()
-		if err != nil {
+	st := &a.sett
+	if !st.bootKnown && !a.busy("boot-get") {
+		var on bool
+		a.job("boot-get", func(context.Context) error {
+			var err error
+			on, err = a.opt.ServiceStartup.Get()
+			return err
+		}, func(err error) {
+			st.bootKnown, st.bootErr, st.boot = true, err != nil, on
+		})
+	}
+	if st.bootErr {
+		a.settingRow(c, a.t("settings.boot"), a.pk("settings.boot.desc"), func() {
 			a.txt(c, a.t("settings.boot.unknown"), 12.5, 500, a.pl.Warn)
-			return
-		}
-		if a.toggle(c, "set-boot", &on, a.t("settings.boot")) {
-			want := on
-			a.job("service-boot", func(context.Context) error { return a.opt.ServiceStartup.Set(want) }, func(err error) { a.fail(err) })
-		}
-	})
+		})
+		return
+	}
+	on := st.boot
+	if a.toggleRow(c, "set-boot", a.t("settings.boot"), a.pk("settings.boot.desc"), &on, !st.bootKnown) {
+		st.boot = on
+		a.job("service-boot", func(context.Context) error { return a.opt.ServiceStartup.Set(on) }, func(err error) {
+			if err != nil {
+				a.fail(err)
+				st.bootKnown = false // ask again what the system says
+			}
+		})
+	}
 }
 
 // agentToggle is a switch bound to one of the service's own settings.
 func (a *App) agentToggle(c *ui.Context, key, title, desc string, get func(*agentapi.Settings) bool, set func(*agentapi.UpdateSettingsRequest, bool)) {
 	as := a.snap.AgentSettings
-	a.settingRow(c, a.t(title), a.t(desc), func() {
-		on := as != nil && get(as)
-		w := ui.Row(c.Key("agent-" + key)).Disabled(as == nil)
-		w.Children(func() {
-			if a.toggle(c, "set-"+key, &on, a.t(title)) && as != nil {
-				v := on
-				a.job("agent-"+key, func(ctx context.Context) error {
-					return a.be.SetAgentSettings(ctx, func(r *agentapi.UpdateSettingsRequest) { set(r, v) })
-				}, func(err error) { a.fail(err) })
-			}
+	on := a.pendingOr(key, "agent-"+key, as != nil && get(as))
+	if a.toggleRow(c, "set-"+key, a.t(title), a.t(desc), &on, as == nil) && as != nil {
+		v := on
+		a.setPending(key, v)
+		a.job("agent-"+key, func(ctx context.Context) error {
+			return a.be.SetAgentSettings(ctx, func(r *agentapi.UpdateSettingsRequest) { set(r, v) })
+		}, func(err error) {
+			a.clearPending(key)
+			a.fail(err)
 		})
-	})
+	}
 }
+
+// pendingOr is what a switch shows: the value the user just chose while the
+// job applying it runs, otherwise the stored one.
+func (a *App) pendingOr(key, job string, stored bool) bool {
+	if want, ok := a.sett.pending[key]; ok && a.busy(job) {
+		return want
+	}
+	return stored
+}
+
+func (a *App) setPending(key string, v bool) {
+	if a.sett.pending == nil {
+		a.sett.pending = map[string]bool{}
+	}
+	a.sett.pending[key] = v
+}
+
+func (a *App) clearPending(key string) { delete(a.sett.pending, key) }
 
 // ------------------------------------------------------------ connection
 
@@ -202,19 +237,15 @@ func (a *App) connectionSection(c *ui.Context) {
 			func(s *agentapi.Settings) bool { return s.GetResumeAfterCrash() },
 			func(r *agentapi.UpdateSettingsRequest, v bool) { r.ResumeAfterCrash = &v })
 		a.rowDivider(c)
-		a.settingRow(c, a.t("settings.autorefresh"), a.t("settings.autorefresh.desc"), func() {
-			on := a.set.AutoRefresh
-			if a.toggle(c, "set-autorefresh", &on, a.t("settings.autorefresh")) {
-				a.updateSettings(func(s *settingsT) { s.AutoRefresh = on })
-			}
-		})
+		refresh := a.set.AutoRefresh
+		if a.toggleRow(c, "set-autorefresh", a.t("settings.autorefresh"), a.t("settings.autorefresh.desc"), &refresh, false) {
+			a.updateSettings(func(s *settingsT) { s.AutoRefresh = refresh })
+		}
 		a.rowDivider(c)
-		a.settingRow(c, a.t("settings.reapply"), a.t("settings.reapply.desc"), func() {
-			on := a.set.ReapplyAfterRefresh
-			if a.toggle(c, "set-reapply", &on, a.t("settings.reapply")) {
-				a.updateSettings(func(s *settingsT) { s.ReapplyAfterRefresh = on })
-			}
-		})
+		reapply := a.set.ReapplyAfterRefresh
+		if a.toggleRow(c, "set-reapply", a.t("settings.reapply"), a.t("settings.reapply.desc"), &reapply, false) {
+			a.updateSettings(func(s *settingsT) { s.ReapplyAfterRefresh = reapply })
+		}
 	})
 }
 
@@ -278,23 +309,19 @@ func (a *App) prefsDirty() bool {
 func (a *App) networkSection(c *ui.Context) {
 	st := &a.sett
 	a.section(c, "sliders", a.t("settings.network"), a.t("settings.network.desc"), func() {
-		a.settingRow(c, a.t("settings.regions"), a.t("settings.regions.desc"), func() {
-			on := a.prefs.RegionGroups
-			if a.toggle(c, "set-regions", &on, a.t("settings.regions")) {
-				p := a.prefs
-				p.RegionGroups = on
-				a.savePrefs(p)
-			}
-		})
+		regions := a.prefs.RegionGroups
+		if a.toggleRow(c, "set-regions", a.t("settings.regions"), a.t("settings.regions.desc"), &regions, false) {
+			p := a.prefs
+			p.RegionGroups = regions
+			a.savePrefs(p)
+		}
 		a.rowDivider(c)
-		a.settingRow(c, a.t("settings.sniff"), a.t("settings.sniff.desc"), func() {
-			on := a.prefs.Sniff
-			if a.toggle(c, "set-sniff", &on, a.t("settings.sniff")) {
-				p := a.prefs
-				p.Sniff = on
-				a.savePrefs(p)
-			}
-		})
+		sniff := a.prefs.Sniff
+		if a.toggleRow(c, "set-sniff", a.t("settings.sniff"), a.t("settings.sniff.desc"), &sniff, false) {
+			p := a.prefs
+			p.Sniff = sniff
+			a.savePrefs(p)
+		}
 		a.rowDivider(c)
 		a.settingRow(c, a.t("settings.interval"), a.t("settings.interval.desc"), func() {
 			items := make([]segItem, len(testIntervals))
