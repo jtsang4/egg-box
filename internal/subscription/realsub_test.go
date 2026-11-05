@@ -2,49 +2,27 @@ package subscription
 
 import (
 	"context"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jtsang4/sing-box-ui/internal/testsupport/realsub"
 )
 
-// realSubscriptionURL returns the developer's real test subscription from the
-// environment, or skips the test. The link and the nodes behind it are
-// credentials: they live outside the repository (SBUI_TEST_SUBSCRIPTION_FILE
-// points at a private file, or SBUI_TEST_SUBSCRIPTION_URL carries the link),
-// and no test may print them. Tests log counts and protocol names only.
-func realSubscriptionURL(t *testing.T) string {
-	t.Helper()
-	if u := strings.TrimSpace(os.Getenv("SBUI_TEST_SUBSCRIPTION_URL")); u != "" {
-		return u
-	}
-	if f := os.Getenv("SBUI_TEST_SUBSCRIPTION_FILE"); f != "" {
-		raw, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatalf("cannot read SBUI_TEST_SUBSCRIPTION_FILE: %v", err)
-		}
-		if u := strings.TrimSpace(string(raw)); u != "" {
-			return u
-		}
-	}
-	t.Skip("set SBUI_TEST_SUBSCRIPTION_FILE (or SBUI_TEST_SUBSCRIPTION_URL) to run against a real subscription")
-	return ""
-}
-
 func TestRealSubscription(t *testing.T) {
-	url := realSubscriptionURL(t)
+	url := realsub.URL(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
 	f, err := Fetch(ctx, url, FetchOptions{})
 	if err != nil {
-		t.Fatalf("fetch failed: %v", err)
+		t.Fatalf("fetch failed: %s", realsub.Scrub(url, err.Error()))
 	}
 	res, err := Parse(f.Body)
 	if err != nil {
-		t.Fatalf("parse failed: %v (skipped %d)", err, len(res.skippedOrNil()))
+		t.Fatalf("parse failed: %s (skipped %d)", realsub.Scrub(url, err.Error()), len(res.skippedOrNil()))
 	}
 	protocols := map[string]int{}
 	for _, n := range res.Nodes {
