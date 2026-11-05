@@ -776,6 +776,44 @@ func TestCheckResolvesReferencesAndRuleSets(t *testing.T) {
 	}
 }
 
+// What the policy accepts as a well-formed, fully wired configuration, the core
+// must accept too: DNS servers and rules, groups, rule-sets, resolvers.
+func TestCheckAcceptsAFullyWiredConfig(t *testing.T) {
+	r := newRig(t)
+	cfg := `{
+	  "dns": {
+	    "servers": [
+	      {"type": "udp", "tag": "dns-direct", "server": "223.5.5.5"},
+	      {"type": "https", "tag": "dns-remote", "server": "1.1.1.1", "detour": "proxy"}
+	    ],
+	    "rules": [{"rule_set": ["ads"], "server": "dns-direct"}],
+	    "final": "dns-remote"
+	  },
+	  "inbounds": [{"type": "mixed", "tag": "mixed-in", "listen_port": 7890}],
+	  "outbounds": [
+	    {"type": "shadowsocks", "tag": "node-a", "server": "203.0.113.5", "server_port": 8388, "method": "aes-128-gcm", "password": "x", "domain_resolver": "dns-direct"},
+	    {"type": "direct", "tag": "direct"},
+	    {"type": "selector", "tag": "proxy", "outbounds": ["node-a", "direct"], "default": "node-a"},
+	    {"type": "urltest", "tag": "auto", "outbounds": ["node-a"], "url": "https://www.gstatic.com/generate_204"}
+	  ],
+	  "route": {
+	    "rule_set": [{"type": "inline", "tag": "ads", "rules": [{"domain_suffix": ["ads.example"]}]}],
+	    "rules": [
+	      {"action": "sniff"},
+	      {"rule_set": ["ads"], "action": "reject"},
+	      {"clash_mode": "Direct", "outbound": "direct"},
+	      {"domain_suffix": ["lan"], "action": "route", "outbound": "direct"},
+	      {"type": "logical", "mode": "or", "rules": [{"domain": ["a.example"]}, {"domain": ["b.example"]}], "outbound": "auto"}
+	    ],
+	    "final": "proxy",
+	    "default_domain_resolver": {"server": "dns-direct", "strategy": "prefer_ipv4"}
+	  }
+	}`
+	if err := r.client.Check(context.Background(), r.prepare(cfg)); err != nil {
+		t.Fatalf("the core rejects a configuration the policy accepts: %v", err)
+	}
+}
+
 // A check of a TUN configuration must never create the device or touch routes
 // or DNS: the check phase builds the inbound but does not start it. Opening a
 // TUN device needs root, so an unprivileged run succeeding is the proof; the

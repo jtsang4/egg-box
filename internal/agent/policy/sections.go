@@ -87,6 +87,7 @@ func (n *normalizer) top(root map[string]any) {
 	if _, ok := root["experimental"]; !ok {
 		n.experimental(root, nil, "$.experimental")
 	}
+	n.references(root)
 	n.finishTun(root)
 }
 
