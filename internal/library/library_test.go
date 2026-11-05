@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"eggbox/internal/configgen"
 	"eggbox/internal/library"
+	"eggbox/internal/routing"
 	"eggbox/internal/subscription"
 )
 
@@ -233,20 +233,31 @@ func TestActiveNodesApplyFiltersAndMergeSubscriptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	var names []string
-	seen := map[string]bool{}
+	identities := map[string]bool{}
 	for _, n := range nodes {
 		names = append(names, n.SubName+":"+n.Node.Name)
-		if seen[strings.ToLower(n.Node.Name)] {
-			t.Errorf("duplicate name %q", n.Node.Name)
+		id := n.ID()
+		if identities[id.Key()] {
+			t.Errorf("two nodes with the identity %q", id.Key())
 		}
-		seen[strings.ToLower(n.Node.Name)] = true
+		identities[id.Key()] = true
+		if id.Sub != n.SubID || id.Name != n.Node.Name || id.Hash != n.Key() {
+			t.Errorf("identity %+v of %s", id, n.Node.Name)
+		}
+		if !n.Auto {
+			t.Errorf("%s: a subscription takes part in the automatic choice unless told otherwise", n.Node.Name)
+		}
 	}
-	// A: HK 01, JP 01 (Netflix excluded); B: HK 01 (renamed), SG 01.
+	// A: HK 01, JP 01 (Netflix excluded); B: HK 01, SG 01. The providers' names are kept:
+	// the two "HK 01" are told apart by their subscriptions, not by renaming one of them.
 	if len(nodes) != 4 {
 		t.Fatalf("got %d nodes: %v", len(nodes), names)
 	}
 	if nodes[0].SubName != "A" || nodes[2].SubName != "B" {
 		t.Errorf("order or owners wrong: %v", names)
+	}
+	if nodes[0].Node.Name != "HK 01" || nodes[2].Node.Name != "HK 01" {
+		t.Errorf("names were changed: %v", names)
 	}
 
 	// Disabling a subscription removes its nodes; an include filter narrows the other.
@@ -290,33 +301,44 @@ func TestPersistenceAcrossOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	prefs := l.Prefs()
-	prefs.Preset = configgen.PresetProxyAll
+	prefs.LANDirect = false
 	prefs.MixedPort = 7890
 	if _, err := l.SetPrefs(prefs); err != nil {
 		t.Fatal(err)
 	}
-	if err := l.SetRules([]configgen.CustomRule{{Kind: configgen.KindDomainSuffix, Value: "example.org", Target: configgen.TargetDirect}}); err != nil {
+	if err := l.UpdateRouting(func(st *routing.State) error {
+		if err := st.SetMain(routing.ToRegion("JP")); err != nil {
+			return err
+		}
+		_, err := st.AddException(routing.Exception{Kind: routing.EntryDomainSuffix, Value: "example.org", Dest: routing.Direct(), Enabled: true})
+		return err
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := l.UpdateSettings(func(s *library.Settings) { s.Language, s.Theme, s.SelectedNode = "zh", "dark", "abc" }); err != nil {
+	if err := l.Edit(sub.ID, func(s *library.Subscription) { s.NoAuto, s.Alias = true, "  Main\tVPS  " }); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.UpdateSettings(func(s *library.Settings) {
+		s.Language, s.Theme, s.RuleMirrorPrefix = "zh", "dark", "https://gh-proxy.example/"
+	}); err != nil {
 		t.Fatal(err)
 	}
 
 	l2 := openWith(t, dir, secrets)
 	got, ok := l2.Subscription(sub.ID)
-	if !ok || got.Name != "Main" || got.UserAgent != "clash.meta" || got.NodeCount != 2 {
+	if !ok || got.Name != "Main" || got.UserAgent != "clash.meta" || got.NodeCount != 2 || !got.NoAuto || got.Alias != "Main VPS" {
 		t.Fatalf("%+v", got)
 	}
 	if nodes, err := l2.Nodes(sub.ID); err != nil || len(nodes) != 2 {
 		t.Fatalf("%d nodes, %v", len(nodes), err)
 	}
-	if pr := l2.Prefs(); pr.Preset != configgen.PresetProxyAll || pr.MixedPort != 7890 {
+	if pr := l2.Prefs(); pr.LANDirect || pr.MixedPort != 7890 {
 		t.Errorf("%+v", pr)
 	}
-	if r := l2.Rules(); len(r) != 1 || r[0].Value != "example.org" {
-		t.Errorf("%+v", r)
+	if st := l2.Routing(); st.Main.Kind != routing.DestRegion || st.Main.Region != "JP" || len(st.Exceptions) != 1 || st.Exceptions[0].Value != "example.org" {
+		t.Errorf("%+v", st)
 	}
-	if s := l2.Settings(); s.Language != "zh" || s.Theme != "dark" || s.SelectedNode != "abc" || !s.AutoRefresh {
+	if s := l2.Settings(); s.Language != "zh" || s.Theme != "dark" || s.RuleMirrorPrefix != "https://gh-proxy.example/" || !s.AutoRefresh || s.RuleUpdateHours != library.DefaultRuleUpdateHours {
 		t.Errorf("%+v", s)
 	}
 	if link, err := l2.Link(sub.ID); err != nil || link != p.link() {
@@ -446,6 +468,7 @@ func TestAddLocalAndSettingsValidation(t *testing.T) {
 		"mirror":   func(s *library.Settings) { s.RuleMirror = "ftp" },
 		"sort":     func(s *library.Settings) { s.SortNodes = "random" },
 		"hours":    func(s *library.Settings) { s.RuleUpdateHours = -1 },
+		"prefix":   func(s *library.Settings) { s.RuleMirrorPrefix = "ftp://mirror.example/" },
 	} {
 		if err := l.UpdateSettings(fn); err == nil {
 			t.Errorf("%s: an invalid value was accepted", name)
@@ -454,8 +477,19 @@ func TestAddLocalAndSettingsValidation(t *testing.T) {
 	if s := l.Settings(); s.Language != "" || s.Theme != "" {
 		t.Errorf("a refused change was applied: %+v", s)
 	}
-	if err := l.SetRules([]configgen.CustomRule{{Kind: configgen.KindIPCIDR, Value: "not-an-ip", Target: "direct"}}); err == nil {
-		t.Error("an invalid rule was accepted")
+	// A routing change that fails leaves nothing behind.
+	err = l.UpdateRouting(func(st *routing.State) error {
+		if err := st.SetMain(routing.ToRegion("US")); err != nil {
+			return err
+		}
+		_, err := st.AddException(routing.Exception{Kind: routing.EntryIPCIDR, Value: "not-an-ip", Dest: routing.Direct(), Enabled: true})
+		return err
+	})
+	if err == nil {
+		t.Error("an invalid exception was accepted")
+	}
+	if st := l.Routing(); st.Main.Kind == routing.DestRegion || len(st.Exceptions) != 0 {
+		t.Errorf("a refused routing change was kept: %+v", st)
 	}
 }
 

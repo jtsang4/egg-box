@@ -1,6 +1,6 @@
 // Package library is the application's persistent state: the subscriptions and
-// their nodes, the routing preferences, the user's custom rules and the
-// application settings.
+// their nodes, the routing plans and exceptions, the network preferences and
+// the application settings.
 //
 // Everything is written under one directory, readable only by the user. The
 // subscription links are credentials and live in a SecretStore (the system
@@ -25,6 +25,8 @@ import (
 
 	"eggbox/internal/configgen"
 	"eggbox/internal/fsutil"
+	"eggbox/internal/routing"
+	"eggbox/internal/ruleurl"
 	"eggbox/internal/subscription"
 )
 
@@ -38,11 +40,17 @@ const (
 	KindLocal Kind = "local"
 )
 
-// formatVersion is the version of library.json this code writes.
-const formatVersion = 1
+// formatVersion is the version of library.json this code writes. Version 2
+// holds the routing state (plans, exceptions, the main exit) that replaced the
+// presets and the list of custom rules; see migrate.
+const formatVersion = 2
 
 // DefaultIntervalHours is how often a new subscription refreshes.
 const DefaultIntervalHours = 24
+
+// DefaultRuleUpdateHours is how often rule data is checked unless the person
+// chose otherwise; community rule sets are published daily.
+const DefaultRuleUpdateHours = 24
 
 // Subscription is a source of nodes and what is known about it.
 type Subscription struct {
@@ -58,6 +66,12 @@ type Subscription struct {
 	IntervalAuto bool `json:"intervalAuto"`
 	// UserAgent is what the download announces; empty uses the default.
 	UserAgent string `json:"userAgent,omitempty"`
+	// NoAuto keeps all of the subscription's nodes out of the automatic choice
+	// (the fastest-node groups); they can still be chosen by hand.
+	NoAuto bool `json:"noAuto,omitempty"`
+	// Alias is a short name shown after a node's name when two nodes would
+	// otherwise look alike ("HK 01 · Aurora").
+	Alias string `json:"alias,omitempty"`
 	// Include and Exclude are regular expressions on node names, case-insensitive.
 	// A node is used when it matches Include (if set) and not Exclude (if set).
 	Include string `json:"include,omitempty"`
@@ -85,10 +99,11 @@ type Settings struct {
 	Language string `json:"language"`
 	// Theme is "" (follow the system), "light" or "dark".
 	Theme string `json:"theme"`
-	// SelectedNode is the Key of the node chosen in the Proxy group; "" is automatic.
-	SelectedNode string `json:"selectedNode"`
 	// RuleMirror is "auto", "github" or "jsdelivr".
 	RuleMirror string `json:"ruleMirror"`
+	// RuleMirrorPrefix is a mirror the person runs or trusts, tried last
+	// ("https://gh-proxy.example/"); empty uses none.
+	RuleMirrorPrefix string `json:"ruleMirrorPrefix,omitempty"`
 	// RuleUpdateHours is how often rule data is checked; 0 never.
 	RuleUpdateHours int `json:"ruleUpdateHours"`
 	// AutoRefresh refreshes subscriptions on their intervals.
@@ -111,7 +126,7 @@ type Settings struct {
 func DefaultSettings() Settings {
 	return Settings{
 		RuleMirror:          "auto",
-		RuleUpdateHours:     72,
+		RuleUpdateHours:     DefaultRuleUpdateHours,
 		AutoRefresh:         true,
 		ReapplyAfterRefresh: true,
 		CloseToTray:         true,
@@ -121,11 +136,13 @@ func DefaultSettings() Settings {
 }
 
 type fileData struct {
-	Version       int                    `json:"version"`
-	Subscriptions []*Subscription        `json:"subscriptions"`
-	Prefs         configgen.Prefs        `json:"prefs"`
-	Rules         []configgen.CustomRule `json:"rules"`
-	Settings      Settings               `json:"settings"`
+	Version       int             `json:"version"`
+	Subscriptions []*Subscription `json:"subscriptions"`
+	Prefs         configgen.Prefs `json:"prefs"`
+	Routing       routing.State   `json:"routing"`
+	Settings      Settings        `json:"settings"`
+	// Notices wait for the interface to show them once.
+	Notices []Notice `json:"notices,omitempty"`
 }
 
 type nodeFile struct {
@@ -164,18 +181,41 @@ func Open(dir string, opts Options) (*Library, error) {
 	if l.now == nil {
 		l.now = time.Now
 	}
-	l.data = fileData{Version: formatVersion, Prefs: configgen.DefaultPrefs(), Settings: DefaultSettings()}
+	l.data = fileData{Version: formatVersion, Prefs: configgen.DefaultPrefs(), Routing: routing.NewState(), Settings: DefaultSettings()}
 	raw, err := os.ReadFile(filepath.Join(dir, "library.json"))
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 	case err != nil:
 		return nil, fmt.Errorf("read the library: %w", err)
 	default:
+		var head struct {
+			Version int `json:"version"`
+		}
+		if err := json.Unmarshal(raw, &head); err != nil {
+			return nil, fmt.Errorf("the library file is damaged: %w", err)
+		}
+		if head.Version > formatVersion {
+			return nil, fmt.Errorf("the library was written by a newer version of the application (format %d)", head.Version)
+		}
 		if err := json.Unmarshal(raw, &l.data); err != nil {
 			return nil, fmt.Errorf("the library file is damaged: %w", err)
 		}
-		if l.data.Version > formatVersion {
-			return nil, fmt.Errorf("the library was written by a newer version of the application (format %d)", l.data.Version)
+		if head.Version < formatVersion {
+			if err := l.migrate(raw, head.Version); err != nil {
+				return nil, fmt.Errorf("upgrade the library: %w", err)
+			}
+			// Keep what the older version wrote next to the upgraded file, once.
+			backup := filepath.Join(dir, fmt.Sprintf("library.v%d.json", head.Version))
+			if _, err := os.Stat(backup); errors.Is(err, os.ErrNotExist) {
+				if err := fsutil.WriteFileAtomic(backup, raw, 0o600); err != nil {
+					return nil, fmt.Errorf("keep a copy of the old library: %w", err)
+				}
+			}
+			l.data.Version = formatVersion
+			l.data.Prefs, _ = l.data.Prefs.Normalize()
+			if err := l.saveLocked(); err != nil {
+				return nil, fmt.Errorf("save the upgraded library: %w", err)
+			}
 		}
 		l.data.Version = formatVersion
 		l.data.Prefs, _ = l.data.Prefs.Normalize()
@@ -353,8 +393,8 @@ func (l *Library) AddLocal(name string, res *subscription.Result) (Subscription,
 	return clone(sub), nil
 }
 
-// Edit changes a subscription's settings. fn may change Name, Enabled,
-// IntervalHours, UserAgent, Include and Exclude; everything else is kept.
+// Edit changes a subscription's settings. fn may change Name, Alias, Enabled,
+// NoAuto, IntervalHours, UserAgent, Include and Exclude; everything else is kept.
 func (l *Library) Edit(id string, fn func(*Subscription)) error {
 	return l.mutate(func() error {
 		s := l.find(id)
@@ -379,10 +419,21 @@ func (l *Library) Edit(id string, fn func(*Subscription)) error {
 			s.IntervalAuto = false
 		}
 		s.Enabled, s.IntervalHours = edited.Enabled, edited.IntervalHours
+		s.NoAuto = edited.NoAuto
+		s.Alias = cleanAlias(edited.Alias)
 		s.UserAgent = strings.TrimSpace(edited.UserAgent)
 		s.Include, s.Exclude = edited.Include, edited.Exclude
 		return nil
 	})
+}
+
+// cleanAlias keeps an alias short and on one line.
+func cleanAlias(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > 12 {
+		s = string(r[:12])
+	}
+	return s
 }
 
 // Remove deletes a subscription, its nodes and its link.
@@ -392,6 +443,10 @@ func (l *Library) Remove(id string) error {
 			if s.ID == id {
 				l.data.Subscriptions = append(l.data.Subscriptions[:i], l.data.Subscriptions[i+1:]...)
 				delete(l.nodes, id)
+				// The plan that came with it stays, as the person's own.
+				if l.data.Routing.PlanByID(routing.SubPlanID(id)) != nil {
+					_, _ = l.data.Routing.DetachPlan(routing.SubPlanID(id), s.Name)
+				}
 				return nil
 			}
 		}
@@ -513,19 +568,31 @@ type ActiveNode struct {
 	Node    subscription.Node
 	SubID   string
 	SubName string
+	// SubAlias is the subscription's short name, when it has one.
+	SubAlias string
+	// Auto is false when the subscription is kept out of the automatic choice.
+	Auto bool
 }
 
 // Key identifies the node's server (see subscription.Node.Key).
 func (a ActiveNode) Key() string { return a.Node.Key() }
 
+// ID is the identity a person's choices about the node are kept under: the
+// subscription and the name the provider gave it.
+func (a ActiveNode) ID() routing.NodeID {
+	return routing.NodeID{Sub: a.SubID, Name: a.Node.Name, Hash: a.Node.Key(), Region: subscription.Region(a.Node.Name)}
+}
+
 // ActiveNodes returns the nodes of the enabled subscriptions, in subscription
-// order, with each subscription's filters applied and duplicates between
-// subscriptions removed. Names are unique across the result.
+// order, with each subscription's filters applied. Where two subscriptions
+// offer the same server only the first is kept. Names are the providers': two
+// nodes of different subscriptions may share one, which is why a node's
+// identity includes its subscription.
 func (l *Library) ActiveNodes() ([]ActiveNode, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	var all []subscription.Node
-	var owner []*Subscription
+	var out []ActiveNode
+	seen := map[string]bool{}
 	for _, s := range l.data.Subscriptions {
 		if !s.Enabled {
 			continue
@@ -535,22 +602,12 @@ func (l *Library) ActiveNodes() ([]ActiveNode, error) {
 			return nil, err
 		}
 		for _, n := range FilterNodes(nodes, s.Include, s.Exclude) {
-			all = append(all, n)
-			owner = append(owner, s)
+			if seen[n.Key()] {
+				continue
+			}
+			seen[n.Key()] = true
+			out = append(out, ActiveNode{Node: n, SubID: s.ID, SubName: s.Name, SubAlias: s.Alias, Auto: !s.NoAuto})
 		}
-	}
-	// Dedupe keeps order, so map survivors back to their owners by key.
-	byKey := map[string]*Subscription{}
-	for i, n := range all {
-		if _, ok := byKey[n.Key()]; !ok {
-			byKey[n.Key()] = owner[i]
-		}
-	}
-	kept, _ := subscription.Dedupe(all)
-	out := make([]ActiveNode, 0, len(kept))
-	for _, n := range kept {
-		o := byKey[n.Key()]
-		out = append(out, ActiveNode{Node: n, SubID: o.ID, SubName: o.Name})
 	}
 	return out, nil
 }
@@ -581,16 +638,16 @@ func FilterNodes(nodes []subscription.Node, include, exclude string) []subscript
 	return out
 }
 
-// ------------------------------------------------------ preferences and rules
+// ------------------------------------------------------ preferences, routing
 
-// Prefs returns the routing preferences.
+// Prefs returns the network preferences.
 func (l *Library) Prefs() configgen.Prefs {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	return l.data.Prefs
 }
 
-// SetPrefs stores routing preferences, normalized. It returns what was adjusted.
+// SetPrefs stores network preferences, normalized. It returns what was adjusted.
 func (l *Library) SetPrefs(p configgen.Prefs) (notes []string, err error) {
 	p, notes = p.Normalize()
 	return notes, l.mutate(func() error {
@@ -599,25 +656,23 @@ func (l *Library) SetPrefs(p configgen.Prefs) (notes []string, err error) {
 	})
 }
 
-// Rules returns the custom rules in match order.
-func (l *Library) Rules() []configgen.CustomRule {
+// Routing returns a copy of the routing state: plans, exceptions, the main
+// exit and the choices about nodes.
+func (l *Library) Routing() routing.State {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	return append([]configgen.CustomRule(nil), l.data.Rules...)
+	return l.data.Routing.Clone()
 }
 
-// SetRules replaces the custom rules. Invalid rules are refused outright.
-func (l *Library) SetRules(rules []configgen.CustomRule) error {
-	clean := make([]configgen.CustomRule, 0, len(rules))
-	for i, r := range rules {
-		r.Value = strings.TrimSpace(r.Value)
-		if err := r.Valid(); err != nil {
-			return fmt.Errorf("rule %d: %w", i+1, err)
-		}
-		clean = append(clean, r)
-	}
+// UpdateRouting changes the routing state. fn works on a copy; when it returns
+// an error nothing is kept.
+func (l *Library) UpdateRouting(fn func(*routing.State) error) error {
 	return l.mutate(func() error {
-		l.data.Rules = clean
+		st := l.data.Routing.Clone()
+		if err := fn(&st); err != nil {
+			return err
+		}
+		l.data.Routing = st
 		return nil
 	})
 }
@@ -648,6 +703,12 @@ func (l *Library) UpdateSettings(fn func(*Settings)) error {
 		case "auto", "github", "jsdelivr":
 		default:
 			return fmt.Errorf("unsupported rule mirror %q", s.RuleMirror)
+		}
+		s.RuleMirrorPrefix = strings.TrimSpace(s.RuleMirrorPrefix)
+		if s.RuleMirrorPrefix != "" {
+			if err := ruleurl.ValidPrefix(s.RuleMirrorPrefix); err != nil {
+				return fmt.Errorf("the mirror prefix is not usable: %w", err)
+			}
 		}
 		switch s.SortNodes {
 		case "default", "latency", "name":
