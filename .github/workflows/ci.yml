@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # A dependency can turn out to be vulnerable without any change here.
+    - cron: "23 4 * * 1"
 
 permissions:
   contents: read
@@ -79,6 +82,19 @@ jobs:
       # real core checks what it makes for QUIC, WireGuard and REALITY nodes.
       - name: Tests with the real engine
         run: go test -count=1 -tags "sbui_dev,$SBUI_TAGS" ./internal/agent/engine/... ./internal/agent/e2e/... ./internal/configgen/...
+
+  # What a root service is built from must not carry a known vulnerability that
+  # its code reaches. A new advisory can fail this without a change here, which
+  # is why it also runs every week.
+  vulnerabilities:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Known vulnerabilities in the code and what it calls
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest -tags "$SBUI_TAGS" ./...
 
   # The platform layers run for real on their own platform.
   macos:
