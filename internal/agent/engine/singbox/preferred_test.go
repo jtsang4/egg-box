@@ -123,7 +123,7 @@ func TestPreferredGroupFailsOverAndRecovers(t *testing.T) {
 	    {"type": "direct", "tag": "direct"},
 	    {"type": "urltest", "tag": "region-x", "outbounds": ["node-a", "node-b"], "url": %q, "interval": "10m", "tolerance": 5000},
 	    {"type": "preferred", "tag": "pick", "outbounds": ["region-x", "node-a", "node-b", "direct"], "default": "node-a",
-	     "fallbacks": {"node-a": "region-x", "node-b": "region-x"}, "url": %q, "interval": "1s"}
+	     "stand_ins": ["region-x"], "url": %q, "interval": "1s"}
 	  ],
 	  "route": {"final": "pick", "rules": [{"clash_mode": "Direct", "outbound": "direct"}]}
 	}`, clientPort, a.port, b.port, link, link)
@@ -250,16 +250,16 @@ func TestPolicyRejectsBrokenPreferredGroups(t *testing.T) {
 		return `{"outbounds":[{"type":"direct","tag":"a"},{"type":"direct","tag":"b"},` + group + `]}`
 	}
 	for name, group := range map[string]string{
-		"unknown member":                `{"type":"preferred","tag":"p","outbounds":["a","zzz"]}`,
-		"unknown default":               `{"type":"preferred","tag":"p","outbounds":["a","b"],"default":"zzz"}`,
-		"stand-in for a non-member":     `{"type":"preferred","tag":"p","outbounds":["a","b"],"fallbacks":{"zzz":"b"}}`,
-		"stand-in that is not a member": `{"type":"preferred","tag":"p","outbounds":["a","b"],"fallbacks":{"a":"zzz"}}`,
+		"unknown member":               `{"type":"preferred","tag":"p","outbounds":["a","zzz"]}`,
+		"unknown default":              `{"type":"preferred","tag":"p","outbounds":["a","b"],"default":"zzz"}`,
+		"unknown stand-in":             `{"type":"preferred","tag":"p","outbounds":["a","b"],"stand_ins":["zzz"]}`,
+		"stand-in that is not a group": `{"type":"preferred","tag":"p","outbounds":["a","b"],"stand_ins":["b"]}`,
 	} {
 		if res := pol.Normalize([]byte(base(group)), env); !res.HasErrors() {
 			t.Errorf("%s: accepted", name)
 		}
 	}
-	ok := base(`{"type":"preferred","tag":"p","outbounds":["a","b"],"default":"a","fallbacks":{"a":"b"},"interval":"30s"}`)
+	ok := base(`{"type":"urltest","tag":"g","outbounds":["a","b"]},{"type":"preferred","tag":"p","outbounds":["a","b","g"],"default":"a","stand_ins":["g"],"interval":"30s"}`)
 	if res := pol.Normalize([]byte(ok), env); res.HasErrors() {
 		t.Errorf("a valid preferred group was refused: %v", res.Errors())
 	}

@@ -67,7 +67,27 @@ func resolverTag(v any) any {
 	return v
 }
 
+// groupTags are the tags of the outbounds that choose among others.
+func groupTags(root map[string]any) map[string]bool {
+	out := map[string]bool{}
+	arr, _ := asArray(root["outbounds"])
+	for _, it := range arr {
+		obj, ok := asObject(it)
+		if !ok {
+			continue
+		}
+		switch typ, _ := obj["type"].(string); typ {
+		case "selector", "urltest", "preferred":
+			if tag, _ := obj["tag"].(string); tag != "" {
+				out[tag] = true
+			}
+		}
+	}
+	return out
+}
+
 func (n *normalizer) outboundRefs(root map[string]any, outbounds, dnsServers map[string]bool) {
+	groups := groupTags(root)
 	check := func(section string) {
 		arr, _ := asArray(root[section])
 		for i, it := range arr {
@@ -95,31 +115,19 @@ func (n *normalizer) outboundRefs(root map[string]any, outbounds, dnsServers map
 				n.errorf(keyPath(path, "default"), "reference_missing", "the default %q is not one of the group's outbounds", def)
 			}
 			if typ == "preferred" {
-				n.standIns(path, obj["fallbacks"], memberSet)
+				standIns, _ := asArray(obj["stand_ins"])
+				for j, m := range standIns {
+					sp := indexPath(keyPath(path, "stand_ins"), j)
+					n.mustExist(sp, m, outbounds, "outbound")
+					if tag, _ := m.(string); tag != "" && outbounds[tag] && !groups[tag] {
+						n.errorf(sp, "reference_invalid", "the stand-in %q is not a group", tag)
+					}
+				}
 			}
 		}
 	}
 	check("outbounds")
 	check("endpoints")
-}
-
-// standIns checks the stand-ins of a preferred group: each one is a member
-// that stands in for another member.
-func (n *normalizer) standIns(path string, v any, members map[string]bool) {
-	obj, ok := asObject(v)
-	if !ok {
-		return
-	}
-	for member, target := range obj {
-		fp := keyPath(keyPath(path, "fallbacks"), member)
-		if !members[member] {
-			n.errorf(fp, "reference_missing", "%q is not one of the group's outbounds", member)
-			continue
-		}
-		if s, _ := target.(string); !members[s] {
-			n.errorf(fp, "reference_missing", "the stand-in %v is not one of the group's outbounds", target)
-		}
-	}
 }
 
 func (n *normalizer) routeRefs(root map[string]any, outbounds, dnsServers map[string]bool) {

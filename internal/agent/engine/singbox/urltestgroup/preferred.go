@@ -35,10 +35,12 @@ type PreferredOptions struct {
 	// behalf) picks one of them, exactly as in a selector.
 	Outbounds []string `json:"outbounds" reference:"outbound"`
 	Default   string   `json:"default,omitempty" reference:"outbound"`
-	// Fallbacks names, for some members, a group of the same configuration:
-	// while that member is unhealthy, the group's current pick carries the
-	// traffic instead. A member without an entry is used as it is.
-	Fallbacks map[string]string `json:"fallbacks,omitempty"`
+	// StandIns are groups of the same configuration, normally one per region.
+	// A member that belongs to one of them is replaced by the group's current
+	// pick while the member is unhealthy; a member that belongs to none is used
+	// as it is. Listing the groups, instead of pairing every member with its
+	// group, keeps the configuration small when there are hundreds of nodes.
+	StandIns []string `json:"stand_ins,omitempty" reference:"outbound"`
 	// URL is the page a member is measured with, as in a urltest group.
 	URL string `json:"url,omitempty"`
 	// Interval is how often the selected member is measured while traffic
@@ -87,7 +89,7 @@ type Preferred struct {
 
 	tags              []string
 	defaultTag        string
-	fallbackTags      map[string]string
+	standInTags       []string
 	link              string
 	interval          time.Duration
 	interruptExternal bool
@@ -117,15 +119,9 @@ func NewPreferred(ctx context.Context, _ adapter.Router, logger log.ContextLogge
 			return nil, E.New("duplicate tag: ", t)
 		}
 	}
-	for member, standIn := range options.Fallbacks {
-		if !slices.Contains(options.Outbounds, member) {
-			return nil, E.New("fallback for ", member, ", which is not a member")
-		}
-		if !slices.Contains(options.Outbounds, standIn) {
-			return nil, E.New("fallback group ", standIn, " is not a member")
-		}
-		if member == standIn {
-			return nil, E.New("a member cannot stand in for itself: ", member)
+	for i, t := range options.StandIns {
+		if slices.Contains(options.StandIns[:i], t) {
+			return nil, E.New("duplicate stand-in: ", t)
 		}
 	}
 	interval := time.Duration(options.Interval)
@@ -137,7 +133,7 @@ func NewPreferred(ctx context.Context, _ adapter.Router, logger log.ContextLogge
 		return nil, E.New("missing URL test history storage")
 	}
 	return &Preferred{
-		Adapter:           outbound.NewAdapter(TypePreferred, tag, nil, options.Outbounds),
+		Adapter:           outbound.NewAdapter(TypePreferred, tag, nil, dependencies(options)),
 		ctx:               ctx,
 		manager:           service.FromContext[adapter.OutboundManager](ctx),
 		logger:            logger,
@@ -145,7 +141,7 @@ func NewPreferred(ctx context.Context, _ adapter.Router, logger log.ContextLogge
 		pause:             service.FromContext[pause.Manager](ctx),
 		tags:              options.Outbounds,
 		defaultTag:        options.Default,
-		fallbackTags:      options.Fallbacks,
+		standInTags:       options.StandIns,
 		link:              options.URL,
 		interval:          interval,
 		interruptExternal: options.InterruptExistConnections,
@@ -153,6 +149,17 @@ func NewPreferred(ctx context.Context, _ adapter.Router, logger log.ContextLogge
 		fallbacks:         map[string]adapter.Outbound{},
 		interrupt:         interrupt.NewGroup(),
 	}, nil
+}
+
+// dependencies are the outbounds that must exist before the group starts.
+func dependencies(options PreferredOptions) []string {
+	deps := slices.Clone(options.Outbounds)
+	for _, t := range options.StandIns {
+		if !slices.Contains(deps, t) {
+			deps = append(deps, t)
+		}
+	}
+	return deps
 }
 
 // Network is the chosen member's.
@@ -174,8 +181,20 @@ func (p *Preferred) Start(stage adapter.StartStage, scope *adapter.Scope) error 
 			}
 			p.members[tag] = detour
 		}
-		for member, standIn := range p.fallbackTags {
-			p.fallbacks[member] = p.members[standIn]
+		for _, tag := range p.standInTags {
+			detour, loaded := p.manager.Outbound(tag)
+			if !loaded {
+				return E.New("stand-in not found: ", tag)
+			}
+			grp, isGroup := detour.(adapter.OutboundGroup)
+			if !isGroup {
+				return E.New("stand-in ", tag, " is not a group")
+			}
+			for _, member := range grp.All() {
+				if _, isMember := p.members[member]; isMember && member != tag && p.fallbacks[member] == nil {
+					p.fallbacks[member] = detour
+				}
+			}
 		}
 		if p.Tag() != "" {
 			if cacheFile := service.FromContext[adapter.CacheFile](p.ctx); cacheFile != nil {
