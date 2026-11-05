@@ -42,6 +42,9 @@ var builtinNames = map[string][]string{
 	"apple":     {"苹果", "Apple", "苹果服务", "apple services"},
 	"cn":        {"国内网站", "China sites", "国内服务", "国内", "china", "domestic", "cn"},
 	"foreign":   {"国外网站", "International sites", "国外", "国际", "foreign", "global"},
+	// Items an imported plan makes of rules that name no group.
+	"direct": {"直连", "Direct", "direct"},
+	"reject": {"拦截", "Blocked", "reject", "block"},
 }
 
 // BuiltinName returns the display name of a shipped item in a language
