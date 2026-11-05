@@ -9,6 +9,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +23,7 @@ import (
 	"eggbox/internal/app"
 	"eggbox/internal/configgen"
 	"eggbox/internal/library"
+	"eggbox/internal/routing"
 	"eggbox/internal/ruledata"
 	"eggbox/internal/subscription"
 	"eggbox/internal/testsupport/srs"
@@ -108,6 +111,85 @@ type harness struct {
 	agent *testkit.Agent
 	net   *flaky
 	prov  *provider
+	rules *ruleServer
+	data  *ruledata.Manager
+}
+
+// ruleServer serves rule files: for the geosite and geoip names the plans ask
+// for, a small binary rule set whose content depends on the name; other paths
+// are served from files set by the test. Paths in down answer 404.
+type ruleServer struct {
+	t     testing.TB
+	base  string
+	mu    sync.Mutex
+	files map[string][]byte
+	down  map[string]bool
+	hits  map[string]int
+}
+
+var safeLabel = regexp.MustCompile(`[^a-z0-9]+`)
+
+// domainOf is the domain the served geosite set of a name matches.
+func domainOf(name string) string {
+	return strings.Trim(safeLabel.ReplaceAllString(strings.ToLower(name), "-"), "-") + ".example"
+}
+
+// cidrOf is the range the served geoip set of a name matches.
+func cidrOf(name string) string {
+	sum := 0
+	for _, c := range name {
+		sum = (sum*31 + int(c)) % 200
+	}
+	return fmt.Sprintf("10.%d.0.0/16", 20+sum)
+}
+
+func (rs *ruleServer) set(path string, data []byte) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	rs.files[path] = data
+}
+
+func (rs *ruleServer) fail(path string, down bool) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if rs.down == nil {
+		rs.down = map[string]bool{}
+	}
+	rs.down[path] = down
+}
+
+func (rs *ruleServer) hitCount(path string) int {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	return rs.hits[path]
+}
+
+func (rs *ruleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	rs.mu.Lock()
+	if rs.hits == nil {
+		rs.hits = map[string]int{}
+	}
+	rs.hits[r.URL.Path]++
+	down := rs.down[r.URL.Path]
+	data, ok := rs.files[r.URL.Path]
+	rs.mu.Unlock()
+	if down {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if ok {
+		_, _ = w.Write(data)
+		return
+	}
+	name := strings.TrimSuffix(r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:], ".srs")
+	switch {
+	case strings.Contains(r.URL.Path, "/geo/geosite/"):
+		_, _ = w.Write(srs.DomainSuffixes(rs.t, domainOf(name)))
+	case strings.Contains(r.URL.Path, "/geo/geoip/"):
+		_, _ = w.Write(srs.CIDRs(rs.t, cidrOf(name)))
+	default:
+		http.NotFound(w, r)
+	}
 }
 
 func newHarness(t *testing.T, mutate func(*app.Config)) *harness {
@@ -124,20 +206,19 @@ func newHarness(t *testing.T, mutate func(*app.Config)) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A mirror that serves the rule sets the default preset needs.
-	files := map[string][]byte{
-		"sing-geosite/geosite-cn.srs": srs.DomainSuffixes(t, "example.cn"),
-		"sing-geoip/geoip-cn.srs":     srs.CIDRs(t, "10.0.0.0/8"),
-	}
-	mirrorSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if data, ok := files[strings.TrimPrefix(r.URL.Path, "/")]; ok {
-			_, _ = w.Write(data)
-			return
-		}
-		http.NotFound(w, r)
-	}))
+	// A mirror that serves a rule set for every name the built-in plan (and
+	// the plans of the invented providers) ask for: the name is the only
+	// thing that varies, so tests can tell the sets apart.
+	rs := &ruleServer{t: t, files: map[string][]byte{}}
+	mirrorSrv := httptest.NewServer(rs)
 	t.Cleanup(mirrorSrv.Close)
-	mirror := ruledata.Mirror{Name: "test", URL: func(repo, file string) string { return mirrorSrv.URL + "/" + repo + "/" + file }}
+	rs.base = mirrorSrv.URL
+	mirror := ruledata.Mirror{Name: "test", URL: func(canonical string) string {
+		if u, err := url.Parse(canonical); err == nil && u.Host == "raw.githubusercontent.com" {
+			return mirrorSrv.URL + u.Path
+		}
+		return canonical
+	}}
 	rules, err := ruledata.New(ruledata.Options{Dir: t.TempDir(), Mirrors: []ruledata.Mirror{mirror}})
 	if err != nil {
 		t.Fatal(err)
@@ -150,7 +231,7 @@ func newHarness(t *testing.T, mutate func(*app.Config)) *harness {
 	cfg := app.Config{
 		Library: lib, Rules: rules, Agent: client, Version: "test", HTTPClient: prov.srv.Client(),
 		// Never the public mirrors: tests must not reach the Internet.
-		Mirrors: func(string) []ruledata.Mirror { return []ruledata.Mirror{mirror} },
+		Mirrors: func(string, string) []ruledata.Mirror { return []ruledata.Mirror{mirror} },
 	}
 	if mutate != nil {
 		mutate(&cfg)
@@ -160,7 +241,7 @@ func newHarness(t *testing.T, mutate func(*app.Config)) *harness {
 	svc.Run(ctx)
 	t.Cleanup(func() { cancel(); svc.Close() })
 
-	h := &harness{t: t, svc: svc, lib: lib, agent: agent, net: fl, prov: prov}
+	h := &harness{t: t, svc: svc, lib: lib, agent: agent, net: fl, prov: prov, rules: rs, data: rules}
 	h.waitFor("the link to become ready", func(s *app.Snapshot) bool { return s.Link.Ready() && s.Status != nil })
 	return h
 }
@@ -211,10 +292,37 @@ func TestConnectGeneratesAppliesAndConnects(t *testing.T) {
 	if !snap.Status.GetHasConfig() || snap.Applied.Nodes != 3 || snap.Applied.Revision == 0 {
 		t.Errorf("applied %+v, status %v", snap.Applied, snap.Status)
 	}
-	// The rule data the default preset needs was fetched on the way.
-	for _, r := range h.svc.RuleDataStatus() {
-		if r.Needed && !r.Present {
-			t.Errorf("rule set %s is needed and missing", r.ID)
+	// The rule data the built-in plan needs was fetched on the way, and every
+	// item that is on can use it.
+	plan := h.waitFor("the plan to be compiled", func(s *app.Snapshot) bool { return s.Plan.Ready && s.Plan.Missing == 0 }).Plan
+	rows := h.lib.Routing().View().Rows
+	if len(rows) != 12 || len(plan.Items) != 12 || len(plan.Sources) == 0 {
+		t.Fatalf("plan: %d rows, %d statuses, %d sources", len(rows), len(plan.Items), len(plan.Sources))
+	}
+	for _, row := range rows {
+		st := plan.Items[row.Item.ID]
+		switch {
+		case !row.Item.Enabled && st.State != app.ItemOff:
+			t.Errorf("%s is off but is %v", row.Item.Key, st.State)
+		case row.Item.Enabled && st.State != app.ItemReady:
+			t.Errorf("%s is on and %v (missing %d)", row.Item.Key, st.State, st.Missing)
+		}
+	}
+	// Rule data is fetched for what is on; what is off waits until it is turned on.
+	needed := map[string]bool{}
+	for _, row := range rows {
+		if row.Item.Enabled {
+			for _, src := range row.Item.Sources {
+				needed[src.URL] = true
+			}
+		}
+	}
+	for url, src := range plan.Sources {
+		switch {
+		case needed[url] && (!src.Present || src.Format != "srs" || src.Err != ""):
+			t.Errorf("source %s is needed: %+v", url, src)
+		case !needed[url] && src.Present:
+			t.Errorf("source %s is not needed and was fetched: %+v", url, src)
 		}
 	}
 	// Throughput arrives.
@@ -252,23 +360,53 @@ func TestApplySkipsWhatDidNotChange(t *testing.T) {
 		t.Fatalf("an unchanged library must not store a new revision: %+v, %v", second, err)
 	}
 
-	prefs := h.lib.Prefs()
-	prefs.Preset = configgen.PresetProxyAll
-	if _, err := h.svc.SavePrefs(h.ctx(), prefs); err != nil {
+	// Blocking something changes the configuration: a rule set, a new revision.
+	ads := rowByKey(t, h.lib.Routing(), "ads")
+	if err := h.svc.EditRouting(h.ctx(), func(st *routing.State) error { return st.SetItemEnabled(ads.Item.ID, true) }); err != nil {
 		t.Fatal(err)
 	}
 	third, err := h.svc.Apply(h.ctx())
 	if err != nil || third.Skipped || third.Revision <= first.Revision {
-		t.Fatalf("changed preferences must produce a new revision: %+v, %v", third, err)
+		t.Fatalf("a changed plan must produce a new revision: %+v, %v", third, err)
 	}
 
-	// Choosing a node is not a configuration change.
-	snapNodes, _ := h.lib.ActiveNodes()
-	_ = h.svc.Select(h.ctx(), snapNodes[1].Node.Name)
+	// Choosing where traffic goes is not a configuration change: the plan is
+	// the same, only what a group has selected differs.
+	ai := rowByKey(t, h.lib.Routing(), "ai")
+	if err := h.svc.EditRouting(h.ctx(), func(st *routing.State) error { return st.SetItemDest(ai.Item.ID, routing.Direct()) }); err != nil {
+		t.Fatal(err)
+	}
+	nodes, _ := h.lib.ActiveNodes()
+	if err := h.svc.SetMainExit(h.ctx(), routing.ToNode(routing.NodeID{Sub: nodes[1].SubID, Name: nodes[1].Node.Name})); err != nil {
+		t.Fatal(err)
+	}
 	fourth, err := h.svc.Apply(h.ctx())
 	if err != nil || !fourth.Skipped {
-		t.Fatalf("selecting a node must not look like a configuration change: %+v, %v", fourth, err)
+		t.Fatalf("choosing a destination must not look like a configuration change: %+v, %v", fourth, err)
 	}
+
+	// The preferences that shape the configuration do.
+	prefs := h.lib.Prefs()
+	prefs.IPv6 = !prefs.IPv6
+	if _, err := h.svc.SavePrefs(h.ctx(), prefs); err != nil {
+		t.Fatal(err)
+	}
+	fifth, err := h.svc.Apply(h.ctx())
+	if err != nil || fifth.Skipped || fifth.Revision <= third.Revision {
+		t.Fatalf("changed preferences must produce a new revision: %+v, %v", fifth, err)
+	}
+}
+
+// rowByKey finds a built-in item.
+func rowByKey(t *testing.T, st routing.State, key string) routing.Row {
+	t.Helper()
+	for _, r := range st.View().Rows {
+		if r.Item.Key == key {
+			return r
+		}
+	}
+	t.Fatalf("no item %q in the plan", key)
+	return routing.Row{}
 }
 
 func TestNodesTheServiceRejectsAreDroppedNotFatal(t *testing.T) {
@@ -325,18 +463,19 @@ func TestConnectWithoutNodesExplainsWhy(t *testing.T) {
 	}
 }
 
-func TestSelectIsRememberedAndPassedToTheCore(t *testing.T) {
+func TestMainExitIsRememberedAndPassedToTheCore(t *testing.T) {
 	h := newHarness(t, nil)
 	h.addSubscription()
 	nodes, _ := h.lib.ActiveNodes()
 	jp := nodes[2]
+	id := routing.NodeID{Sub: jp.SubID, Name: jp.Node.Name}
 
 	// Offline: remembered for the next connection, nothing sent to the core.
-	if err := h.svc.SelectKey(h.ctx(), jp.Key()); err != nil {
+	if err := h.svc.SetMainExit(h.ctx(), routing.ToNode(id)); err != nil {
 		t.Fatal(err)
 	}
-	if got := h.lib.Settings().SelectedNode; got != jp.Key() {
-		t.Fatalf("selected %q, want the node's key %q", got, jp.Key())
+	if main := h.lib.Routing().Main; main.Kind != routing.DestNode || main.Node == nil || main.Node.Name != jp.Node.Name || main.Node.Sub != jp.SubID {
+		t.Fatalf("the main exit is %+v", main)
 	}
 	if calls := h.agent.Engine.Calls(); len(calls) != 0 {
 		t.Fatalf("the core was told about an offline choice: %v", calls)
@@ -357,21 +496,84 @@ func TestSelectIsRememberedAndPassedToTheCore(t *testing.T) {
 	if item.DelayMS != 123 || item.Node.Key != jp.Key() || item.Node.Protocol != "Trojan" || item.Node.Region != "JP" || item.Node.SubName == "" {
 		t.Errorf("%+v / %+v", item, item.Node)
 	}
-	// Connecting put the Proxy group back on the remembered node.
+	if got := item.Node.ID; got.Sub != jp.SubID || got.Name != jp.Node.Name || got.Hash != jp.Key() || got.Region != "JP" {
+		t.Errorf("identity %+v", got)
+	}
+	// Connecting put the Proxy group on the remembered node.
 	waitCall(t, h.agent, "select Proxy="+jp.Node.Name)
 
-	// Online: the choice goes to the core at once.
+	// Online: the choice goes to the core at once, and the core is not restarted.
+	starts := len(h.agent.Engine.Started())
 	if err := h.svc.Select(h.ctx(), "Auto"); err != nil {
 		t.Fatal(err)
 	}
 	waitCall(t, h.agent, "select Proxy=Auto")
-	if got := h.lib.Settings().SelectedNode; got != "" {
-		t.Errorf("Auto is remembered as no selection, got %q", got)
+	if got := h.lib.Routing().Main; got.Kind != routing.DestAuto {
+		t.Errorf("Auto is the main exit, got %+v", got)
+	}
+	if n := len(h.agent.Engine.Started()); n != starts {
+		t.Errorf("choosing the main exit restarted the core (%d starts, was %d)", n, starts)
+	}
+	if err := h.svc.Select(h.ctx(), "region-jp"); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.lib.Routing().Main; got.Kind != routing.DestRegion || got.Region != "JP" {
+		t.Errorf("a region group is the main exit, got %+v", got)
+	}
+	if err := h.svc.Select(h.ctx(), "no-such-group"); err == nil {
+		t.Error("an unknown group cannot be the main exit")
 	}
 	if err := h.svc.TestLatency(h.ctx(), "Auto"); err != nil {
 		t.Fatal(err)
 	}
 	waitCall(t, h.agent, "urltest Auto")
+}
+
+func TestChangingWhereAnItemGoesSwitchesWithoutRestartingTheCore(t *testing.T) {
+	h := newHarness(t, nil)
+	h.addSubscription()
+	nodes, _ := h.lib.ActiveNodes()
+	ai := rowByKey(t, h.lib.Routing(), "ai")
+	tag := "item-" + ai.Item.ID
+	h.agent.Engine.SetGroups(&agentapi.Groups{Groups: []*agentapi.Group{{
+		Tag: tag, Type: "selector", Selectable: true, Selected: "Proxy",
+		Items: []*agentapi.GroupItem{{Tag: "Proxy", Type: "selector"}, {Tag: "direct", Type: "direct"}, {Tag: nodes[0].Node.Name, Type: "trojan"}},
+	}}})
+	if err := h.svc.Connect(h.ctx(), app.ConnectOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor("connected", func(s *app.Snapshot) bool { return s.Phase == app.PhaseConnected })
+	waitCall(t, h.agent, "select "+tag+"=Proxy")
+	starts := len(h.agent.Engine.Started())
+	rev := h.svc.Snapshot().Applied.Revision
+
+	// Direct, a region, a node: all of them are selections.
+	for want, d := range map[string]routing.Dest{
+		"direct":           routing.Direct(),
+		nodes[0].Node.Name: routing.ToNode(routing.NodeID{Sub: nodes[0].SubID, Name: nodes[0].Node.Name}),
+	} {
+		if err := h.svc.EditRouting(h.ctx(), func(st *routing.State) error { return st.SetItemDest(ai.Item.ID, d) }); err != nil {
+			t.Fatal(err)
+		}
+		waitCall(t, h.agent, "select "+tag+"="+want)
+	}
+	if n := len(h.agent.Engine.Started()); n != starts {
+		t.Fatalf("switching an item's destination restarted the core (%d starts, was %d)", n, starts)
+	}
+	if got := h.svc.Snapshot().Applied.Revision; got != rev {
+		t.Errorf("switching an item's destination stored a revision (%d, was %d)", got, rev)
+	}
+
+	// Blocking is a different rule set, not a selection: the core is restarted.
+	if err := h.svc.EditRouting(h.ctx(), func(st *routing.State) error { return st.SetItemDest(ai.Item.ID, routing.Reject()) }); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor("the core restarted with the new configuration", func(s *app.Snapshot) bool {
+		return s.Applied.Revision > rev && s.Phase == app.PhaseConnected
+	})
+	if n := len(h.agent.Engine.Started()); n <= starts {
+		t.Error("blocking an item must restart the core with a new configuration")
+	}
 }
 
 func waitCall(t *testing.T, a *testkit.Agent, want string) {

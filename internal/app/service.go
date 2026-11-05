@@ -19,8 +19,10 @@ import (
 	"eggbox/internal/brand"
 	"eggbox/internal/configgen"
 	"eggbox/internal/library"
+	"eggbox/internal/plancompile"
 	"eggbox/internal/redact"
 	"eggbox/internal/ruledata"
+	"eggbox/internal/rulefmt"
 	"eggbox/internal/subscription"
 )
 
@@ -43,9 +45,10 @@ type Config struct {
 	// ScheduleDelay is the wait before the first look (default 3 seconds).
 	ScheduleDelay time.Duration
 	// Mirrors chooses where rule data comes from for a mirror setting
-	// ("auto", "github", "jsdelivr"). Nil uses the public mirrors; tests and
-	// offline builds supply their own.
-	Mirrors func(setting string) []ruledata.Mirror
+	// ("auto", "github", "jsdelivr") and the prefix of a mirror the person
+	// runs. Nil uses the public mirrors; tests and offline builds supply their
+	// own.
+	Mirrors func(setting, prefix string) []ruledata.Mirror
 }
 
 // Service is safe for concurrent use.
@@ -65,10 +68,37 @@ type Service struct {
 	lastSample time.Time
 	conns      map[string]*Conn
 	connCancel context.CancelFunc
-	digest     string
-	started    bool
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+	// pushed is the digest of the configuration the service holds.
+	pushed  string
+	started bool
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
+
+	// applied is what the running core was last brought to, to tell a change
+	// that only needs a selection from one that needs a restart.
+	applied *configgen.Output
+	// validated remembers the digests the service already accepted.
+	validated []string
+	// told holds what the person was told once this session.
+	told map[string]bool
+
+	compiler *plancompile.Compiler
+	view     atomic.Pointer[planView]
+	planKick chan struct{}
+	// fetching is set while rule data is being downloaded for the plan.
+	fetching atomic.Bool
+	// tried is when a file was last fetched for the plan, so a failing mirror
+	// is not asked again on every change.
+	tried map[string]time.Time
+	// previews holds files fetched to be looked at before they are kept.
+	previews map[string]*ruledata.Fetched
+	// matchers remember compiled rules for testing addresses.
+	matchers map[matcherKey]*rulefmt.Matcher
+	// fetchErrs is why the last attempt to download a file failed, for files
+	// that have no stored copy to carry the message.
+	fetchErrs map[string]string
+	// runCtx is the context the service runs under.
+	runCtx context.Context
 
 	opMu sync.Mutex // serializes connect, disconnect and apply
 }
@@ -87,6 +117,9 @@ func New(cfg Config) *Service {
 	s := &Service{
 		cfg: cfg, lib: cfg.Library, rules: cfg.Rules, agent: cfg.Agent,
 		tagIndex: map[string]NodeRef{}, keyToTag: map[string]string{}, conns: map[string]*Conn{},
+		compiler: plancompile.New(), planKick: make(chan struct{}, 1),
+		told: map[string]bool{}, tried: map[string]time.Time{}, previews: map[string]*ruledata.Fetched{},
+		fetchErrs: map[string]string{}, runCtx: context.Background(), matchers: map[matcherKey]*rulefmt.Matcher{},
 	}
 	first := &Snapshot{
 		Link:  LinkInfo{State: agentclient.LinkConnecting},
@@ -138,10 +171,16 @@ func (s *Service) Run(ctx context.Context) {
 	}
 	s.started = true
 	ctx, s.cancel = context.WithCancel(ctx)
+	s.runCtx = ctx
 	s.mu.Unlock()
 
-	// The library's changes (a rule edited elsewhere, a refresh) repaint the window.
-	s.lib.OnChange(func() { s.update(func(*Snapshot) {}) })
+	// The library's changes (a rule edited elsewhere, a refresh) repaint the
+	// window and have the plan looked at again.
+	s.lib.OnChange(func() {
+		s.kickPlan()
+		s.update(func(*Snapshot) {})
+	})
+	s.deliverLibraryNotices()
 
 	spawn := func(fn func()) {
 		s.wg.Add(1)
@@ -157,6 +196,8 @@ func (s *Service) Run(ctx context.Context) {
 	spawn(func() { s.agent.WatchLogs(ctx, 300, "", s.onLogs) })
 	spawn(func() { s.trafficClock(ctx) })
 	spawn(func() { s.schedule(ctx) })
+	spawn(func() { s.planLoop(ctx) })
+	s.kickPlan()
 }
 
 // Close stops the background work.
@@ -212,7 +253,8 @@ func (s *Service) watchLink(ctx context.Context) {
 		if info.Ready() && info.Generation != gen {
 			gen = info.Generation
 			s.mu.Lock()
-			s.digest = "" // the service may have lost or kept anything: re-apply when asked
+			// The service may have lost or kept anything: push again when asked.
+			s.pushed, s.applied, s.validated = "", nil, nil
 			s.mu.Unlock()
 			if settings, err := s.agent.Settings(ctx); err == nil {
 				s.update(func(sn *Snapshot) { sn.AgentSettings = settings })
@@ -250,6 +292,7 @@ func (s *Service) onGroups(g *agentapi.Groups) {
 	s.update(func(sn *Snapshot) {
 		s.rawGroups = g
 		sn.Groups = s.mapGroupsLocked(g)
+		sn.Exits = s.exitsLocked(sn.Groups)
 	})
 }
 
@@ -424,7 +467,7 @@ func (s *Service) onConnections(ev *agentapi.ConnectionEvents) {
 			switch e.GetType() {
 			case agentapi.ConnectionEvent_TYPE_NEW:
 				if c := e.GetConnection(); c != nil {
-					cc := connOf(c)
+					cc := s.connOf(c)
 					s.conns[cc.ID] = &cc
 				}
 			case agentapi.ConnectionEvent_TYPE_UPDATE:
@@ -437,7 +480,7 @@ func (s *Service) onConnections(ev *agentapi.ConnectionEvents) {
 				c := s.conns[e.GetId()]
 				if c == nil {
 					if cn := e.GetConnection(); cn != nil {
-						cc := connOf(cn)
+						cc := s.connOf(cn)
 						c = &cc
 						s.conns[cc.ID] = c
 					}
@@ -481,7 +524,7 @@ func (s *Service) onConnections(ev *agentapi.ConnectionEvents) {
 	})
 }
 
-func connOf(c *agentapi.Connection) Conn {
+func (s *Service) connOf(c *agentapi.Connection) Conn {
 	out := Conn{
 		ID: c.GetId(), Network: c.GetNetwork(), Source: c.GetSource(), Destination: c.GetDestination(),
 		Host: c.GetDomain(), Protocol: c.GetProtocol(), Rule: c.GetRule(), Outbound: c.GetOutbound(),
@@ -491,6 +534,7 @@ func connOf(c *agentapi.Connection) Conn {
 	if p := c.GetProcess(); p != nil {
 		out.Process = p.GetPath()
 	}
+	out.Why = s.whyOf(out.Rule, out.Outbound)
 	return out
 }
 

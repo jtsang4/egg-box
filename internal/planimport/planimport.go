@@ -215,7 +215,7 @@ func build(d *doc, opts Options) (*Result, error) {
 		if s == nil {
 			dest, notes := b.destOf(target, 0, false)
 			name, key := b.nameOf(target, srcs)
-			s = &slot{item: routing.Item{Name: name, Key: key, Dest: dest, Enabled: true, Notes: notes}, idx: len(order), lastRun: run}
+			s = &slot{item: routing.Item{Name: name, Key: key, Dest: dest, Enabled: true, Notes: notes, Domestic: dest.Kind == routing.DestDirect}, idx: len(order), lastRun: run}
 			slots[target] = s
 			order = append(order, target)
 		} else if s.lastRun != run {

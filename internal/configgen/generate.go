@@ -261,7 +261,7 @@ func (g *generator) generate() (*Output, error) {
 					dnsTag = "h-" + safeID(it.ID)
 					g.addSet(dnsTag, it.DNS, Owner{Kind: OwnerItem, ID: it.ID})
 				}
-				dnsRules = append(dnsRules, g.dnsRuleFor(dnsTag, it.Exit.Kind))
+				dnsRules = append(dnsRules, g.dnsRuleFor(dnsTag, itemDNSKind(it)))
 			}
 		}
 		anyIP = anyIP || len(it.IP) > 0
@@ -549,6 +549,19 @@ func (g *generator) ruleTo(setTag, target string, reject bool) map[string]any {
 		r["outbound"] = target
 	}
 	return r
+}
+
+// itemDNSKind is the exit kind the DNS rule of an item is written for: blocked
+// stays blocked, and the others are told apart by what the item is made of,
+// not by where it goes right now (see Item.Domestic).
+func itemDNSKind(it Item) ExitKind {
+	switch {
+	case it.Exit.Kind == ExitReject:
+		return ExitReject
+	case it.Domestic:
+		return ExitDirect
+	}
+	return ExitMain
 }
 
 // dnsRuleFor sends the names of a rule set to the DNS server that fits where

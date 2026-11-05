@@ -384,6 +384,13 @@ type Item struct {
 	// Anchor, on an item the user added to a followed plan, is the name of the
 	// item it goes before ("" goes before the fallback).
 	Anchor string `json:"anchor,omitempty"`
+	// Domestic marks an item made of services in the country the person is
+	// in: their names are looked up with the domestic DNS server, whatever the
+	// item's destination is at the moment. The choice cannot follow the
+	// destination, because a running core can switch where traffic goes but not
+	// which DNS server answers; and so changing the destination between direct
+	// and a node never needs a new configuration.
+	Domestic bool `json:"domestic,omitempty"`
 }
 
 // Clone copies an item.

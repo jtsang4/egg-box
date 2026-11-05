@@ -167,6 +167,49 @@ func TestBuiltinPlanMatchesTheDesign(t *testing.T) {
 	}
 }
 
+// Whether an item's names are looked up by the domestic DNS server belongs to
+// what the item is made of: the shipped plan says so for the local services,
+// and an item made to go direct is one, whatever is chosen for it later.
+func TestDomesticItemsAreMarkedWhenTheyAreMade(t *testing.T) {
+	for _, it := range Builtin().Items {
+		want := it.Key == "microsoft" || it.Key == "apple" || it.Key == "cn"
+		if it.Domestic != want {
+			t.Errorf("%s: domestic = %v", it.Key, it.Domestic)
+		}
+	}
+	var st State
+	direct, err := st.AddItem(Item{Name: "Bank", Dest: Direct(), Enabled: true}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxied, err := st.AddItem(Item{Name: "Forum", Dest: Follow(), Enabled: true}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !direct.Domestic || proxied.Domestic {
+		t.Fatalf("domestic: direct item %v, proxied item %v", direct.Domestic, proxied.Domestic)
+	}
+	// Changing where it goes does not change what it is.
+	if err := st.SetItemDest(direct.ID, Follow()); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetItemDest(proxied.ID, Direct()); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range st.View().Rows {
+		switch r.Item.Name {
+		case "Bank":
+			if !r.Item.Domestic {
+				t.Error("an item made to go direct stopped being local after it was proxied")
+			}
+		case "Forum":
+			if r.Item.Domestic {
+				t.Error("a proxied item became local after it was sent direct")
+			}
+		}
+	}
+}
+
 func TestChoicesOnAFollowedPlanSurviveARefresh(t *testing.T) {
 	s := NewState()
 	s.SyncPlan(airport("💬 AI", "Netflix", "Others"))

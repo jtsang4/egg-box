@@ -336,6 +336,9 @@ func (s *State) AddItem(it Item, beforeID string) (Item, error) {
 		it.ID = NewID("i")
 	}
 	it.Anchor = ""
+	// An item made to go direct is made of local services; it stays so when
+	// it is sent through a node later.
+	it.Domestic = it.Domestic || it.Dest.Kind == DestDirect
 	mine, ov, _ := s.activeEdit()
 	if mine != nil {
 		mine.Items = append(mine.Items, it)

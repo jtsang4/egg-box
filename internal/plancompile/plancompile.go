@@ -193,7 +193,7 @@ func (c *Compiler) Compile(o Options) (*Result, error) {
 		exit := nodes.exit(it.Dest, false, regions, Notice{Owner: OwnerItem, ID: it.ID}, res)
 		in.Items = append(in.Items, configgen.Item{
 			ID: it.ID, Name: it.Name, Exit: exit,
-			Domain: cd.domain, IP: cd.ip, DNS: cd.dns, Process: cd.process,
+			Domain: cd.domain, IP: cd.ip, DNS: cd.dns, Process: cd.process, Domestic: it.Domestic,
 		})
 	}
 	res.Missing = sortedKeys(missing)
@@ -392,6 +392,50 @@ func (c *Compiler) item(it routing.Item, data Data, missing map[string]bool) com
 		c.mu.Unlock()
 	}
 	return cd
+}
+
+// SourceRules returns the rules one source contributes to its item: its own,
+// and one level of the files it refers to, the way the item is compiled. It is
+// what "which source matched" is answered from. Files that cannot be read are
+// listed in missing.
+func SourceRules(src routing.Source, data Data) (rules []option.HeadlessRule, missing []string) {
+	switch src.Kind {
+	case routing.SourceInline:
+		for _, e := range src.Entries {
+			if r, err := EntryRule(e); err == nil {
+				rules = append(rules, r)
+			}
+		}
+	case routing.SourceURL:
+		seen := map[string]bool{}
+		var add func(url string, depth int)
+		add = func(url string, depth int) {
+			if seen[url] {
+				return
+			}
+			seen[url] = true
+			var parsed *rulefmt.Parsed
+			var err error
+			if data != nil {
+				parsed, err = data.Parsed(url)
+			}
+			if data == nil || err != nil || parsed == nil {
+				missing = append(missing, url)
+				return
+			}
+			rules = append(rules, parsed.Rules...)
+			if depth > 0 {
+				return
+			}
+			for _, r := range parsed.Refs {
+				if u := refURL(r); u != "" {
+					add(u, depth+1)
+				}
+			}
+		}
+		add(src.URL, 0)
+	}
+	return rules, missing
 }
 
 func refURL(r rulefmt.Ref) string {

@@ -245,12 +245,12 @@ func TestBuiltinPlanWithData(t *testing.T) {
 		t.Fatalf("order %v, want %v", order, want)
 	}
 	cn, _ := itemByID(res, "b-cn")
-	if cn.Exit.Kind != configgen.ExitDirect {
-		t.Errorf("cn exit %+v", cn.Exit)
+	if cn.Exit.Kind != configgen.ExitDirect || !cn.Domestic {
+		t.Errorf("cn exit %+v, domestic %v", cn.Exit, cn.Domestic)
 	}
 	ai, _ := itemByID(res, "b-ai")
-	if ai.Exit.Kind != configgen.ExitMain {
-		t.Errorf("ai exit %+v", ai.Exit)
+	if ai.Exit.Kind != configgen.ExitMain || ai.Domestic {
+		t.Errorf("ai exit %+v, domestic %v", ai.Exit, ai.Domestic)
 	}
 	// "cn" has names and addresses: both halves exist, and names steer DNS.
 	if len(cn.Domain) == 0 || len(cn.IP) == 0 || len(cn.DNS) == 0 {

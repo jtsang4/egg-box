@@ -5,6 +5,8 @@ import (
 
 	"eggbox/internal/agentapi"
 	"eggbox/internal/agentclient"
+	"eggbox/internal/plancompile"
+	"eggbox/internal/routing"
 )
 
 // Phase is where the connection stands, for the interface.
@@ -66,7 +68,12 @@ func (l LinkInfo) Ready() bool { return l.State == agentclient.LinkReady }
 
 // NodeRef is what is known about the node behind a group item.
 type NodeRef struct {
-	Key       string
+	// Key identifies the node's configuration (a hash); it changes when the
+	// provider rotates a password or an address.
+	Key string
+	// ID is the node's identity for routing choices: subscription and name,
+	// with the hash and region as a fallback.
+	ID        routing.NodeID
 	Name      string
 	Protocol  string
 	Transport string
@@ -75,6 +82,27 @@ type NodeRef struct {
 	Port      int
 	SubID     string
 	SubName   string
+	// SubAlias is the short name the person gave the subscription, if any.
+	SubAlias string
+	// Ambiguous is set when another subscription offers a node with the same
+	// name, so the name alone does not say which one it is.
+	Ambiguous bool
+}
+
+// Label is the node's name, with its subscription when the name alone would
+// not tell it apart.
+func (n NodeRef) Label() string {
+	if !n.Ambiguous {
+		return n.Name
+	}
+	sub := n.SubAlias
+	if sub == "" {
+		sub = n.SubName
+	}
+	if sub == "" {
+		return n.Name
+	}
+	return n.Name + " · " + sub
 }
 
 // GroupItem is a member of a group: a node or another group.
@@ -118,6 +146,36 @@ type Traffic struct {
 	Peak float64
 }
 
+// WhyKind says what decided where a connection went.
+type WhyKind int
+
+const (
+	// WhyUnknown: the core's rule is not one the application wrote.
+	WhyUnknown WhyKind = iota
+	// WhyItem: an item of the plan in force.
+	WhyItem
+	// WhyException: one of the person's exceptions.
+	WhyException
+	// WhyFallback: nothing matched.
+	WhyFallback
+	// WhyLAN: the local network.
+	WhyLAN
+	// WhyMode: the Global or Direct mode.
+	WhyMode
+)
+
+// Why is the reason a connection took the route it did, in the person's terms
+// instead of the core's rule text.
+type Why struct {
+	Kind WhyKind
+	// ID is the item or exception that matched.
+	ID string
+	// Name is the item's name, or what the exception matches.
+	Name string
+	// Index is the exception's place in the list, from 1.
+	Index int
+}
+
 // Conn is one tracked connection.
 type Conn struct {
 	ID          string
@@ -126,15 +184,17 @@ type Conn struct {
 	Destination string
 	Host        string
 	Protocol    string
-	Rule        string
-	Outbound    string
-	Chain       []string
-	Process     string
-	Created     time.Time
-	Closed      time.Time // zero while open
-	Up, Down    int64
-	UpRate      float64
-	DownRate    float64
+	// Rule is the core's own text; use Why for anything the person reads.
+	Rule     string
+	Why      Why
+	Outbound string
+	Chain    []string
+	Process  string
+	Created  time.Time
+	Closed   time.Time // zero while open
+	Up, Down int64
+	UpRate   float64
+	DownRate float64
 }
 
 // Open reports whether the connection is still open.
@@ -208,6 +268,106 @@ type Snapshot struct {
 	Modes []string
 	// Applied describes the configuration last pushed to the service.
 	Applied AppliedInfo
+	// Plan describes how the plan in force came out when it was compiled: what
+	// each item can use, what is missing.
+	Plan PlanInfo
+	// Exits tells where traffic of the main exit ("main"), the fallback
+	// ("fallback") and each item (by id) ends up right now.
+	Exits map[string]ExitInfo
+}
+
+// ItemState is what became of an item when the plan was compiled.
+type ItemState = plancompile.ItemState
+
+// Item states.
+const (
+	ItemReady       = plancompile.ItemReady
+	ItemOff         = plancompile.ItemOff
+	ItemUnavailable = plancompile.ItemUnavailable
+	ItemPartial     = plancompile.ItemPartial
+)
+
+// ItemStatus describes one row of the plan for the interface.
+type ItemStatus struct {
+	State ItemState
+	// Missing counts sources (and the files they refer to) with no usable data.
+	Missing int
+	// Unsupported counts rules the core cannot evaluate.
+	Unsupported int
+	// Domain and IP count the conditions that made it into the configuration.
+	Domain, IP int
+	// Sources is the number of sources the item has.
+	Sources int
+	// Oldest is the oldest successful check among the item's files; zero when
+	// the item has no downloaded file (hand-written items never do).
+	Oldest time.Time
+	// Failing is set when the last attempt to update one of its files failed.
+	Failing bool
+}
+
+// SourceStatus describes one downloaded rule file.
+type SourceStatus struct {
+	URL     string
+	Present bool
+	// Format is what the file was recognised as.
+	Format  string
+	Size    int64
+	Updated time.Time
+	Checked time.Time
+	// Domain, IP and Other count what the file holds; Unsupported counts by
+	// the name of the kind what the core cannot evaluate.
+	Domain, IP, Other int
+	Unsupported       map[string]int
+	// Err is why the last update failed, in words for people.
+	Err    string
+	Mirror string
+}
+
+// Pin says a node somebody chose is not what carries their traffic.
+type Pin struct {
+	// Owner is "main", "fallback", "item" or "exception".
+	Owner plancompile.OwnerKind
+	ID    string
+	// Name is the item's name, or what the exception matches.
+	Name string
+	Node routing.NodeID
+}
+
+// PlanInfo is how the plan in force compiled.
+type PlanInfo struct {
+	// Seq changes with every compilation.
+	Seq uint64
+	// Ready is false until the plan was compiled once.
+	Ready bool
+	// Items are the rows of the plan by item id.
+	Items map[string]ItemStatus
+	// Sources are the rule files the plan uses by canonical address.
+	Sources map[string]SourceStatus
+	// Missing counts the files the plan needs and does not have.
+	Missing int
+	// Gone are chosen nodes no subscription offers any more.
+	Gone []Pin
+	// Updating is set while rule data is being downloaded.
+	Updating bool
+}
+
+// ExitInfo says where traffic leaves right now.
+type ExitInfo struct {
+	// Group is the tag of the group the traffic goes through; empty for
+	// traffic that is blocked.
+	Group string
+	// Member is what that group has selected: "Proxy", "direct", "Auto", a
+	// region group or a node's tag.
+	Member string
+	// Node is the node the traffic ends up on, when there is one.
+	Node *NodeRef
+	// DelayMS is that node's last measured delay; 0 when not measured.
+	DelayMS int
+	// Wanted is the node somebody chose for this exit, if they chose one.
+	Wanted *routing.NodeID
+	// StandIn is set when the node in use is not the one that was chosen: the
+	// chosen one does not answer, or no subscription offers it any more.
+	StandIn bool
 }
 
 // AppliedInfo describes the last configuration the application generated.

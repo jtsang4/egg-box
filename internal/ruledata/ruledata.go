@@ -551,6 +551,17 @@ func (m *Manager) store(key string, data []byte, meta Meta, parsed *rulefmt.Pars
 	return nil
 }
 
+// ParseError means a file was downloaded but holds no rules the client can
+// read. Body is what came, so a caller can tell what it was instead (a
+// subscription pasted as a rule list).
+type ParseError struct {
+	Err  error
+	Body []byte
+}
+
+func (e *ParseError) Error() string { return e.Err.Error() }
+func (e *ParseError) Unwrap() error { return e.Err }
+
 // Fetch downloads a file the person pasted an address of and reads it, so
 // the interface can show what it holds before it is kept. Nothing is stored.
 func (m *Manager) Fetch(ctx context.Context, raw string) (*Fetched, error) {
@@ -559,6 +570,7 @@ func (m *Manager) Fetch(ctx context.Context, raw string) (*Fetched, error) {
 		return nil, err
 	}
 	var failure error
+	var unreadable []byte
 	for _, c := range candidates(m.mirrorList(), info.URL) {
 		data, tag, _, err := m.get(ctx, c.url, "")
 		if err != nil {
@@ -568,12 +580,16 @@ func (m *Manager) Fetch(ctx context.Context, raw string) (*Fetched, error) {
 		parsed, err := rulefmt.Parse(data, rulefmt.Hint{Source: info.URL})
 		if err != nil {
 			failure = worse(failure, fmt.Errorf("%s: %w", c.mirror, err))
+			unreadable = data
 			continue
 		}
 		return &Fetched{Info: info, Data: data, Parsed: parsed, Mirror: c.mirror, ETag: tag}, nil
 	}
 	if failure == nil {
 		failure = errors.New("no mirror offers this file")
+	}
+	if unreadable != nil && rank(failure) == 3 {
+		return nil, &ParseError{Err: failure, Body: unreadable}
 	}
 	return nil, failure
 }

@@ -3,8 +3,6 @@ package app
 import (
 	"context"
 	"time"
-
-	"eggbox/internal/configgen"
 )
 
 // schedule refreshes subscriptions and rule data when they are due.
@@ -50,20 +48,7 @@ func (s *Service) tick(ctx context.Context) {
 	}
 	if settings.RuleUpdateHours > 0 && s.ruleDataStale(time.Duration(settings.RuleUpdateHours)*time.Hour) {
 		rctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-		_ = s.UpdateRuleData(rctx, false)
+		s.updateScheduledRuleData(rctx, time.Duration(settings.RuleUpdateHours)*time.Hour)
 		cancel()
 	}
-}
-
-// ruleDataStale reports whether a rule set the preferences need is missing or
-// was last checked longer ago than maxAge.
-func (s *Service) ruleDataStale(maxAge time.Duration) bool {
-	now := s.cfg.Clock()
-	for _, id := range configgen.RequiredRuleSets(s.lib.Prefs()) {
-		st := s.rules.Statuses(id)[0]
-		if !st.Present || now.Sub(st.Meta.CheckedAt) >= maxAge {
-			return true
-		}
-	}
-	return false
 }

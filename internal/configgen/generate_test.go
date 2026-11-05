@@ -399,6 +399,7 @@ func TestExceptionsOfEveryKindAreAccepted(t *testing.T) {
 
 func TestRuleLayers(t *testing.T) {
 	in := baseInput(t)
+	in.Items[2].Domestic = true // the "cn" item is made of local services
 	in.Items = append(in.Items, domainItem(t, "late", main(configgen.ExitMain), "late.example"), ipItem(t, "late-ip", region("JP"), "192.0.2.0/24"))
 	in.Exceptions = []configgen.Exception{
 		exception("e1", hostRule("suffix", "one.example"), main(configgen.ExitDirect)),
@@ -438,9 +439,10 @@ func TestRuleLayers(t *testing.T) {
 		t.Errorf("final = %q", c.Route.Final)
 	}
 
-	// DNS follows the host-name rules: names that go direct ask the domestic
-	// server, blocked ones are refused, all others ask the remote one. Rules
-	// that are about addresses, processes or ports do not take part.
+	// DNS follows the host-name rules: the names of local services and of
+	// exceptions that go direct ask the domestic server, blocked ones are
+	// refused, all others ask the remote one. Rules that are about addresses,
+	// processes or ports do not take part.
 	wantDNS := []string{
 		"mode:Direct=>dns-domestic",
 		"mode:Global=>dns-remote",
@@ -754,6 +756,37 @@ func TestInvalidExceptionsBecomeWarnings(t *testing.T) {
 	}
 }
 
+// The server that looks up an item's names is chosen by what the item is made
+// of, never by where its traffic goes at the moment: the second can change in
+// a running core, the first cannot.
+func TestDNSServerDoesNotFollowTheItemsExit(t *testing.T) {
+	dnsOf := func(local bool, exit configgen.Exit) string {
+		in := baseInput(t)
+		in.Items = []configgen.Item{domainItem(t, "svc", exit, "svc.example")}
+		in.Items[0].Domestic = local
+		c := parse(t, generate(t, in))
+		for _, r := range describeAll(c.DNS.Rules) {
+			if strings.HasPrefix(r, "set:d-svc=>") {
+				return strings.TrimPrefix(r, "set:d-svc=>")
+			}
+		}
+		return "none"
+	}
+	for _, exit := range []configgen.Exit{main(configgen.ExitMain), main(configgen.ExitDirect), main(configgen.ExitAuto), region("JP")} {
+		if got := dnsOf(false, exit); got != "dns-remote" {
+			t.Errorf("a foreign item (exit %v) asks %s", exit.Kind, got)
+		}
+		if got := dnsOf(true, exit); got != "dns-domestic" {
+			t.Errorf("a local item (exit %v) asks %s", exit.Kind, got)
+		}
+	}
+	for _, local := range []bool{false, true} {
+		if got := dnsOf(local, main(configgen.ExitReject)); got != "reject" {
+			t.Errorf("a blocked item (local %v) is %s", local, got)
+		}
+	}
+}
+
 func TestSwitches(t *testing.T) {
 	ns := nodes(t)
 	hk := nodeNamed(t, ns, "HK 02")
@@ -766,9 +799,10 @@ func TestSwitches(t *testing.T) {
 	}
 	prev := gen(nil)
 
-	// Moving an item between exits that are all proxies is a selection.
+	// Moving an item between exits is a selection, direct included: which
+	// DNS server asks does not depend on where the traffic goes now.
 	for name, exit := range map[string]configgen.Exit{
-		"to a region": region("HK"), "to a node": pin(hk), "to auto": main(configgen.ExitAuto),
+		"to a region": region("HK"), "to a node": pin(hk), "to auto": main(configgen.ExitAuto), "to direct": main(configgen.ExitDirect),
 	} {
 		next := gen(func(in *configgen.Input) { in.Items[0].Exit = exit })
 		sw, ok := configgen.Switches(prev, next)
@@ -786,14 +820,12 @@ func TestSwitches(t *testing.T) {
 		t.Errorf("same input: %v %v", sw, ok)
 	}
 
-	// Anything else needs the core to start again: where traffic goes in a way
-	// that changes which DNS server asks, whether an item is blocked, which
-	// items there are, their order, their data, the exceptions, the nodes.
+	// Anything else needs the core to start again: whether an item is blocked,
+	// whether the fallback goes direct (that one steers DNS), which items there
+	// are, their order, their data, the exceptions, the nodes.
 	for name, edit := range map[string]func(*configgen.Input){
-		"item goes direct":       func(in *configgen.Input) { in.Items[0].Exit = main(configgen.ExitDirect) },
 		"item is blocked":        func(in *configgen.Input) { in.Items[0].Exit = main(configgen.ExitReject) },
 		"blocked item unblocked": func(in *configgen.Input) { in.Items[1].Exit = main(configgen.ExitMain) },
-		"direct item proxied":    func(in *configgen.Input) { in.Items[2].Exit = main(configgen.ExitMain) },
 		"fallback goes direct":   func(in *configgen.Input) { in.Fallback = main(configgen.ExitDirect) },
 		"item removed":           func(in *configgen.Input) { in.Items = in.Items[1:] },
 		"items reordered":        func(in *configgen.Input) { in.Items[0], in.Items[1] = in.Items[1], in.Items[0] },
@@ -813,11 +845,16 @@ func TestSwitches(t *testing.T) {
 			t.Errorf("%s: should need a restart, got switches %v", name, sw)
 		}
 	}
-	// An item that does not steer DNS can move between proxy and direct at runtime.
-	a := gen(func(in *configgen.Input) { in.Items[3].Exit = main(configgen.ExitMain) })
-	b := gen(func(in *configgen.Input) { in.Items[3].Exit = main(configgen.ExitDirect) })
-	if sw, ok := configgen.Switches(a, b); !ok || sw["item-cnip"] != "direct" {
-		t.Errorf("an address-only item: %v %v", sw, ok)
+	// An item that is made of local services goes through a node and back at
+	// runtime too.
+	a := gen(func(in *configgen.Input) { in.Items[2].Domestic = true })
+	b := gen(func(in *configgen.Input) { in.Items[2].Domestic = true; in.Items[2].Exit = main(configgen.ExitMain) })
+	if sw, ok := configgen.Switches(a, b); !ok || sw["item-cn"] != "Proxy" {
+		t.Errorf("a local item sent through the proxy: %v %v", sw, ok)
+	}
+	// What the item is made of is part of the configuration, though.
+	if sw, ok := configgen.Switches(prev, a); ok {
+		t.Errorf("an item that became local needs the core to start again, got %v", sw)
 	}
 	if _, ok := configgen.Switches(nil, prev); ok {
 		t.Error("nothing running, nothing to switch")

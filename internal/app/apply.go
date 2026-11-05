@@ -5,19 +5,28 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"slices"
+	"sort"
+	"strconv"
 	"time"
 
 	"eggbox/internal/agentapi"
 	"eggbox/internal/agentclient"
 	"eggbox/internal/configgen"
 	"eggbox/internal/library"
+	"eggbox/internal/plancompile"
+	"eggbox/internal/routing"
+	"eggbox/internal/ruledata"
 	"eggbox/internal/subscription"
 )
 
 // ApplyReport says what an apply did.
 type ApplyReport struct {
 	// Skipped: the service already has this exact configuration.
-	Skipped  bool
+	Skipped bool
+	// Switched: only selections differed, and they were made without
+	// restarting the core.
+	Switched bool
 	Revision uint64
 	Nodes    int
 	Dropped  []Dropped
@@ -28,17 +37,22 @@ type ApplyReport struct {
 // before giving up.
 const maxHealRounds = 4
 
+// firstFetchWait is how long a connection waits for rule data that is not
+// there yet. Past it, the items that lack data are left out and the person is
+// told, instead of holding the connection hostage to a slow mirror.
+const firstFetchWait = 25 * time.Second
+
 // prepared is a configuration ready to hand to the service.
 type prepared struct {
+	view    *planView
 	out     *configgen.Output
 	active  []library.ActiveNode
 	dropped []Dropped
-	digest  string
 }
 
-// prepare generates a configuration from the library and has the service check
-// it. Nodes the service rejects are dropped, so one bad node never keeps the
-// good ones from working.
+// prepare compiles the plan, writes the configuration and has the service
+// check it. Nodes the service rejects are dropped, so one bad node never keeps
+// the good ones from working.
 func (s *Service) prepare(ctx context.Context) (*prepared, error) {
 	active, err := s.lib.ActiveNodes()
 	if err != nil {
@@ -47,49 +61,42 @@ func (s *Service) prepare(ctx context.Context) (*prepared, error) {
 	if len(active) == 0 {
 		return nil, ErrNoNodes
 	}
-	prefs, rules, settings := s.lib.Prefs(), s.lib.Rules(), s.lib.Settings()
+	st, prefs := s.lib.Routing(), s.lib.Prefs()
 
-	needed := configgen.RequiredRuleSets(prefs)
-	sets, missing := s.rules.Load(needed...)
-	if len(missing) > 0 {
-		// First run, or the data was lost: try to fetch it, but do not hold the
-		// connection hostage to a slow mirror; the generator degrades with a warning.
-		fctx, cancel := context.WithTimeout(ctx, 25*time.Second)
-		s.rules.SetMirrors(s.mirrorsFor(settings.RuleMirror))
-		s.rules.Update(fctx, missing, ruledataOpts(false))
+	res, err := s.compile(st, prefs, active)
+	if err != nil {
+		return nil, err
+	}
+	if len(res.Missing) > 0 {
+		fctx, cancel := context.WithTimeout(ctx, firstFetchWait)
+		s.setBusy(func(b *Busy) { b.RuleData = true })
+		s.fetchRuleData(fctx, res.Missing, ruledata.UpdateOptions{})
+		s.setBusy(func(b *Busy) { b.RuleData = false })
 		cancel()
-		sets, _ = s.rules.Load(needed...)
+		if res, err = s.compile(st, prefs, active); err != nil {
+			return nil, err
+		}
 	}
 
-	nodes := make([]subscription.Node, len(active))
-	for i, a := range active {
-		nodes[i] = a.Node
-	}
-	in := configgen.Input{Nodes: nodes, Prefs: prefs, Rules: rules, RuleSets: sets, Selected: settings.SelectedNode}
-
+	in := res.Input
 	var dropped []Dropped
 	for round := 0; ; round++ {
 		out, err := configgen.Generate(in)
 		if err != nil {
 			return nil, err
 		}
+		if s.wasValidated(out.Digest) {
+			// Only selections differ from a configuration the service
+			// accepted: there is nothing new to check.
+			return s.finishPrepare(st, res, out, active, dropped), nil
+		}
 		resp, err := s.agent.Validate(ctx, bundleOf(out))
 		if err != nil {
 			return nil, err
 		}
 		if resp.GetValid() {
-			for _, d := range out.Dropped {
-				dropped = append(dropped, Dropped{Name: d.Name, Reason: d.Reason})
-			}
-			// The digest ignores the preselected node: choosing another one at
-			// runtime must not look like a configuration change.
-			base := in
-			base.Selected = ""
-			baseOut, err := configgen.Generate(base)
-			if err != nil {
-				return nil, err
-			}
-			return &prepared{out: out, active: active, dropped: dropped, digest: digestOf(baseOut)}, nil
+			s.markValidated(out.Digest)
+			return s.finishPrepare(st, res, out, active, dropped), nil
 		}
 		var issues []configgen.PathIssue
 		verr := &ValidationError{}
@@ -113,6 +120,34 @@ func (s *Service) prepare(ctx context.Context) (*prepared, error) {
 	}
 }
 
+func (s *Service) finishPrepare(st routing.State, res *plancompile.Result, out *configgen.Output, active []library.ActiveNode, dropped []Dropped) *prepared {
+	for _, d := range out.Dropped {
+		dropped = append(dropped, Dropped{Name: d.Name, Reason: d.Reason})
+	}
+	v := &planView{state: st, res: res, out: out, active: active, owners: out.Owners}
+	v.names, v.wanted = namesAndPins(st)
+	return &prepared{view: v, out: out, active: active, dropped: dropped}
+}
+
+const maxValidated = 16
+
+func (s *Service) wasValidated(digest string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Contains(s.validated, digest)
+}
+
+func (s *Service) markValidated(digest string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !slices.Contains(s.validated, digest) {
+		s.validated = append(s.validated, digest)
+		if len(s.validated) > maxValidated {
+			s.validated = s.validated[len(s.validated)-maxValidated:]
+		}
+	}
+}
+
 func bundleOf(out *configgen.Output) *agentapi.ConfigBundle {
 	b := &agentapi.ConfigBundle{ConfigJson: out.JSON, ProfileId: "default", ProfileName: "EggBox"}
 	for _, r := range out.Resources {
@@ -122,20 +157,15 @@ func bundleOf(out *configgen.Output) *agentapi.ConfigBundle {
 	return b
 }
 
-func digestOf(out *configgen.Output) string {
-	h := sha256.New()
-	h.Write(out.JSON)
-	for _, r := range out.Resources {
-		h.Write([]byte{0})
-		h.Write([]byte(r.Name))
-		h.Write(r.Data)
-	}
-	return hex.EncodeToString(h.Sum(nil))
-}
+// pushDigest identifies what is handed to the service: the configuration and
+// its resources, but not the selections, which are made through the service's
+// selection call.
+func pushDigest(out *configgen.Output) string { return out.Digest }
 
 // Apply regenerates the configuration and hands it to the service: stored
 // when the proxy is off, hot-applied when it is on (the service rolls back to
-// the previous configuration if the new one fails).
+// the previous configuration if the new one fails). When only selections
+// changed, they are made on the running core and nothing restarts.
 func (s *Service) Apply(ctx context.Context) (*ApplyReport, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
@@ -156,12 +186,34 @@ func (s *Service) applyLocked(ctx context.Context, force bool) (*ApplyReport, er
 	for _, w := range p.out.Warnings {
 		report.Warnings = append(report.Warnings, Warning{Code: w.Code, Detail: w.Detail})
 	}
+	online := s.Snapshot().Phase.Online()
 
 	s.mu.Lock()
-	same := !force && s.digest == p.digest
+	prev := s.applied
+	same := !force && s.pushed == pushDigest(p.out)
 	s.mu.Unlock()
+
+	// A running core that differs from the new configuration only in what its
+	// groups have selected is switched, not restarted.
+	if online && !force {
+		if switches, ok := configgen.Switches(prev, p.out); ok {
+			if err := s.makeSwitches(ctx, switches); err != nil {
+				return nil, err
+			}
+			s.mu.Lock()
+			s.applied = p.out
+			s.mu.Unlock()
+			report.Switched = true
+			st := s.Snapshot().Status
+			if st != nil {
+				report.Revision = st.GetStoredRevision()
+			}
+			s.setGenerated(p, report, report.Revision)
+			return report, nil
+		}
+	}
 	if same {
-		if st := s.Snapshot().Status; st != nil && st.GetHasConfig() {
+		if st := s.Snapshot().Status; st != nil && st.GetHasConfig() && !online {
 			s.setGenerated(p, report, st.GetStoredRevision())
 			report.Skipped, report.Revision = true, st.GetStoredRevision()
 			return report, nil
@@ -185,19 +237,67 @@ func (s *Service) applyLocked(ctx context.Context, force bool) (*ApplyReport, er
 		return nil, err
 	}
 	s.mu.Lock()
-	s.digest = p.digest
+	s.pushed = pushDigest(p.out)
+	s.applied = nil
 	s.mu.Unlock()
 	report.Revision = res.GetRevision()
+	if online {
+		// The core started afresh: what it remembers of earlier choices must
+		// give way to the plan's.
+		s.reassert(ctx, p.out)
+		s.mu.Lock()
+		s.applied = p.out
+		s.mu.Unlock()
+	}
 	s.setGenerated(p, report, res.GetRevision())
 	return report, nil
 }
 
+// makeSwitches puts groups on the members the plan wants.
+func (s *Service) makeSwitches(ctx context.Context, switches map[string]string) error {
+	tags := make([]string, 0, len(switches))
+	for tag := range switches {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	for _, tag := range tags {
+		if _, err := s.agent.SelectOutbound(ctx, tag, switches[tag]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// reassert puts every group the plan decides on the member it wants. The
+// core keeps its own memory of what was selected, from earlier runs and
+// earlier plans, and that memory must not outvote the plan.
+func (s *Service) reassert(ctx context.Context, out *configgen.Output) {
+	tags := make([]string, 0, len(out.Selections))
+	for tag := range out.Selections {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	// Main exit first: items that follow it see the right node at once.
+	sort.SliceStable(tags, func(i, j int) bool { return tags[i] == configgen.TagProxy && tags[j] != configgen.TagProxy })
+	for _, tag := range tags {
+		if _, err := s.agent.SelectOutbound(ctx, tag, out.Selections[tag]); err != nil {
+			s.RecordServiceLog("warn", fmt.Sprintf("Could not select the member of %s: %v", tag, err))
+		}
+	}
+}
+
 // setGenerated records what the last configuration contains, so groups can be
-// shown with their nodes' details.
+// shown with their nodes' details, and keeps the view of the plan the
+// configuration came from.
 func (s *Service) setGenerated(p *prepared, report *ApplyReport, revision uint64) {
 	byKey := make(map[string]library.ActiveNode, len(p.active))
+	names := map[string]map[string]bool{} // name → subscriptions that have it
 	for _, a := range p.active {
 		byKey[a.Key()] = a
+		if names[a.Node.Name] == nil {
+			names[a.Node.Name] = map[string]bool{}
+		}
+		names[a.Node.Name][a.SubID] = true
 	}
 	index := make(map[string]NodeRef, len(p.out.Tags))
 	keyToTag := make(map[string]string, len(p.out.Tags))
@@ -210,15 +310,20 @@ func (s *Service) setGenerated(p *prepared, report *ApplyReport, revision uint64
 		index[tag] = NodeRef{
 			Key: key, Name: a.Node.Name, Protocol: a.Node.Protocol(), Transport: a.Node.Transport(),
 			Region: subscription.Region(a.Node.Name), Server: a.Node.Server, Port: a.Node.Port,
-			SubID: a.SubID, SubName: a.SubName,
+			SubID: a.SubID, SubName: a.SubName, SubAlias: a.SubAlias,
+			ID:        routing.NodeID{Sub: a.SubID, Name: a.Node.Name, Hash: key, Region: regionFor(p.view.state, a)},
+			Ambiguous: len(names[a.Node.Name]) > 1,
 		}
 	}
+	s.view.Store(p.view)
 	applied := AppliedInfo{At: s.cfg.Clock(), Revision: revision, Nodes: len(p.active) - len(report.Dropped), Dropped: report.Dropped, Warnings: report.Warnings}
 	s.update(func(sn *Snapshot) {
 		s.tagIndex, s.keyToTag = index, keyToTag
 		sn.Applied = applied
 		sn.Groups = s.mapGroupsLocked(s.rawGroups)
+		sn.Exits = s.exitsLocked(sn.Groups)
 	})
+	s.kickPlan()
 }
 
 // ConnectOptions are the choices of a connect request.
@@ -249,31 +354,37 @@ func (s *Service) Connect(ctx context.Context, opts ConnectOptions) error {
 		}
 		return err
 	}
-	s.reassertSelection(ctx)
+	if v := s.view.Load(); v != nil && v.out != nil {
+		s.reassert(ctx, v.out)
+		s.mu.Lock()
+		s.applied = v.out
+		s.mu.Unlock()
+	}
+	s.connectNotices()
 	s.notice(LevelSuccess, "connected", "", nil)
 	return nil
 }
 
-// reassertSelection puts the Proxy group back on the node the user chose; the
-// core's own memory of it may be gone (new cache, new installation).
-func (s *Service) reassertSelection(ctx context.Context) {
-	sel := s.lib.Settings().SelectedNode
-	if sel == "" {
+// connectNotices tells, once, what the plan could not use: items that are on
+// but have no data, and chosen nodes that are not there.
+func (s *Service) connectNotices() {
+	v := s.view.Load()
+	if v == nil {
 		return
 	}
-	s.mu.Lock()
-	tag, ok := s.keyToTag[sel]
-	s.mu.Unlock()
-	if !ok {
-		tag = sel // a region group's tag
+	waiting := 0
+	for _, row := range v.state.View().Rows {
+		if row.Item.Enabled && v.res.Items[row.Item.ID].State == plancompile.ItemUnavailable {
+			waiting++
+		}
 	}
-	if _, err := s.agent.SelectOutbound(ctx, configgen.TagProxy, tag); err != nil {
-		// The node may have left the subscription; Auto is the sane fallback.
-		_ = s.lib.UpdateSettings(func(st *library.Settings) {
-			if st.SelectedNode == sel {
-				st.SelectedNode = ""
-			}
-		})
+	if waiting > 0 {
+		s.tellOnce("waiting:"+strconv.Itoa(waiting), LevelWarning, "items_waiting", "", map[string]string{"count": strconv.Itoa(waiting)})
+	}
+	for _, n := range v.res.Notices {
+		if n.Code == plancompile.NoticePinGone {
+			s.tellOnce("gone:"+string(n.Owner)+n.ID+n.Node.Key(), LevelWarning, "pin_gone", "", map[string]string{"node": n.Node.Name, "for": v.names[n.ID]})
+		}
 	}
 }
 
@@ -290,6 +401,9 @@ func (s *Service) Disconnect(ctx context.Context) error {
 		s.report("disconnect_failed", err)
 		return err
 	}
+	s.mu.Lock()
+	s.applied = nil
+	s.mu.Unlock()
 	s.notice(LevelInfo, "disconnected", "", nil)
 	return nil
 }

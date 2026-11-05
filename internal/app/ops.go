@@ -5,81 +5,69 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"eggbox/internal/agentapi"
 	"eggbox/internal/configgen"
 	"eggbox/internal/library"
+	"eggbox/internal/planimport"
 	"eggbox/internal/redact"
-	"eggbox/internal/ruledata"
+	"eggbox/internal/routing"
+	"eggbox/internal/ruleurl"
 	"eggbox/internal/subscription"
 )
 
 // ---------------------------------------------------------------- runtime ops
 
-// Select puts the Proxy group on a group item the live groups show (a node's
-// tag, a region group or "Auto") and remembers the choice for next time.
+// Select makes a group item the live groups show (a node's tag, a region
+// group or "Auto") the main exit, and remembers the choice.
 func (s *Service) Select(ctx context.Context, tag string) error {
 	s.mu.Lock()
 	ref, isNode := s.tagIndex[tag]
 	s.mu.Unlock()
-	key := tag // a region group
+	var d routing.Dest
 	switch {
 	case isNode:
-		key = ref.Key
+		d = routing.ToNode(ref.ID)
 	case tag == configgen.TagAuto:
-		key = ""
+		d = routing.Auto()
+	case strings.HasPrefix(tag, configgen.RegionPrefix):
+		d = routing.ToRegion(strings.TrimPrefix(tag, configgen.RegionPrefix))
+	default:
+		return fmt.Errorf("%q cannot be the main exit", tag)
 	}
-	return s.SelectKey(ctx, key)
+	return s.SetMainExit(ctx, d)
 }
 
-// SelectKey chooses what the Proxy group uses: a node by its key, a region
-// group by its tag, or "" for Auto. It works while disconnected too, the choice
-// then applies to the next connection.
-func (s *Service) SelectKey(ctx context.Context, key string) error {
-	if err := s.lib.UpdateSettings(func(st *library.Settings) { st.SelectedNode = key }); err != nil {
-		return err
-	}
-	if !s.Snapshot().Phase.Online() {
-		return nil
-	}
-	s.mu.Lock()
-	tag, ok := s.keyToTag[key]
-	s.mu.Unlock()
-	switch {
-	case ok:
-	case key == "":
-		tag = configgen.TagAuto
-	default:
-		tag = key
-	}
-	if _, err := s.agent.SelectOutbound(ctx, configgen.TagProxy, tag); err != nil {
+// SetMainExit chooses the main exit: the fastest node, the fastest node of a
+// region or one node. It works while disconnected too, the choice then applies
+// to the next connection.
+func (s *Service) SetMainExit(ctx context.Context, d routing.Dest) error {
+	err := s.EditRouting(ctx, func(st *routing.State) error { return st.SetMain(d) })
+	if err != nil {
 		s.report("select_failed", err)
+	}
+	return err
+}
+
+// EditRouting changes the routing state (the plan in force and everything laid
+// over it, the exceptions, the choices made about nodes) with fn, which works
+// on a copy: when it fails nothing is kept. The result is applied when the
+// proxy is on; choices that only move a selection do not restart the core.
+func (s *Service) EditRouting(ctx context.Context, fn func(*routing.State) error) error {
+	if err := s.lib.UpdateRouting(fn); err != nil {
 		return err
 	}
+	s.kickPlan()
+	s.reapplyIfOnline(ctx)
 	return nil
 }
 
-// SelectedTag returns the tag the Proxy group is on: what the core reports
-// while connected, otherwise what the user chose.
-func (s *Service) SelectedTag() string {
-	for _, g := range s.Snapshot().Groups {
-		if g.Tag == configgen.TagProxy && g.Selected != "" {
-			return g.Selected
-		}
-	}
-	sel := s.lib.Settings().SelectedNode
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if tag, ok := s.keyToTag[sel]; ok {
-		return tag
-	}
-	if sel == "" {
-		return configgen.TagAuto
-	}
-	return sel
-}
+// Routing returns the routing state.
+func (s *Service) Routing() routing.State { return s.lib.Routing() }
 
 // TestLatency measures the delay of a node or a whole group (by tag).
 func (s *Service) TestLatency(ctx context.Context, tag string) error {
@@ -168,7 +156,14 @@ func (s *Service) ImportNodes(ctx context.Context, name, text string) (library.S
 		s.report("import_failed", err)
 		return library.Subscription{}, err
 	}
+	// A pasted profile may carry its routing too.
+	if imp, ierr := planimport.Import([]byte(text), planimport.Options{SubID: sub.ID}); ierr == nil {
+		if _, err := s.lib.SyncPlan(sub.ID, imp); err != nil {
+			s.report("import_failed", err)
+		}
+	}
 	s.notice(LevelSuccess, "nodes_imported", "", map[string]string{"nodes": strconv.Itoa(len(res.Nodes))})
+	s.deliverLibraryNotices()
 	s.reapplyIfOnline(ctx)
 	return sub, nil
 }
@@ -187,7 +182,17 @@ func (s *Service) refresh(ctx context.Context, id string) (*library.RefreshResul
 		return nil, fmt.Errorf("this subscription is already being updated")
 	}
 	defer s.setBusy(func(b *Busy) { delete(b.Refreshing, id) })
-	return s.lib.Refresh(ctx, id, library.RefreshOptions{Client: s.cfg.HTTPClient})
+	res, err := s.lib.Refresh(ctx, id, library.RefreshOptions{Client: s.cfg.HTTPClient})
+	if err == nil {
+		s.deliverLibraryNotices()
+	}
+	return res, err
+}
+
+// refreshed reports whether a refresh changed anything the configuration is
+// made of: the nodes or the plan.
+func refreshed(res *library.RefreshResult) bool {
+	return res.Changed || res.Plan.Changed
 }
 
 // RefreshSubscription downloads a subscription again.
@@ -208,7 +213,7 @@ func (s *Service) RefreshSubscription(ctx context.Context, id string) (*library.
 	default:
 		s.notice(LevelSuccess, "subscription_updated", "", args)
 	}
-	if res.Changed {
+	if refreshed(res) {
 		s.reapplyIfRefreshed(ctx)
 	}
 	return res, nil
@@ -229,7 +234,7 @@ func (s *Service) RefreshAll(ctx context.Context) (updated int, firstErr error) 
 			continue
 		}
 		updated++
-		changed = changed || res.Changed
+		changed = changed || refreshed(res)
 	}
 	if firstErr != nil {
 		s.report("subscription_refresh_failed", firstErr)
@@ -278,7 +283,7 @@ func (s *Service) reapplyIfOnline(ctx context.Context) {
 	}
 }
 
-// ----------------------------------------------------------- rules and prefs
+// ----------------------------------------------------------------- prefs
 
 // SavePrefs stores routing preferences and applies them when the proxy is on.
 func (s *Service) SavePrefs(ctx context.Context, p configgen.Prefs) (adjusted []string, err error) {
@@ -286,114 +291,9 @@ func (s *Service) SavePrefs(ctx context.Context, p configgen.Prefs) (adjusted []
 	if err != nil {
 		return nil, err
 	}
+	s.kickPlan()
 	s.reapplyIfOnline(ctx)
 	return adjusted, nil
-}
-
-// SaveRules replaces the custom rules and applies them when the proxy is on.
-func (s *Service) SaveRules(ctx context.Context, rules []configgen.CustomRule) error {
-	if err := s.lib.SetRules(rules); err != nil {
-		return err
-	}
-	s.reapplyIfOnline(ctx)
-	return nil
-}
-
-// RuleData describes the rule sets the application keeps.
-type RuleData struct {
-	ID      string
-	Present bool
-	Needed  bool
-	Updated time.Time
-	Checked time.Time
-	Size    int64
-	Source  string
-}
-
-// RuleDataCatalog is every rule set the presets can use.
-var RuleDataCatalog = []string{configgen.RuleSetCN, configgen.RuleSetCNIP, configgen.RuleSetForeign, configgen.RuleSetAds}
-
-// RuleDataStatus reports the state of the rule sets.
-func (s *Service) RuleDataStatus() []RuleData {
-	needed := map[string]bool{}
-	for _, id := range configgen.RequiredRuleSets(s.lib.Prefs()) {
-		needed[id] = true
-	}
-	var out []RuleData
-	for _, st := range s.rules.Statuses(RuleDataCatalog...) {
-		out = append(out, RuleData{ID: st.ID, Present: st.Present, Needed: needed[st.ID], Updated: st.Meta.UpdatedAt, Checked: st.Meta.CheckedAt, Size: st.Meta.Size, Source: st.Meta.Source})
-	}
-	return out
-}
-
-func (s *Service) mirrorsFor(setting string) []ruledata.Mirror {
-	if s.cfg.Mirrors != nil {
-		return s.cfg.Mirrors(setting)
-	}
-	switch setting {
-	case "github":
-		return []ruledata.Mirror{ruledata.GitHub}
-	case "jsdelivr":
-		return []ruledata.Mirror{ruledata.JSDelivr}
-	}
-	return ruledata.DefaultMirrors()
-}
-
-func ruledataOpts(force bool) ruledata.UpdateOptions { return ruledata.UpdateOptions{Force: force} }
-
-// UpdateRuleData downloads the rule sets the preferences need (and any the
-// application already holds).
-func (s *Service) UpdateRuleData(ctx context.Context, force bool) error {
-	s.setBusy(func(b *Busy) { b.RuleData = true })
-	defer s.setBusy(func(b *Busy) { b.RuleData = false })
-
-	settings := s.lib.Settings()
-	s.rules.SetMirrors(s.mirrorsFor(settings.RuleMirror))
-	ids := configgen.RequiredRuleSets(s.lib.Prefs())
-	for _, st := range s.rules.Statuses(RuleDataCatalog...) {
-		if st.Present && !contains(ids, st.ID) {
-			ids = append(ids, st.ID)
-		}
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-	results := s.rules.Update(ctx, ids, ruledata.UpdateOptions{Force: force})
-	var updated, failed int
-	var firstErr error
-	for _, r := range results {
-		switch r.Outcome {
-		case ruledata.Updated:
-			updated++
-		case ruledata.Failed:
-			failed++
-			if firstErr == nil {
-				firstErr = r.Err
-			}
-		}
-	}
-	args := map[string]string{"updated": strconv.Itoa(updated), "failed": strconv.Itoa(failed)}
-	switch {
-	case failed > 0:
-		s.notice(LevelWarning, "rule_data_failed", Explain(firstErr).Detail, args)
-	case updated > 0:
-		s.notice(LevelSuccess, "rule_data_updated", "", args)
-	default:
-		s.notice(LevelInfo, "rule_data_current", "", args)
-	}
-	if updated > 0 {
-		s.reapplyIfOnline(ctx)
-	}
-	return firstErr
-}
-
-func contains(list []string, v string) bool {
-	for _, x := range list {
-		if x == v {
-			return true
-		}
-	}
-	return false
 }
 
 // -------------------------------------------------------------- diagnostics
@@ -421,9 +321,48 @@ func (s *Service) ExportDiagnostics(ctx context.Context) (filename string, data 
 		infos = append(infos, si)
 	}
 	prefs := s.lib.Prefs()
+	st := s.lib.Routing()
+	view := st.View()
+	states := map[string]int{}
+	dests := map[string]int{}
+	enabled := 0
+	for _, row := range view.Rows {
+		if row.Item.Enabled {
+			enabled++
+		}
+		dests[string(row.Item.Dest.Kind)]++
+		switch snap.Plan.Items[row.Item.ID].State {
+		case ItemReady:
+			states["ready"]++
+		case ItemOff:
+			states["off"]++
+		case ItemUnavailable:
+			states["unavailable"]++
+		case ItemPartial:
+			states["partial"]++
+		}
+	}
+	// Only counts and classes: the names of a provider's groups are its
+	// content and stay out of reports.
+	planDoc := map[string]any{
+		"kind": string(st.ActivePlan().Kind), "items": len(view.Rows), "enabled": enabled,
+		"states": states, "destinations": dests, "exceptions": len(st.Exceptions),
+		"plans": len(st.Plans) + 1, "main": string(st.Main.Kind), "fallback": string(view.Fallback.Kind),
+		"gone": len(snap.Plan.Gone), "missingFiles": snap.Plan.Missing,
+	}
+	var urls []string
+	for u := range snap.Plan.Sources {
+		urls = append(urls, u)
+	}
+	sort.Strings(urls)
 	var rulesInfo []map[string]any
-	for _, st := range s.RuleDataStatus() {
-		rulesInfo = append(rulesInfo, map[string]any{"id": st.ID, "present": st.Present, "needed": st.Needed, "size": st.Size, "source": st.Source, "updated": st.Updated})
+	for _, u := range urls {
+		src := snap.Plan.Sources[u]
+		rulesInfo = append(rulesInfo, map[string]any{
+			"url": ruleurl.Display(u), "present": src.Present, "format": src.Format, "size": src.Size,
+			"updated": src.Updated, "checked": src.Checked, "domain": src.Domain, "ip": src.IP,
+			"unsupported": src.Unsupported, "error": src.Err, "mirror": src.Mirror,
+		})
 	}
 	app := map[string]any{
 		"version": s.cfg.Version,
@@ -432,8 +371,8 @@ func (s *Service) ExportDiagnostics(ctx context.Context) (filename string, data 
 		"linkError":     snap.Link.Error,
 		"phase":         snap.Phase.String(),
 		"subscriptions": infos,
-		"customRules":   len(s.lib.Rules()),
-		"preset":        string(prefs.Preset),
+		"plan":          planDoc,
+		"lanDirect":     prefs.LANDirect,
 		"ipv6":          prefs.IPv6,
 		"tunStack":      prefs.TunStack,
 		"ruleData":      rulesInfo,

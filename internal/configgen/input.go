@@ -69,6 +69,11 @@ type Item struct {
 	DNS []byte
 	// Process is whether the rules look at the program that made the connection.
 	Process bool
+	// Domestic sends the item's names to the domestic DNS server instead of
+	// the remote one, whatever Exit is. The choice must not follow the exit:
+	// a running core can be told to send traffic elsewhere, but not to ask a
+	// different DNS server, and the exit is meant to be switchable at runtime.
+	Domestic bool
 }
 
 // Exception is a rule of the person's own, ahead of every item.

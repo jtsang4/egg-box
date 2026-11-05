@@ -63,7 +63,8 @@ func BuiltinName(key, lang string) string {
 // Builtin returns the plan the application ships.
 func Builtin() *Plan {
 	item := func(key, icon string, dest Dest, on bool, srcs ...Source) Item {
-		return Item{ID: "b-" + key, Key: key, Name: builtinNames[key][0], Icon: icon, Sources: srcs, Dest: dest, Enabled: on}
+		return Item{ID: "b-" + key, Key: key, Name: builtinNames[key][0], Icon: icon, Sources: srcs, Dest: dest, Enabled: on,
+			Domestic: dest.Kind == DestDirect}
 	}
 	return &Plan{
 		ID: BuiltinID, Kind: PlanBuiltin, Name: "内置推荐",

@@ -1,6 +1,7 @@
 package library
 
 import (
+	"reflect"
 	"strconv"
 
 	"eggbox/internal/planimport"
@@ -16,6 +17,8 @@ type PlanSync struct {
 	// Change lists what a refresh added to and removed from a plan that was
 	// stored before.
 	Change routing.PlanChange
+	// Changed is set when what the plan holds differs from what was stored.
+	Changed bool
 	// Adopted is set when the plan became the one in force: it is the first
 	// subscription, and nothing of the person's own was chosen yet.
 	Adopted bool
@@ -42,8 +45,9 @@ func (l *Library) SyncPlan(subID string, res *planimport.Result) (PlanSync, erro
 		}
 		plan := res.Plan.Clone()
 		plan.ID, plan.Kind, plan.SubID, plan.Name = routing.SubPlanID(subID), routing.PlanSubscription, subID, s.Name
-		known := l.data.Routing.PlanByID(plan.ID) != nil
-		ps = PlanSync{Stored: true, Items: len(plan.Items), Report: res.Report}
+		old := l.data.Routing.PlanByID(plan.ID)
+		known := old != nil
+		ps = PlanSync{Stored: true, Items: len(plan.Items), Report: res.Report, Changed: !known || !reflect.DeepEqual(old, plan)}
 		ps.Change = l.data.Routing.SyncPlan(plan)
 
 		if !known && len(l.data.Subscriptions) == 1 && l.data.Routing.ActiveID() == routing.BuiltinID && !l.data.Routing.Customized() {
