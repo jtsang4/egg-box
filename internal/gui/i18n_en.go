@@ -134,8 +134,8 @@ var catalogEN = map[string]string{
 	// conflict dialog
 	"conflict.title":  "Another VPN is in the way",
 	"conflict.sub":    "Overlapping routes were found",
-	"conflict.body":   "Another VPN or proxy already owns routes that this connection needs. Connecting anyway can break one of them until you disconnect.",
-	"conflict.anyway": "Connect anyway",
+	"conflict.body":   "Another VPN is carrying network traffic. EggBox will take priority over its default routes and connect directly through your physical network. Other VPN apps may still show a connected status.",
+	"conflict.anyway": "Take over and connect",
 
 	// service notices
 	"notice.connected":                   "Connected",

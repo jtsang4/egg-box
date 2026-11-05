@@ -103,6 +103,11 @@ func Fingerprint(r Route, a Adapter) string {
 // adapter the agent made itself is marked, so it is never judged.
 func Snapshot(routes []Route, adapters []Adapter, ours func(Adapter) bool) routecheck.Snapshot {
 	var s routecheck.Snapshot
+	if _, a, ok := DefaultRoute(routes, adapters, func(a Adapter) bool {
+		return a.Kind != routecheck.KindPhysical || (ours != nil && ours(a))
+	}); ok {
+		s.PhysicalUplink = a.Name
+	}
 	for _, a := range adapters {
 		s.Interfaces = append(s.Interfaces, routecheck.Interface{
 			Name: a.Name, Index: int(a.Index), Up: a.Up, Kind: a.Kind, Addrs: a.Addrs,

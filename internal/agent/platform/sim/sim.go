@@ -60,6 +60,7 @@ func New(opts Options) *Driver {
 	return &Driver{
 		opts: opts,
 		snapshot: routecheck.Snapshot{
+			PhysicalUplink: "en0",
 			Interfaces: []routecheck.Interface{
 				{Name: "lo0", Up: true, Kind: routecheck.KindLoopback, Addrs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/8")}},
 				{Name: "en0", Index: 4, Up: true, Kind: routecheck.KindPhysical, Addrs: []netip.Prefix{netip.MustParsePrefix("192.168.1.20/24")}},

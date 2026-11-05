@@ -356,6 +356,10 @@ func (n *normalizer) forceRoute(route map[string]any) {
 	// Proxy-node connections and bootstrap DNS must leave through the physical
 	// interface, never loop back into the TUN.
 	route["auto_detect_interface"] = true
+	if name := n.env.Tun.TakeoverInterface; name != "" {
+		route["auto_detect_interface"] = false
+		route["default_interface"] = name
+	}
 	n.ensureDNSHijack(route)
 }
 

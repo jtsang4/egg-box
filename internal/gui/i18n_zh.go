@@ -133,8 +133,8 @@ var catalogZH = map[string]string{
 	// conflict dialog
 	"conflict.title":  "有另一个 VPN 在占用路由",
 	"conflict.sub":    "发现重叠的路由",
-	"conflict.body":   "另一个 VPN 或代理已经占用了本次连接需要的路由。仍然连接可能会让其中之一失效，直到你断开连接。",
-	"conflict.anyway": "仍然连接",
+	"conflict.body":   "另一个 VPN 正在承载网络流量。接管后，EggBox 将优先使用自己的路由，并直接通过物理网络连接。其他 VPN 应用可能仍显示已连接。",
+	"conflict.anyway": "接管并连接",
 
 	// service notices
 	"notice.connected":                   "已连接",

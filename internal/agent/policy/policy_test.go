@@ -2,6 +2,7 @@ package policy
 
 import (
 	"encoding/json"
+	"net/netip"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -438,6 +439,38 @@ func TestTunRouteSettingsAreForced(t *testing.T) {
 	}
 	if len(rules) != 2 {
 		t.Fatalf("user rules must be preserved: %v", rules)
+	}
+}
+
+func TestConfirmedTakeoverOverridesRoutingAndOutranksVPNDefaults(t *testing.T) {
+	env := testEnv
+	env.Tun.TakeoverInterface = "en0"
+	res, out := normalize(t, prod(), `{"inbounds":[{"type":"tun","route_address":["10.0.0.0/8"],"route_exclude_address":["0.0.0.0/0"]}],"route":{"auto_detect_interface":true}}`, env)
+	if res.HasErrors() {
+		t.Fatal(dump(res))
+	}
+	if get(out, "route", "default_interface") != "en0" || get(out, "route", "auto_detect_interface") != false {
+		t.Fatal("takeover did not bind the physical uplink")
+	}
+	tun := out["inbounds"].([]any)[0].(map[string]any)
+	if tun["route_exclude_address"] != nil {
+		t.Fatal("provider exclusions must not undo confirmed takeover")
+	}
+	var routes []netip.Prefix
+	for _, value := range tun["route_address"].([]any) {
+		routes = append(routes, netip.MustParsePrefix(value.(string)))
+	}
+	for _, dest := range []string{"1.1.1.1", "65.1.1.1", "129.1.1.1", "203.0.113.1", "2001:db8::1", "4001::1", "8001::1", "c001::1"} {
+		addr := netip.MustParseAddr(dest)
+		wins := false
+		for _, route := range routes {
+			if route.Contains(addr) && route.Bits() > 1 {
+				wins = true
+			}
+		}
+		if !wins {
+			t.Fatalf("takeover does not beat a competing default or half-default for %s", dest)
+		}
 	}
 }
 

@@ -82,6 +82,9 @@ type TunSettings struct {
 	InterfaceName string   // "" lets the OS choose (macOS utunN)
 	StrictRoute   bool
 	DNSMode       string // "disabled" | "native" | "hijack"
+	// TakeoverInterface binds the core to a physical uplink and enables
+	// more-specific default routes after explicit user confirmation.
+	TakeoverInterface string
 }
 
 // Env carries everything the policy needs from the agent.

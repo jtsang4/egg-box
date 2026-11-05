@@ -195,6 +195,10 @@ func anotherVPNRunning() ([]Route, []Interface) {
 }
 
 func TestUplinkIsThePhysicalNetworkWhenAnotherVPNHoldsTheDefault(t *testing.T) {
+	routesForSnapshot, interfacesForSnapshot := anotherVPNRunning()
+	if got := Snapshot(routesForSnapshot, interfacesForSnapshot, nil).PhysicalUplink; got != "en0" {
+		t.Fatalf("snapshot lost the scoped physical uplink: %s", got)
+	}
 	routes, ifaces := anotherVPNRunning()
 	r, i, ok := Uplink(routes, ifaces, nil)
 	if !ok || i.Name != "en0" {

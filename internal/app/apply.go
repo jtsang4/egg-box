@@ -223,8 +223,8 @@ func (s *Service) setGenerated(p *prepared, report *ApplyReport, revision uint64
 
 // ConnectOptions are the choices of a connect request.
 type ConnectOptions struct {
-	// IgnoreRouteConflicts proceeds although another VPN owns overlapping
-	// routes. Set it only after the user confirmed the warning.
+	// IgnoreRouteConflicts takes priority over another VPN's default routes.
+	// Set it only after the user confirmed the takeover.
 	IgnoreRouteConflicts bool
 }
 

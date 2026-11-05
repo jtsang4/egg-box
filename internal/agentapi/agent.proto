@@ -263,8 +263,8 @@ message ConnectRequest {
   string request_id = 1;
   // expected_revision, when non-zero, must equal the stored revision.
   uint64 expected_revision = 2;
-  // ignore_route_conflicts proceeds although another VPN already owns
-  // overlapping routes. Only set after the user confirmed the warning.
+  // ignore_route_conflicts takes priority over another VPN's default routes
+  // for this connection. Only set after the user confirmed the takeover.
   bool ignore_route_conflicts = 3;
 }
 

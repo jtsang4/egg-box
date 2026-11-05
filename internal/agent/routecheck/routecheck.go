@@ -63,6 +63,9 @@ type Route struct {
 type Snapshot struct {
 	Interfaces []Interface
 	Routes     []Route
+	// PhysicalUplink is selected by the OS driver, including interface-scoped
+	// defaults that are not competing routes in Routes.
+	PhysicalUplink string
 }
 
 // Plan is the private addressing used for the TUN. The first address of each

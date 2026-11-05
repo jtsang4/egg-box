@@ -148,6 +148,9 @@ func interfaceByIndex(ifaces []Interface, index int) (Interface, bool) {
 // the agent made itself is marked, so it is never judged.
 func Snapshot(routes []Route, ifaces []Interface, ours func(Interface) bool) routecheck.Snapshot {
 	var s routecheck.Snapshot
+	if _, i, ok := Uplink(routes, ifaces, ours); ok && i.Kind == routecheck.KindPhysical {
+		s.PhysicalUplink = i.Name
+	}
 	for _, i := range ifaces {
 		s.Interfaces = append(s.Interfaces, routecheck.Interface{
 			Name: i.Name, Index: i.Index, Up: i.Up, Kind: i.Kind, Addrs: i.Addrs,

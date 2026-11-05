@@ -30,6 +30,9 @@ type state struct {
 	sandboxPort       uint32
 	// fingerprint identifies the uplink the running connection was built on.
 	fingerprint string
+	// routeTakeover is consent for this connection, including its reconnects
+	// and configuration changes. It is cleared by an explicit disconnect.
+	routeTakeover bool
 }
 
 type statusSub struct {

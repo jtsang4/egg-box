@@ -363,6 +363,51 @@ func TestRouteConflictRefusesUnlessConfirmed(t *testing.T) {
 	if !res.Ok {
 		t.Fatalf("confirmed connect: %+v", res)
 	}
+	assertTakeover := func() {
+		t.Helper()
+		starts := h.eng.Started()
+		var doc map[string]any
+		if err := json.Unmarshal(starts[len(starts)-1].JSON, &doc); err != nil {
+			t.Fatal(err)
+		}
+		route := doc["route"].(map[string]any)
+		if route["auto_detect_interface"] != false || route["default_interface"] != "en0" {
+			t.Fatalf("takeover must bypass the other VPN: %+v", route)
+		}
+		tun := doc["inbounds"].([]any)[0].(map[string]any)
+		if len(tun["route_address"].([]any)) != 8 {
+			t.Fatalf("missing takeover routes: %+v", tun)
+		}
+	}
+	assertTakeover()
+	if res := h.apply(tunConfig, h.st.CurrentN()); !res.Ok {
+		t.Fatalf("applying while taking over: %+v", res)
+	}
+	assertTakeover()
+	h.eng.Crash(errors.New("restart the core"))
+	h.waitStarts(3)
+	h.waitConn(agentapi.ConnectionState_CONNECTION_STATE_CONNECTED)
+	assertTakeover()
+	if res := h.disconnect(); !res.Ok {
+		t.Fatalf("disconnect: %+v", res)
+	}
+	if res := h.connect(); res.Ok || res.ErrorCode != agentapi.ErrorCode_ERROR_CODE_ROUTE_CONFLICT {
+		t.Fatalf("a new connection must request takeover consent again: %+v", res)
+	}
+}
+
+func TestTakeoverRefusesToUseAnotherTunnelAsUplink(t *testing.T) {
+	h := newHarness(t)
+	snap, _ := h.drv.Snapshot(context.Background())
+	snap.PhysicalUplink = "utun9"
+	snap.Interfaces = append(snap.Interfaces, routecheck.Interface{Name: "utun9", Up: true, Kind: routecheck.KindTunnel})
+	snap.Routes = append(snap.Routes, routecheck.Route{Dest: mustPrefix("0.0.0.0/0"), IfName: "utun9"})
+	h.drv.SetSnapshot(snap)
+	h.mustApply(tunConfig, 0)
+	res := h.c.Connect(context.Background(), &agentapi.ConnectRequest{RequestId: rid(), IgnoreRouteConflicts: true})
+	if res.Ok || res.ErrorCode != agentapi.ErrorCode_ERROR_CODE_PLATFORM || len(h.eng.Started()) != 0 {
+		t.Fatalf("unsafe takeover: %+v", res)
+	}
 }
 
 func TestNoFreeSubnetIsReported(t *testing.T) {

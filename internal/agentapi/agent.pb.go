@@ -1526,8 +1526,8 @@ type ConnectRequest struct {
 	RequestId string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	// expected_revision, when non-zero, must equal the stored revision.
 	ExpectedRevision uint64 `protobuf:"varint,2,opt,name=expected_revision,json=expectedRevision,proto3" json:"expected_revision,omitempty"`
-	// ignore_route_conflicts proceeds although another VPN already owns
-	// overlapping routes. Only set after the user confirmed the warning.
+	// ignore_route_conflicts takes priority over another VPN's default routes
+	// for this connection. Only set after the user confirmed the takeover.
 	IgnoreRouteConflicts bool `protobuf:"varint,3,opt,name=ignore_route_conflicts,json=ignoreRouteConflicts,proto3" json:"ignore_route_conflicts,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache

@@ -89,8 +89,8 @@ func TestRouteConflictAsksBeforeConnecting(t *testing.T) {
 	h.be.failNext = &agentclient.OpError{Code: agentapi.ErrorCode_ERROR_CODE_ROUTE_CONFLICT, Message: "10.0.0.0/8 is owned by utun4"}
 	h.click("Connect")
 	h.settle()
-	h.mustHave("Another VPN is in the way", "Connect anyway")
-	h.click("Connect anyway")
+	h.mustHave("Another VPN is in the way", "Take over and connect")
+	h.click("Take over and connect")
 	h.settle()
 	if !h.be.took("connect ignore=true") {
 		t.Fatalf("the second attempt should ignore conflicts: %v", h.be.called())

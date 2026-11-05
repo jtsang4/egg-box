@@ -850,6 +850,18 @@ func TestCheckNeverTouchesTheHostNetwork(t *testing.T) {
 	}
 }
 
+func TestCheckAcceptsConfirmedVPNTakeoverWithoutStartingIt(t *testing.T) {
+	r := newRig(t)
+	r.env.Tun.TakeoverInterface = "en0"
+	prepared := r.prepare(`{"inbounds":[{"type":"tun","tag":"tun-in"}],"outbounds":[{"type":"direct","tag":"direct"}],"route":{"final":"direct"}}`)
+	if err := r.client.Check(context.Background(), prepared); err != nil {
+		t.Fatal(err)
+	}
+	if r.client.Running() {
+		t.Fatal("checking takeover settings started the core")
+	}
+}
+
 func TestCheckDoesNotLeakGoroutines(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()

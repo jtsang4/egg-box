@@ -76,6 +76,17 @@ func (n *normalizer) tun(obj map[string]any, path string) {
 		delete(obj, "dns_address")
 	}
 	setOrDelete(obj, "interface_name", n.env.Tun.InterfaceName)
+	if n.env.Tun.TakeoverInterface != "" {
+		// Quarter-defaults outrank both full and split defaults used by VPNs.
+		// The core owns these routes for the lifetime of its TUN.
+		obj["route_address"] = stringsToAny([]string{
+			"0.0.0.0/2", "64.0.0.0/2", "128.0.0.0/2", "192.0.0.0/2",
+			"::/2", "4000::/2", "8000::/2", "c000::/2",
+		})
+		for _, k := range []string{"route_exclude_address", "route_address_set", "route_exclude_address_set"} {
+			delete(obj, k)
+		}
+	}
 }
 
 func setOrDelete(obj map[string]any, key, value string) {

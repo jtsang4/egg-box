@@ -104,6 +104,7 @@ func (c *Controller) disconnectJob(reason string) func(context.Context) *agentap
 			s.warnings = nil
 			s.fingerprint = ""
 			s.mode = ""
+			s.routeTakeover = false
 		})
 		c.logAgent("info", "disconnected (%s)", reason)
 		if !ok {
@@ -168,13 +169,14 @@ func (c *Controller) applyJob(req *agentapi.ApplyConfigRequest) func(context.Con
 func (c *Controller) hotApply(ctx context.Context, rev store.Revision, issues []*agentapi.Issue) *agentapi.OperationResult {
 	c.cancelRetry()
 	good, hadGood := c.cfg.Store.LastGood()
+	opts := upOptions{ignoreConflicts: c.state().routeTakeover}
 
 	c.update(func(s *state) {
 		s.conn = agentapi.ConnectionState_CONNECTION_STATE_CONNECTING
 		s.lastErr, s.lastErrCode = "", agentapi.ErrorCode_ERROR_CODE_UNSPECIFIED
 	})
 	c.teardown("apply")
-	oerr := c.bringUp(ctx, rev, upOptions{})
+	oerr := c.bringUp(ctx, rev, opts)
 	if oerr == nil {
 		res := success("revision %d is running", rev.N)
 		res.Issues = issues
@@ -207,7 +209,7 @@ func (c *Controller) hotApply(ctx context.Context, rev store.Revision, issues []
 		c.log.Error("revert failed", "err", err)
 	}
 	c.update(func(s *state) { s.conn = agentapi.ConnectionState_CONNECTION_STATE_CONNECTING })
-	if rbErr := c.bringUp(ctx, good, upOptions{}); rbErr != nil {
+	if rbErr := c.bringUp(ctx, good, opts); rbErr != nil {
 		c.update(func(s *state) {
 			s.conn = agentapi.ConnectionState_CONNECTION_STATE_FAILED
 			s.activeRev = 0
@@ -247,7 +249,7 @@ func (c *Controller) reconnectJob(reason string, attempt uint32) func(context.Co
 		c.logAgent("info", "reconnecting (%s), attempt %d", reason, attempt)
 		c.teardown("reconnect: " + reason)
 
-		oerr := c.bringUp(ctx, rev, upOptions{})
+		oerr := c.bringUp(ctx, rev, upOptions{ignoreConflicts: c.state().routeTakeover})
 		if oerr == nil {
 			return success("reconnected")
 		}

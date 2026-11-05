@@ -100,7 +100,7 @@ func (c *Client) do(ctx context.Context, call func(ctx context.Context, api agen
 type ConnectOptions struct {
 	// ExpectedRevision, when non-zero, must equal the agent's stored revision.
 	ExpectedRevision uint64
-	// IgnoreRouteConflicts proceeds although another VPN owns overlapping routes.
+	// IgnoreRouteConflicts confirms takeover of another VPN's default routes.
 	IgnoreRouteConflicts bool
 }
 

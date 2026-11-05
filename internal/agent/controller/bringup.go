@@ -21,7 +21,7 @@ import (
 )
 
 type upOptions struct {
-	// ignoreConflicts proceeds although another tunnel owns default routes.
+	// ignoreConflicts confirms takeover of another tunnel's default routes.
 	ignoreConflicts bool
 }
 
@@ -89,11 +89,14 @@ func (c *Controller) bringUp(ctx context.Context, rev store.Revision, opts upOpt
 	var active platform.ActiveTun
 	if res.HasTun {
 		// A real TUN: judge the machine's routes first, then fix the plan.
-		plan, perr := c.planTun(ctx, opts)
+		plan, uplink, perr := c.planTun(ctx, opts)
 		if perr != nil {
 			return perr
 		}
 		env.Tun.Addresses = prefixStrings(plan.Addresses())
+		if opts.ignoreConflicts {
+			env.Tun.TakeoverInterface = uplink
+		}
 		res = c.cfg.Policy.Normalize(raw, env)
 		if res.HasErrors() {
 			return policyError(res)
@@ -162,6 +165,7 @@ func (c *Controller) bringUp(ctx context.Context, rev store.Revision, opts upOpt
 		s.sandboxPort = uint32(sandboxPort)
 		s.fingerprint = fp
 		s.network = agentapi.NetworkState_NETWORK_STATE_ONLINE
+		s.routeTakeover = opts.ignoreConflicts
 		if s.cleanup == agentapi.CleanupState_CLEANUP_STATE_RECOVERED {
 			s.cleanup = agentapi.CleanupState_CLEANUP_STATE_IDLE
 			s.cleanupDetail = ""
@@ -173,10 +177,10 @@ func (c *Controller) bringUp(ctx context.Context, rev store.Revision, opts upOpt
 }
 
 // planTun inspects the machine and picks a conflict-free TUN subnet.
-func (c *Controller) planTun(ctx context.Context, opts upOptions) (routecheck.Plan, *opError) {
+func (c *Controller) planTun(ctx context.Context, opts upOptions) (routecheck.Plan, string, *opError) {
 	snap, err := c.cfg.Driver.Snapshot(ctx)
 	if err != nil {
-		return routecheck.Plan{}, newOpError(agentapi.ErrorCode_ERROR_CODE_PLATFORM, err, "the network configuration cannot be read")
+		return routecheck.Plan{}, "", newOpError(agentapi.ErrorCode_ERROR_CODE_PLATFORM, err, "the network configuration cannot be read")
 	}
 	owned := map[string]bool{}
 	for _, e := range c.cfg.Ledger.Entries() {
@@ -197,7 +201,7 @@ func (c *Controller) planTun(ctx context.Context, opts upOptions) (routecheck.Pl
 			names = append(names, cf.Interface)
 			lines = append(lines, cf.String())
 		}
-		return routecheck.Plan{}, &opError{
+		return routecheck.Plan{}, "", &opError{
 			code: agentapi.ErrorCode_ERROR_CODE_ROUTE_CONFLICT,
 			msg:  "another VPN or tunnel already carries the default route: " + strings.Join(names, ", "),
 			details: map[string]string{
@@ -209,13 +213,26 @@ func (c *Controller) planTun(ctx context.Context, opts upOptions) (routecheck.Pl
 	}
 	plan, ok := routecheck.ChoosePlan(snap, c.cfg.Candidates)
 	if !ok {
-		return routecheck.Plan{}, &opError{
+		return routecheck.Plan{}, "", &opError{
 			code:    agentapi.ErrorCode_ERROR_CODE_ROUTE_CONFLICT,
 			msg:     "every private subnet the tunnel could use is already taken on this machine",
 			details: map[string]string{"kind": string(routecheck.ConflictNoSubnet)},
 		}
 	}
-	return plan, nil
+	if opts.ignoreConflicts {
+		physical := false
+		for _, i := range snap.Interfaces {
+			if i.Name == snap.PhysicalUplink && i.Up && !i.Ours && i.Kind == routecheck.KindPhysical {
+				physical = true
+				break
+			}
+		}
+		if !physical {
+			return routecheck.Plan{}, "", newOpError(agentapi.ErrorCode_ERROR_CODE_PLATFORM, nil,
+				"cannot take over VPN routes without a physical network uplink; disconnect the other VPN and retry")
+		}
+	}
+	return plan, snap.PhysicalUplink, nil
 }
 
 // teardown stops the core and releases everything the agent created. It is
