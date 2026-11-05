@@ -14,6 +14,7 @@ import (
 	"eggbox/internal/agentapi"
 	"eggbox/internal/agentclient"
 	"eggbox/internal/app"
+	"eggbox/internal/routing"
 	"eggbox/internal/subscription"
 )
 
@@ -41,7 +42,7 @@ func TestNavigation(t *testing.T) {
 	pages := []struct{ nav, title string }{
 		{"Nodes", "nodes available"},
 		{"Subscriptions", "subscriptions"},
-		{"Rules", "custom rules"},
+		{"Routing", "items · Recommended"},
 		{"Connections", "active connections"},
 		{"Logs", "lines"},
 		{"Settings", "Make it yours"},
@@ -104,8 +105,12 @@ func TestPickingANode(t *testing.T) {
 	h.mustHave("Tokyo 02", "Automatic")
 	h.click("Tokyo 02")
 	h.settle()
-	if !h.be.took("select ") {
+	if !h.be.took("main node:Tokyo 02") {
 		t.Fatalf("calls: %v", h.be.called())
+	}
+	// The choice is the main exit now: the card that is lit is the node's.
+	if got := h.be.Routing().Main; got.Kind != routing.DestNode || got.Node == nil || got.Node.Name != "Tokyo 02" {
+		t.Fatalf("main exit = %+v", got)
 	}
 }
 
@@ -113,12 +118,12 @@ func TestNodeSearchNarrowsTheList(t *testing.T) {
 	h := newHarness(t, harnessOpt{})
 	h.click("Nodes")
 	h.settle()
-	h.mustHave("Osaka 01", "Taipei 01")
+	h.mustHave("Osaka 01", "Singapore 01")
 	h.click("Search nodes")
 	h.typeText("osaka")
 	h.settle()
 	h.mustHave("Osaka 01")
-	h.mustNotHave("Taipei 01", "Tokyo 01")
+	h.mustNotHave("Singapore 01", "Tokyo 02")
 }
 
 func TestAddSubscription(t *testing.T) {
@@ -157,56 +162,6 @@ func TestImportNodes(t *testing.T) {
 	h.click("Import nodes")
 	h.settle()
 	h.mustHave("Import nodes", "Share links")
-}
-
-func TestDeleteSubscriptionAsksFirst(t *testing.T) {
-	h := newHarness(t, harnessOpt{})
-	h.click("Subscriptions")
-	h.settle()
-	h.mustHave("Aurora Cloud", "Nimbus Net")
-	if err := h.ui.RightClick("Aurora Cloud"); err != nil {
-		t.Fatal(err)
-	}
-	menu := h.ui.Menu()
-	if len(menu) == 0 {
-		t.Skip("no context menu on the card; the overflow button is used instead")
-	}
-}
-
-func TestRulesPageShowsCustomRules(t *testing.T) {
-	h := newHarness(t, harnessOpt{})
-	h.click("Rules")
-	h.settle()
-	h.mustHave("intranet.example", "ads-tracker", "Slack", "China direct", "Proxy all", "Foreign only")
-}
-
-func TestChoosingAPreset(t *testing.T) {
-	h := newHarness(t, harnessOpt{})
-	h.click("Rules")
-	h.settle()
-	h.click("Proxy all")
-	h.settle()
-	if !h.be.took("save-prefs") {
-		t.Fatalf("calls: %v", h.be.called())
-	}
-	if got := h.be.Prefs().Preset; got != "proxy_all" && got == "" {
-		t.Fatalf("preset not saved: %q", got)
-	}
-}
-
-func TestAddingARule(t *testing.T) {
-	h := newHarness(t, harnessOpt{})
-	h.click("Rules")
-	h.settle()
-	h.click("Add rule")
-	h.settle()
-	h.mustHave("Add a rule", "Matches")
-	h.typeText("corp.example")
-	h.enter()
-	h.settle()
-	if !h.be.took("save-rules 4") {
-		t.Fatalf("calls: %v", h.be.called())
-	}
 }
 
 func TestSettingsPersistChoices(t *testing.T) {
@@ -539,7 +494,7 @@ func keyRoots() map[string]bool {
 func TestNoRawKeysOnAnyPage(t *testing.T) {
 	for _, lang := range []string{"en", "zh"} {
 		h := newHarness(t, harnessOpt{lang: lang})
-		for _, nav := range []string{"nav.dashboard", "nav.nodes", "nav.subscriptions", "nav.rules", "nav.connections", "nav.logs", "nav.settings"} {
+		for _, nav := range []string{"nav.dashboard", "nav.nodes", "nav.subscriptions", "nav.routing", "nav.connections", "nav.logs", "nav.settings"} {
 			h.app.lang = lang
 			h.click(h.app.t(nav))
 			h.settle()
@@ -555,7 +510,7 @@ func TestNoRawKeysOnAnyPage(t *testing.T) {
 func TestSmallAndLargeWindows(t *testing.T) {
 	for _, sz := range []struct{ w, h int }{{900, 620}, {1920, 1080}, {1280, 720}} {
 		h := newHarness(t, harnessOpt{w: sz.w, h: sz.h})
-		for _, nav := range []string{"Nodes", "Subscriptions", "Rules", "Connections", "Logs", "Settings", "Dashboard"} {
+		for _, nav := range []string{"Nodes", "Subscriptions", "Routing", "Connections", "Logs", "Settings", "Dashboard"} {
 			h.click(nav)
 			h.settle()
 		}

@@ -9,6 +9,7 @@ import (
 
 	"eggbox/internal/app"
 	"eggbox/internal/configgen"
+	"eggbox/internal/routing"
 )
 
 // dashboardPage is the home of the application: the connection and what
@@ -33,7 +34,7 @@ func (a *App) dashSubtitle() string {
 	case len(a.subs) == 0:
 		return a.t("dash.sub.empty")
 	}
-	return a.tn("dash.sub.ready", n, "subs", strconv.Itoa(len(a.subs)))
+	return a.tn("dash.sub.ready", n, "subs", a.tn("dash.subs", len(a.subs)))
 }
 
 // modeNames are the routing modes in the order the switch shows them.
@@ -186,14 +187,17 @@ func (a *App) heroSubline(c *ui.Context) {
 	ph := a.snap.Phase
 	switch ph {
 	case app.PhaseConnected, app.PhaseReconnecting:
-		it, via, ok := a.exitNode()
+		ex, ok := a.mainExitNow()
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
 			if ok {
-				a.regionBadge(c, it.Node.Region, 22)
-				a.txt(c, it.Node.Name, 15, 600, p.Text).SingleLine()
-				a.chip(c, it.Node.Protocol, toneBlue, "")
-				if via != "" {
-					a.chip(c, a.viaLabel(via), toneNeutral, "zap")
+				a.regionBadge(c, ex.Node.Region, 22)
+				a.txt(c, ex.Node.Label(), 15, 600, p.Text).SingleLine()
+				a.chip(c, ex.Node.Protocol, toneBlue, "")
+				if ex.Via != "" {
+					a.chip(c, a.viaLabel(ex.Via), toneNeutral, "zap")
+				}
+				if ex.StandIn {
+					a.chip(c, a.t("hero.stand_in"), toneWarn, "alert").Tooltip(a.t("hero.stand_in.tip"))
 				}
 			} else {
 				a.txt(c, a.t("hero.sub.noexit"), 14, 400, p.Text2)
@@ -217,7 +221,7 @@ func (a *App) viaLabel(tag string) string {
 		return a.t("group.auto")
 	}
 	if len(tag) > len(configgen.RegionPrefix) && tag[:len(configgen.RegionPrefix)] == configgen.RegionPrefix {
-		return a.t("group.region", "code", tag[len(configgen.RegionPrefix):])
+		return a.t("group.region", "name", a.regionName(tag[len(configgen.RegionPrefix):]))
 	}
 	return tag
 }
@@ -296,7 +300,7 @@ func (a *App) heroFoot(c *ui.Context) {
 	ui.Row(c).Padding(0, 32, 24, 32).Gap(28).Children(func() {
 		a.heroFact(c, "globe", fmtCount(int64(a.nodeCount())), a.t("hero.fact.nodes"))
 		a.heroFact(c, "rss", fmtCount(int64(len(a.subs))), a.t("hero.fact.subs"))
-		a.heroFact(c, "route", a.presetName(a.prefs.Preset), a.t("hero.fact.preset"))
+		a.heroFact(c, "route", a.planName(a.rv().Plan), a.t("hero.fact.plan"))
 		a.heroFact(c, "clock", a.lastConnected(), a.t("hero.fact.last"))
 	})
 }
@@ -319,16 +323,6 @@ func (a *App) lastConnected() string {
 	return a.t("time.never")
 }
 
-func (a *App) presetName(preset configgen.Preset) string {
-	switch preset {
-	case configgen.PresetProxyAll:
-		return a.t("preset.proxyall")
-	case configgen.PresetForeignOnly:
-		return a.t("preset.foreign")
-	}
-	return a.t("preset.china")
-}
-
 // ----------------------------------------------------------------- stats
 
 func (a *App) statRow(c *ui.Context) {
@@ -341,8 +335,8 @@ func (a *App) statRow(c *ui.Context) {
 		a.statTile(c, "arrow-up", toneBlue, a.t("stat.uploaded"), valOr(online, un), unitOr(online, uu))
 		a.statTile(c, "swap", toneNeutral, a.t("stat.connections"), valOr(online, fmtCount(int64(tr.Connections))), "")
 		lat, lt := "—", toneNeutral
-		if it, _, ok := a.exitNode(); ok && online && it.DelayMS > 0 {
-			lat, lt = strconv.Itoa(it.DelayMS), latencyTone(it.DelayMS)
+		if ex, ok := a.mainExitNow(); ok && online && ex.DelayMS > 0 {
+			lat, lt = strconv.Itoa(ex.DelayMS), latencyTone(ex.DelayMS)
 		}
 		a.statTile(c, "zap", lt, a.t("stat.latency"), lat, boolOr(lat != "—", "ms", ""))
 	})
@@ -393,22 +387,22 @@ func (a *App) exitCard(c *ui.Context) {
 				a.goTo(pageNodes)
 			}
 		})
-		it, via, ok := a.exitNode()
+		ex, ok := a.mainExitNow()
 		switch {
 		case ok && a.snap.Phase.Online():
-			a.exitRow(c, it.Node.Region, it.Node.Name, it.Node.Protocol+"  ·  "+it.Node.Transport, it.DelayMS, via)
-		default:
-			if n, pinned := a.selectedEntry(); pinned {
-				a.exitRow(c, n.Region, n.Name, n.Protocol+"  ·  "+n.Transport, n.Delay, "")
-			} else {
-				ui.Row(c).Gap(14).AlignItems(ui.Center).Children(func() {
-					a.iconTile(c, "zap", toneBlue, 46)
-					ui.Column(c).Gap(3).Children(func() {
-						a.txt(c, a.t("dash.exit.auto"), 15, 650, p.Text)
-						a.caption(c, a.t("dash.exit.auto.hint"))
-					})
+			a.exitRow(c, ex.Node.Region, ex.Node.Label(), ex.Node.Protocol+"  ·  "+ex.Node.Transport, ex.DelayMS, ex.Via)
+			if ex.StandIn && ex.Wanted != nil {
+				want := ex.Wanted.Name
+				if n, m := a.nodeFor(*ex.Wanted); m != routing.MatchNone {
+					want = n.Label()
+				}
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Icon(c, icon("alert")).Size(14, 14).TextColor(p.Warn).Shrink(0)
+					a.txt(c, a.t("dash.exit.stand_in", "node", want), 12.5, 500, p.Warn).LineHeight(1.4)
 				})
 			}
+		default:
+			a.offlineExit(c)
 		}
 		if g, found := a.group(configgen.TagProxy); found && a.snap.Phase.Online() {
 			a.hr(c)
@@ -421,6 +415,45 @@ func (a *App) exitCard(c *ui.Context) {
 				}
 			})
 		}
+	})
+}
+
+// offlineExit says what the main exit is set to while there is no connection.
+func (a *App) offlineExit(c *ui.Context) {
+	p := a.pl
+	main := a.rt().Main
+	switch main.Kind {
+	case routing.DestNode:
+		if main.Node != nil {
+			if n, m := a.nodeFor(*main.Node); m != routing.MatchNone {
+				a.exitRow(c, n.Region, n.Label(), n.Protocol+"  ·  "+n.Transport, n.Delay, "")
+				return
+			}
+			ui.Row(c).Gap(14).AlignItems(ui.Center).Children(func() {
+				a.iconTile(c, "alert", toneWarn, 46)
+				ui.Column(c).Gap(3).Children(func() {
+					a.txt(c, main.Node.Name, 15, 650, p.Text).SingleLine()
+					a.caption(c, a.t("nodes.pinned.gone"))
+				})
+			})
+			return
+		}
+	case routing.DestRegion:
+		ui.Row(c).Gap(14).AlignItems(ui.Center).Children(func() {
+			a.regionBadge(c, main.Region, 46)
+			ui.Column(c).Gap(3).Children(func() {
+				a.txt(c, a.t("nodes.fastest_in", "name", a.regionName(main.Region)), 15, 650, p.Text)
+				a.caption(c, a.t("dash.exit.region.hint"))
+			})
+		})
+		return
+	}
+	ui.Row(c).Gap(14).AlignItems(ui.Center).Children(func() {
+		a.iconTile(c, "zap", toneBlue, 46)
+		ui.Column(c).Gap(3).Children(func() {
+			a.txt(c, a.t("dash.exit.auto"), 15, 650, p.Text)
+			a.caption(c, a.t("dash.exit.auto.hint"))
+		})
 	})
 }
 

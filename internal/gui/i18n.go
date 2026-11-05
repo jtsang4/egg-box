@@ -2,7 +2,6 @@ package gui
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -59,7 +58,7 @@ func (a *App) tn(key string, n int, kv ...string) string {
 	if a.lang != "zh" && n == 1 {
 		form = ".one"
 	}
-	return a.t(key+form, append([]string{"n", strconv.Itoa(n)}, kv...)...)
+	return a.t(key+form, append([]string{"n", fmtCount(int64(n))}, kv...)...)
 }
 
 // ago words a past time relative to now.

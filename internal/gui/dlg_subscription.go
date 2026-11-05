@@ -20,6 +20,8 @@ var subIntervals = []int{6, 12, 24, 48, 0}
 type subDialog struct {
 	edit     *library.Subscription // nil when adding
 	name     string
+	alias    string
+	auto     bool // the nodes take part in the automatic choice
 	link     string
 	ua       string
 	include  string
@@ -32,13 +34,19 @@ type subDialog struct {
 }
 
 func (a *App) openAddSubscription() {
-	d := &subDialog{interval: indexOfInterval(library.DefaultIntervalHours)}
+	d := &subDialog{interval: indexOfInterval(library.DefaultIntervalHours), auto: true}
 	// A copied link is the most likely thing to add.
 	a.openDialog(d)
 }
 
+// openAddSubscriptionWith opens the same dialog with a link already in it:
+// a link found somewhere else that turned out to be a subscription.
+func (a *App) openAddSubscriptionWith(link string) {
+	a.openDialog(&subDialog{interval: indexOfInterval(library.DefaultIntervalHours), auto: true, link: strings.TrimSpace(link)})
+}
+
 func (a *App) openEditSubscription(s library.Subscription) {
-	d := &subDialog{edit: &s, name: s.Name, ua: s.UserAgent, include: s.Include, exclude: s.Exclude,
+	d := &subDialog{edit: &s, name: s.Name, alias: s.Alias, auto: !s.NoAuto, ua: s.UserAgent, include: s.Include, exclude: s.Exclude,
 		interval: indexOfInterval(s.IntervalHours), advanced: s.UserAgent != "" || s.Include != "" || s.Exclude != ""}
 	if s.Kind == library.KindRemote {
 		if link, err := a.be.Link(s.ID); err == nil {
@@ -96,6 +104,13 @@ func (d *subDialog) frame(a *App, c *ui.Context) dlgFrame {
 					d.submit(a)
 				}
 			})
+			a.field(c, a.t("subdlg.alias"), a.t("subdlg.alias.hint"), func() {
+				in := a.input(c, "sd-alias", &d.alias, a.t("subdlg.alias.placeholder"))
+				if in.Submitted() {
+					d.submit(a)
+				}
+			})
+			a.toggleRow(c, "sd-auto", a.t("subdlg.auto"), a.t("subdlg.auto.desc"), &d.auto, false)
 			if d.remote() {
 				a.field(c, a.t("subdlg.interval"), a.t("subdlg.interval.hint"), func() {
 					items := make([]segItem, len(subIntervals))
@@ -177,6 +192,7 @@ func (d *subDialog) submit(a *App) {
 	d.busy, d.err = true, ""
 	hours := subIntervals[d.interval]
 	name, ua, inc, exc := strings.TrimSpace(d.name), strings.TrimSpace(d.ua), d.include, d.exclude
+	alias, auto := strings.TrimSpace(d.alias), d.auto
 	var run func(ctx context.Context) error
 	if d.edit == nil {
 		run = func(ctx context.Context) error {
@@ -184,8 +200,10 @@ func (d *subDialog) submit(a *App) {
 			if err != nil {
 				return err
 			}
-			if hours != library.DefaultIntervalHours {
-				return a.be.EditSubscription(ctx, sub.ID, func(s *library.Subscription) { s.IntervalHours = hours })
+			if hours != library.DefaultIntervalHours || alias != "" || !auto {
+				return a.be.EditSubscription(ctx, sub.ID, func(s *library.Subscription) {
+					s.IntervalHours, s.Alias, s.NoAuto = hours, alias, !auto
+				})
 			}
 			return nil
 		}
@@ -200,6 +218,7 @@ func (d *subDialog) submit(a *App) {
 			}
 			err := a.be.EditSubscription(ctx, id, func(s *library.Subscription) {
 				s.Name, s.Include, s.Exclude = name, inc, exc
+				s.Alias, s.NoAuto = alias, !auto
 				if remote {
 					s.UserAgent, s.IntervalHours = ua, hours
 				}

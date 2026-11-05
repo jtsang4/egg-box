@@ -22,6 +22,7 @@ import (
 	"eggbox/internal/app"
 	"eggbox/internal/configgen"
 	"eggbox/internal/library"
+	"eggbox/internal/routing"
 )
 
 // Options configure an App.
@@ -89,7 +90,7 @@ const (
 	pageDashboard page = iota
 	pageNodes
 	pageSubscriptions
-	pageRules
+	pageRouting
 	pageConnections
 	pageLogs
 	pageSettings
@@ -130,17 +131,32 @@ type App struct {
 
 	scrolls  []ui.ScrollState
 	nodes    []nodeEntry
-	nodesSig string
+	live     []routing.LiveNode
+	nodesVer uint64
+	// withLive is nodes with the core's measurements applied, kept for the
+	// snapshot and library version it was made from.
+	withLive     []nodeEntry
+	withLiveSnap *app.Snapshot
+	withLiveVer  uint64
+	// tagMap finds a node by the tag the core knows it under.
+	tagMap  map[string]int
+	tagSnap *app.Snapshot
+	tagVer  uint64
+	// rtc is the routing state and the plan in force, read again when the
+	// library changes.
+	rtc routingCache
 
-	dlg     dialog
-	dlgOpen bool
-	jobs    map[string]bool
+	dlg      dialog
+	dlgStack []dialog
+	dlgOpen  bool
+	jobs     map[string]bool
 
 	node nodesState
 	conn connsState
 	logs logsState
 	sett settingsState
 	boot onboardState
+	rte  routingState
 
 	pending atomic.Bool
 
@@ -273,6 +289,7 @@ func (a *App) resolve(c *ui.Context, slot *atomic.Pointer[ui.Services]) {
 	a.set = a.be.Settings()
 	a.subs = a.be.Subscriptions()
 	a.prefs = a.be.Prefs()
+	a.readRouting()
 
 	lang := a.set.Language
 	if lang == "" {

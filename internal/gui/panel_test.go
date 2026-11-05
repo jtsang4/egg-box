@@ -2,10 +2,11 @@ package gui
 
 import (
 	"context"
-	"sort"
 	"testing"
 
 	"eggbox/internal/app"
+	"eggbox/internal/library"
+	"eggbox/internal/routing"
 )
 
 func panelHarness(t *testing.T, dark bool, setup func(*fixtureBackend, *Options)) *harness {
@@ -65,48 +66,81 @@ func TestPanelConnects(t *testing.T) {
 	}
 
 	h = panelHarness(t, true, nil)
-	h.mustHave("PROTECTED", "FASTEST NODES")
+	h.mustHave("PROTECTED", "MAIN EXIT")
 	h.click("Connect or disconnect")
 	if !h.be.took("disconnect") {
 		t.Fatalf("the orb did not disconnect: %v", h.be.called())
 	}
 }
 
-// TestPanelNodes: the panel lists the fastest nodes, and a click moves traffic.
-func TestPanelNodes(t *testing.T) {
-	h := panelHarness(t, true, nil)
-	nodes := h.app.liveNodes()
-	var timed []nodeEntry
-	for _, n := range nodes {
-		if n.Delay > 0 {
-			timed = append(timed, n)
-		}
+// chosenLately makes the fixture remember that the person switched the main
+// exit to these nodes (the first name the latest), and leaves it on automatic.
+func chosenLately(names ...string) func(*fixtureBackend, *Options) {
+	return func(be *fixtureBackend, _ *Options) {
+		be.arrange(func(st *routing.State) {
+			for i := len(names) - 1; i >= 0; i-- {
+				n, ok := be.node(names[i])
+				if !ok {
+					panic("no fixture node " + names[i])
+				}
+				if err := st.SetMain(routing.ToNode(n.ID())); err != nil {
+					panic(err)
+				}
+			}
+			if err := st.SetMain(routing.Auto()); err != nil {
+				panic(err)
+			}
+		})
 	}
-	sort.SliceStable(timed, func(i, j int) bool { return timed[i].Delay < timed[j].Delay })
-	if len(timed) < 3 {
-		t.Fatalf("the fixture has %d timed nodes", len(timed))
-	}
-	for _, n := range timed[:3] {
-		h.mustHave(n.Name)
-	}
-	h.mustNotHave(timed[3].Name)
+}
 
-	// The node in use needs no click; any other one moves the traffic.
-	use := ""
-	if it, _, ok := h.app.exitNode(); ok && it.Node != nil {
-		use = it.Node.Key
+// TestPanelQuickSwitch: the panel offers a few ways to move the main exit (the
+// automatic choice, the busiest region, the nodes used last), and one click
+// moves the traffic.
+func TestPanelQuickSwitch(t *testing.T) {
+	h := panelHarness(t, true, chosenLately("Seoul 01", "Osaka 01"))
+	h.mustHave("MAIN EXIT", "Automatic", "Fastest in Hong Kong", "Seoul 01", "Osaka 01")
+	h.mustNotHave("Taipei 01", "Tokyo 02")
+
+	h.click("Seoul 01")
+	if !h.be.took("main node:Seoul 01") {
+		t.Fatalf("clicking a node did not choose it: %v", h.be.called())
 	}
-	for _, n := range timed[:3] {
-		if n.Key == use {
-			continue
-		}
-		h.click(n.Name)
-		if !h.be.took("select " + n.Key) {
-			t.Fatalf("clicking %q did not select it: %v", n.Name, h.be.called())
-		}
-		return
+	h.settle()
+	// The choice in force needs no click of its own: it is marked, and the
+	// nodes used before stay in the list.
+	if got := h.be.Routing().Main; got.Kind != routing.DestNode || got.Node.Name != "Seoul 01" {
+		t.Fatalf("main exit = %+v", got)
 	}
-	t.Fatalf("every listed node is the one in use?")
+	h.mustHave("Seoul 01", "Osaka 01", "Automatic")
+
+	h.click("Fastest in Hong Kong")
+	if !h.be.took("main region:HK") {
+		t.Fatalf("the region was not chosen: %v", h.be.called())
+	}
+	h.settle()
+	h.click("Automatic")
+	if !h.be.took("main auto") {
+		t.Fatalf("automatic was not chosen: %v", h.be.called())
+	}
+}
+
+// TestPanelQuickSwitchSkipsNodesThatAreGone: a node chosen once and no longer
+// offered by any subscription is not a way to switch.
+func TestPanelQuickSwitchSkipsNodesThatAreGone(t *testing.T) {
+	h := panelHarness(t, true, func(be *fixtureBackend, o *Options) {
+		chosenLately("Seoul 01", "Osaka 01")(be, o)
+		var keep []library.ActiveNode
+		for _, n := range be.nodes {
+			if n.Node.Name != "Seoul 01" {
+				keep = append(keep, n)
+			}
+		}
+		be.nodes = keep
+		be.refresh()
+	})
+	h.mustHave("Osaka 01")
+	h.mustNotHave("Seoul 01")
 }
 
 // TestPanelMode: the routing mode switches from the panel.

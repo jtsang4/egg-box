@@ -451,6 +451,16 @@ func (a *App) area(c *ui.Context, key string, val *string, placeholder string, m
 
 // search is a styled search field.
 func (a *App) search(c *ui.Context, key string, val *string, placeholder string, width float32) ui.Element {
+	return a.searchField(c, key, val, placeholder, width, false)
+}
+
+// searchFirst is a search field that is the first thing a dialog asks for: it
+// has the keyboard as the dialog opens.
+func (a *App) searchFirst(c *ui.Context, key string, val *string, placeholder string, width float32) ui.Element {
+	return a.searchField(c, key, val, placeholder, width, true)
+}
+
+func (a *App) searchField(c *ui.Context, key string, val *string, placeholder string, width float32, first bool) ui.Element {
 	p := a.pl
 	row := ui.Row(c.Key(key+"-wrap")).Height(36).Padding(0, 12).Gap(8).Radius(radiusControl).Border(1, p.Line).Background(p.Field).AlignItems(ui.Center)
 	if width > 0 {
@@ -463,6 +473,9 @@ func (a *App) search(c *ui.Context, key string, val *string, placeholder string,
 		in := ui.TextInputBase(c.Key(key), val).Placeholder(placeholder).Label(placeholder).Grow(1).Height(34)
 		in.TextColor(p.Text)
 		in.PlaceholderColor(p.Text3)
+		if first {
+			in.AutoFocus()
+		}
 		if *val != "" {
 			if a.btn(c, btnSpec{kind: btnGhost, icon: "x", small: true, iconOnly: true, tip: a.t("common.clear")}).Clicked() {
 				*val = ""
@@ -656,6 +669,35 @@ func (a *App) emptyState(c *ui.Context, iconName, title, desc string, actions fu
 		a.txt(c, desc, 13, 400, p.Text2).TextAlign(ui.Center).MaxWidth(380).LineHeight(1.5)
 		if actions != nil {
 			ui.Row(c).Gap(10).Padding(12, 0, 0, 0).Children(actions)
+		}
+	})
+}
+
+// dropdown is a select drawn in the application's style: a field that opens
+// a menu of choices.
+func (a *App) dropdown(c *ui.Context, key string, items []string, cur int, pick func(int)) {
+	if len(items) == 0 {
+		return
+	}
+	p := a.pl
+	if cur < 0 || cur >= len(items) {
+		cur = 0
+	}
+	b := ui.ButtonBase(c.Key(key))
+	b.Label(items[cur])
+	b.Height(38).Padding(0, 12).Gap(8).Radius(radiusControl).Border(1, p.Line).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+	hov := b.AnimateTo("hov", boolf(b.Hovered()), ui.Animation{Duration: 130 * time.Millisecond})
+	b.Background(p.Field.Mix(p.PanelHi, hov))
+	b.BorderColor(p.Line.Mix(p.LineHi, hov))
+	b.Children(func() {
+		a.txt(c, items[cur], 13.5, 500, p.Text).SingleLine().Grow(1)
+		ui.Icon(c, icon("chevron-down")).Size(15, 15).TextColor(p.Text3)
+	})
+	b.PopoverMenuButton(func(m *ui.Menu) {
+		for i, it := range items {
+			if m.Item(it).Radio(i == cur).Chosen() {
+				pick(i)
+			}
 		}
 	})
 }

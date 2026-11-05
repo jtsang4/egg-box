@@ -130,13 +130,15 @@ func (a *App) refreshOne(id string) {
 	}, nil)
 }
 
-// pickNode chooses the node traffic leaves through ("" is automatic).
-func (a *App) pickNode(key string) {
-	a.job("select", func(ctx context.Context) error { return a.be.SelectKey(ctx, key) }, func(err error) {
-		if err != nil {
-			a.fail(err)
+// savePrefs stores a change to the routing preferences.
+func (a *App) savePrefs(p configgen.Prefs) {
+	a.job("prefs", func(ctx context.Context) error {
+		notes, err := a.be.SavePrefs(ctx, p)
+		if err == nil && len(notes) > 0 {
+			a.post(func() { a.toastInfo(a.t("prefs.adjusted")) })
 		}
-	})
+		return err
+	}, func(err error) { a.fail(err) })
 }
 
 // updateSettings changes a preference and reports a failure.

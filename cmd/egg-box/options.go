@@ -124,7 +124,7 @@ flags. These are for trying it out.
   --connect        with --demo, connect as soon as the window is up
   --seed N         with --demo, make the traffic repeatable
   --size WxH       window size in pixels (default 1200x780)
-  --page NAME      open on a page: dashboard, nodes, subscriptions, rules,
+  --page NAME      open on a page: dashboard, nodes, subscriptions, routing,
                    connections, logs or settings
   --theme NAME     with --demo: system, light or dark
   --lang CODE      with --demo: en or zh

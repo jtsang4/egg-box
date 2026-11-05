@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/netip"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -14,13 +16,19 @@ import (
 	"eggbox/internal/app"
 	"eggbox/internal/configgen"
 	"eggbox/internal/library"
+	"eggbox/internal/plancompile"
+	"eggbox/internal/routing"
+	"eggbox/internal/rulefmt"
+	"eggbox/internal/ruleurl"
 	"eggbox/internal/subscription"
 )
 
 // fixtureBackend is an in-memory Backend with invented data: it never talks
 // to a service or the network, so screenshots and interaction tests are
 // deterministic. None of its names, servers or figures belongs to any real
-// provider.
+// provider. The routing state is the real one (internal/routing); what the
+// service would work out from it (where each item's traffic leaves, what the
+// rule files hold) is worked out here in a few lines.
 type fixtureBackend struct {
 	mu     sync.Mutex
 	snap   *app.Snapshot
@@ -28,13 +36,20 @@ type fixtureBackend struct {
 	nodes  []library.ActiveNode
 	set    library.Settings
 	prefs  configgen.Prefs
-	rules  []configgen.CustomRule
-	data   []app.RuleData
+	rt     routing.State
+	ver    uint64
 	notify func()
 	calls  []string
 	// failNext makes the next operation fail with this error.
 	failNext error
 	watching bool
+	// down names the nodes that do not answer; missing the rule files that are
+	// not downloaded; failing the ones whose last update failed.
+	down    map[string]bool
+	missing map[string]bool
+	failing map[string]bool
+	// partial names the rule files some of whose rules the engine cannot use.
+	partial map[string]bool
 }
 
 // fixtureNow is the fixed "now" of the fixtures.
@@ -91,9 +106,26 @@ func fixtureNode(i int, name string) subscription.Node {
 	return subscription.Node{Name: name, Type: typ, Server: cfg["server"].(string), Port: 443 + i, Config: cfg}
 }
 
-// newFixture builds a connected backend with three subscriptions.
+// fixtureDelay is what the fixture's speed test found for the i-th node: the
+// first Tokyo node is the fastest, the seventh does not answer, the twelfth
+// was never measured.
+func fixtureDelay(i int, name string) int {
+	switch {
+	case name == "Tokyo 01":
+		return 58
+	case i == 6:
+		return -1
+	case i == 11:
+		return 0
+	}
+	return 62 + (i*37)%300
+}
+
+// newFixture builds a connected backend with three subscriptions, the shipped
+// routing plan, a plan that came with a subscription and three exceptions.
 func newFixture() *fixtureBackend {
-	f := &fixtureBackend{set: library.DefaultSettings(), prefs: configgen.DefaultPrefs()}
+	f := &fixtureBackend{set: library.DefaultSettings(), prefs: configgen.DefaultPrefs(), ver: 1,
+		down: map[string]bool{}, missing: map[string]bool{}, failing: map[string]bool{}, partial: map[string]bool{}}
 	f.set.Theme = "dark"
 	f.set.Language = "en"
 	f.set.OnboardingDone = true
@@ -111,7 +143,7 @@ func newFixture() *fixtureBackend {
 		f.subs = append(f.subs, s)
 		for _, n := range nodes {
 			i := len(f.nodes)
-			f.nodes = append(f.nodes, library.ActiveNode{Node: fixtureNode(i, n), SubID: id, SubName: name})
+			f.nodes = append(f.nodes, library.ActiveNode{Node: fixtureNode(i, n), SubID: id, SubName: name, Auto: true})
 		}
 	}
 	mk("sub-aurora", "Aurora Cloud", library.KindRemote, fixtureNodeNames[:9],
@@ -120,17 +152,30 @@ func newFixture() *fixtureBackend {
 		&subscription.Usage{Upload: 20_000_000_000, Download: 101_000_000_000, Total: 150_000_000_000, Expire: fixtureNow.Add(4 * 24 * time.Hour)})
 	mk("sub-local", "My nodes", library.KindLocal, fixtureNodeNames[14:], nil)
 
-	f.rules = []configgen.CustomRule{
-		{Kind: "domain_suffix", Value: "intranet.example", Target: "direct"},
-		{Kind: "domain_keyword", Value: "ads-tracker", Target: "reject"},
-		{Kind: "process_name", Value: "Slack", Target: "Proxy"},
+	st := routing.NewState()
+	for _, x := range []routing.Exception{
+		{Kind: routing.EntryDomainSuffix, Value: "intranet.example", Dest: routing.Direct(), Enabled: true},
+		{Kind: routing.EntryDomainKeyword, Value: "ads-tracker", Dest: routing.Reject(), Enabled: true},
+		{Kind: routing.EntryProcessName, Value: "Slack", Dest: routing.Follow(), Enabled: true},
+	} {
+		if _, err := st.AddException(x); err != nil {
+			panic(err)
+		}
 	}
-	f.data = []app.RuleData{
-		{ID: configgen.RuleSetCN, Present: true, Needed: true, Updated: fixtureNow.Add(-26 * time.Hour), Checked: fixtureNow.Add(-2 * time.Hour), Size: 412_000, Source: "github"},
-		{ID: configgen.RuleSetCNIP, Present: true, Needed: true, Updated: fixtureNow.Add(-26 * time.Hour), Checked: fixtureNow.Add(-2 * time.Hour), Size: 96_000, Source: "github"},
-		{ID: configgen.RuleSetAds, Present: false, Needed: false},
-		{ID: configgen.RuleSetForeign, Present: false, Needed: false},
+	// Aurora Cloud brings a plan of its own, which is not in force.
+	src := func(name string) routing.Source {
+		return routing.URLSource(routing.GeoSite(name), "geosite: "+name, routing.MetaCubeX)
 	}
+	st.Plans = append(st.Plans, &routing.Plan{
+		ID: routing.SubPlanID("sub-aurora"), Kind: routing.PlanSubscription, Name: "Aurora Cloud", SubID: "sub-aurora",
+		Fallback: routing.Follow(), UpdatedAt: fixtureNow.Add(-3 * time.Hour),
+		Items: []routing.Item{
+			{ID: "aur-1", Name: "Streaming", Icon: "film", Sources: []routing.Source{src("netflix")}, Dest: routing.Follow(), Enabled: true},
+			{ID: "aur-2", Name: "Games", Icon: "gamepad", Sources: []routing.Source{src("steam")}, Dest: routing.Direct(), Enabled: true},
+			{ID: "aur-3", Name: "Local sites", Icon: "home", Sources: []routing.Source{src("cn")}, Dest: routing.Direct(), Enabled: true},
+		},
+	})
+	f.rt = st
 	f.snap = f.connectedSnapshot()
 	return f
 }
@@ -163,7 +208,6 @@ func (f *fixtureBackend) connectedSnapshot() *app.Snapshot {
 		peak = math.Max(peak, math.Max(h.Down, h.Up))
 	}
 	last := hist[len(hist)-1]
-	groups := f.groups("Tokyo 01", 58)
 	status := &agentapi.Status{
 		Service: agentapi.ServiceState_SERVICE_STATE_READY, Connection: agentapi.ConnectionState_CONNECTION_STATE_CONNECTED,
 		Mode: "Rule", ConnectedSinceUnix: fixtureNow.Add(-(1*time.Hour + 42*time.Minute + 8*time.Second)).Unix(),
@@ -176,11 +220,10 @@ func (f *fixtureBackend) connectedSnapshot() *app.Snapshot {
 		{ID: 3, Time: fixtureNow.Add(-61 * time.Minute), Level: app.LevelInfo, Code: "subscription_current", Args: map[string]string{"name": "Nimbus Net"}},
 		{ID: 4, Time: fixtureNow.Add(-18 * time.Minute), Level: app.LevelWarning, Code: "nodes_dropped", Args: map[string]string{"count": "2"}},
 	}
-	return &app.Snapshot{
+	s := &app.Snapshot{
 		Link:   app.LinkInfo{State: 2, Agent: app.AgentInfo{AgentVersion: "0.1.0", CoreVersion: "1.14.4", Platform: "darwin", Arch: "arm64", Driver: "darwin", Peer: "demo"}},
 		Status: status, Phase: app.PhaseConnected,
 		AgentSettings: &agentapi.Settings{AutoConnect: true, ResumeAfterCrash: true, ReconnectOnNetworkChange: true, LogLevel: "info"},
-		Groups:        groups,
 		Traffic: app.Traffic{Available: true, Up: last.Up, Down: last.Down, UpTotal: 1_240_000_000, DownTotal: 18_600_000_000,
 			Connections: 47, Memory: 96 << 20, History: hist, Peak: peak},
 		Modes:   []string{"rule", "global", "direct"},
@@ -189,6 +232,8 @@ func (f *fixtureBackend) connectedSnapshot() *app.Snapshot {
 		Logs:    fixtureLogs(),
 		Conns:   fixtureConns(),
 	}
+	f.derive(s)
+	return s
 }
 
 // fixtureLogs is a believable stretch of the core's log.
@@ -231,76 +276,288 @@ func fixtureLogs() []app.LogLine {
 
 // fixtureConns is a believable table of connections (public hostnames, invented nodes).
 func fixtureConns() []app.Conn {
-	mk := func(id, host, dest, proto, rule, outbound string, chain []string, proc string, age time.Duration, up, down int64, upr, downr float64) app.Conn {
-		return app.Conn{ID: id, Network: "tcp", Source: "198.18.0.1:" + id, Destination: dest, Host: host, Protocol: proto, Rule: rule, Outbound: outbound,
+	item := func(id, name string) app.Why { return app.Why{Kind: app.WhyItem, ID: id, Name: name} }
+	exception := func(n int, what string) app.Why { return app.Why{Kind: app.WhyException, Name: what, Index: n} }
+	fallback := app.Why{Kind: app.WhyFallback}
+	mk := func(id, host, dest, proto, rule string, why app.Why, outbound string, chain []string, proc string, age time.Duration, up, down int64, upr, downr float64) app.Conn {
+		return app.Conn{ID: id, Network: "tcp", Source: "198.18.0.1:" + id, Destination: dest, Host: host, Protocol: proto, Rule: rule, Why: why, Outbound: outbound,
 			Chain: chain, Process: proc, Created: fixtureNow.Add(-age), Up: up, Down: down, UpRate: upr, DownRate: downr}
 	}
 	proxy := func(node string) []string { return []string{node, "Auto", "Proxy"} }
 	conns := []app.Conn{
-		mk("50211", "github.com", "140.82.112.4:443", "tls", "domain_suffix=github.com", "Tokyo 01", proxy("Tokyo 01"), "Code Helper", 12*time.Minute+8*time.Second, 1_800_000, 24_000_000, 12_000, 640_000),
-		mk("50214", "api.openai.com", "104.18.7.192:443", "tls", "domain_suffix=openai.com", "Tokyo 01", proxy("Tokyo 01"), "Cursor", 4*time.Minute+20*time.Second, 420_000, 3_100_000, 4_000, 96_000),
-		mk("50217", "www.baidu.com", "110.242.68.4:443", "tls", "geosite-cn", "direct", []string{"direct"}, "Google Chrome Helper", 9*time.Minute, 220_000, 1_900_000, 0, 0),
-		mk("50230", "cdn.jsdelivr.net", "151.101.1.229:443", "tls", "final", "Tokyo 01", proxy("Tokyo 01"), "Google Chrome Helper", 2*time.Minute+1*time.Second, 36_000, 5_400_000, 800, 1_800_000),
-		mk("50233", "slack.com", "44.231.8.76:443", "tls", "process_name=Slack", "Singapore 01", proxy("Singapore 01"), "Slack", 31*time.Minute, 2_600_000, 6_800_000, 1_100, 3_200),
-		mk("50241", "", "17.253.144.10:443", "", "final", "Tokyo 01", proxy("Tokyo 01"), "trustd", 3*time.Minute+40*time.Second, 6_000, 18_000, 0, 0),
-		mk("50244", "intranet.example", "10.8.0.14:8443", "tls", "domain_suffix=intranet.example", "direct", []string{"direct"}, "Safari", 18*time.Minute, 90_000, 410_000, 0, 0),
-		mk("50252", "registry.npmjs.org", "104.16.1.34:443", "tls", "final", "Tokyo 01", proxy("Tokyo 01"), "node", 52*time.Second, 14_000, 2_300_000, 0, 0),
-		mk("50263", "open.spotify.com", "35.186.224.25:443", "tls", "final", "Frankfurt 01", proxy("Frankfurt 01"), "Spotify", 27*time.Minute, 310_000, 82_000_000, 2_000, 410_000),
-		mk("50271", "", "192.168.1.20:445", "", "ip_is_private", "direct", []string{"direct"}, "kernel_task", 44*time.Minute, 4_200_000, 18_400_000, 0, 0),
-		mk("50280", "video.example-cdn.net", "93.184.216.34:443", "tls", "final", "Tokyo 01", proxy("Tokyo 01"), "Google Chrome Helper", 6*time.Minute+30*time.Second, 120_000, 410_000_000, 6_000, 5_400_000),
-		mk("50288", "mail.google.com", "142.250.80.37:443", "tls", "domain_suffix=google.com", "Tokyo 01", proxy("Tokyo 01"), "Mail", 14*time.Minute, 540_000, 2_200_000, 0, 0),
+		mk("50211", "github.com", "140.82.112.4:443", "tls", "rule_set=geosite-github", item("b-github", "GitHub"), "Tokyo 01", proxy("Tokyo 01"), "Code Helper", 12*time.Minute+8*time.Second, 1_800_000, 24_000_000, 12_000, 640_000),
+		mk("50214", "api.openai.com", "104.18.7.192:443", "tls", "rule_set=geosite-category-ai-!cn", item("b-ai", "AI services"), "Tokyo 01", proxy("Tokyo 01"), "Cursor", 4*time.Minute+20*time.Second, 420_000, 3_100_000, 4_000, 96_000),
+		mk("50217", "www.baidu.com", "110.242.68.4:443", "tls", "rule_set=geosite-cn", item("b-cn", "China sites"), "direct", []string{"direct"}, "Google Chrome Helper", 9*time.Minute, 220_000, 1_900_000, 0, 0),
+		mk("50230", "cdn.jsdelivr.net", "151.101.1.229:443", "tls", "final", fallback, "Tokyo 01", proxy("Tokyo 01"), "Google Chrome Helper", 2*time.Minute+1*time.Second, 36_000, 5_400_000, 800, 1_800_000),
+		mk("50233", "slack.com", "44.231.8.76:443", "tls", "process_name=Slack", exception(3, "Slack"), "Singapore 01", proxy("Singapore 01"), "Slack", 31*time.Minute, 2_600_000, 6_800_000, 1_100, 3_200),
+		mk("50241", "", "17.253.144.10:443", "", "final", fallback, "Tokyo 01", proxy("Tokyo 01"), "trustd", 3*time.Minute+40*time.Second, 6_000, 18_000, 0, 0),
+		mk("50244", "intranet.example", "10.8.0.14:8443", "tls", "domain_suffix=intranet.example", exception(1, "intranet.example"), "direct", []string{"direct"}, "Safari", 18*time.Minute, 90_000, 410_000, 0, 0),
+		mk("50252", "registry.npmjs.org", "104.16.1.34:443", "tls", "final", fallback, "Tokyo 01", proxy("Tokyo 01"), "node", 52*time.Second, 14_000, 2_300_000, 0, 0),
+		mk("50263", "open.spotify.com", "35.186.224.25:443", "tls", "rule_set=geosite-spotify", item("b-streaming", "Streaming"), "Frankfurt 01", proxy("Frankfurt 01"), "Spotify", 27*time.Minute, 310_000, 82_000_000, 2_000, 410_000),
+		mk("50271", "", "192.168.1.20:445", "", "ip_is_private", app.Why{Kind: app.WhyLAN}, "direct", []string{"direct"}, "kernel_task", 44*time.Minute, 4_200_000, 18_400_000, 0, 0),
+		mk("50280", "video.example-cdn.net", "93.184.216.34:443", "tls", "final", fallback, "Tokyo 01", proxy("Tokyo 01"), "Google Chrome Helper", 6*time.Minute+30*time.Second, 120_000, 410_000_000, 6_000, 5_400_000),
+		mk("50288", "mail.google.com", "142.250.80.37:443", "tls", "rule_set=geosite-google", item("b-google", "Google"), "Tokyo 01", proxy("Tokyo 01"), "Mail", 14*time.Minute, 540_000, 2_200_000, 0, 0),
 	}
-	closed := mk("50199", "ads-tracker.example", "203.0.113.9:443", "tls", "domain_keyword=ads-tracker", "reject", []string{"reject"}, "Google Chrome Helper", 7*time.Minute, 0, 0, 0, 0)
+	closed := mk("50199", "ads-tracker.example", "203.0.113.9:443", "tls", "domain_keyword=ads-tracker", exception(2, "ads-tracker"), "reject", []string{"reject"}, "Google Chrome Helper", 7*time.Minute, 0, 0, 0, 0)
 	closed.Closed = fixtureNow.Add(-6*time.Minute - 59*time.Second)
-	steam := mk("50203", "store.steampowered.com", "23.55.9.181:443", "tls", "final", "Singapore 01", proxy("Singapore 01"), "steamwebhelper", 11*time.Minute, 88_000, 1_250_000, 0, 0)
+	steam := mk("50203", "store.steampowered.com", "23.55.9.181:443", "tls", "final", fallback, "Singapore 01", proxy("Singapore 01"), "steamwebhelper", 11*time.Minute, 88_000, 1_250_000, 0, 0)
 	steam.Closed = fixtureNow.Add(-2 * time.Minute)
 	return append(conns, closed, steam)
 }
 
+// ------------------------------------------------------ what the service works out
+
+// nodeRef is how the core's reports name a node.
+func (f *fixtureBackend) nodeRef(st routing.State, n library.ActiveNode) app.NodeRef {
+	names := 0
+	for _, o := range f.nodes {
+		if o.Node.Name == n.Node.Name {
+			names++
+		}
+	}
+	return app.NodeRef{Key: n.Key(), ID: n.ID(), Name: n.Node.Name, Protocol: n.Node.Protocol(), Transport: n.Node.Transport(),
+		Region: app.RegionOf(st, n), Server: n.Node.Server, Port: n.Node.Port, SubID: n.SubID, SubName: n.SubName,
+		SubAlias: n.SubAlias, Ambiguous: names > 1}
+}
+
+func (f *fixtureBackend) delayOf(n library.ActiveNode) int {
+	for i, o := range f.nodes {
+		if o.Key() == n.Key() {
+			if f.down[o.Node.Name] {
+				return -1
+			}
+			return fixtureDelay(i, o.Node.Name)
+		}
+	}
+	return 0
+}
+
+// fastest is the node an automatic choice ends on: the fastest that answers,
+// among those the automatic choice may use, in the region when one is given.
+func (f *fixtureBackend) fastest(st routing.State, region string) (*app.NodeRef, int) {
+	var best *library.ActiveNode
+	bestDelay := 0
+	for i := range f.nodes {
+		n := f.nodes[i]
+		d := f.delayOf(n)
+		if d <= 0 || !n.Auto || st.NodePref(n.ID()).NoAuto {
+			continue
+		}
+		if region != "" && !strings.EqualFold(app.RegionOf(st, n), region) {
+			continue
+		}
+		if best == nil || d < bestDelay {
+			best, bestDelay = &f.nodes[i], d
+		}
+	}
+	if best == nil {
+		return nil, 0
+	}
+	ref := f.nodeRef(st, *best)
+	return &ref, bestDelay
+}
+
+// find resolves a choice of a node the way the configuration does.
+func (f *fixtureBackend) find(st routing.State, id routing.NodeID) (library.ActiveNode, bool) {
+	live := make([]routing.LiveNode, len(f.nodes))
+	for i, n := range f.nodes {
+		live[i] = routing.LiveNode{Sub: n.SubID, Name: n.Node.Name, Hash: n.Node.Key(), Region: app.RegionOf(st, n)}
+	}
+	i, m := routing.Resolve(id, live)
+	if m == routing.MatchNone || i < 0 || i >= len(f.nodes) {
+		return library.ActiveNode{}, false
+	}
+	return f.nodes[i], true
+}
+
+// exitFor says where traffic with a destination leaves.
+func (f *fixtureBackend) exitFor(st routing.State, d routing.Dest, group string) app.ExitInfo {
+	info := app.ExitInfo{Group: group}
+	switch d.Kind {
+	case routing.DestFollow:
+		inner := f.exitFor(st, st.Main, configgen.TagProxy)
+		inner.Group, inner.Member, inner.Wanted, inner.StandIn = group, configgen.TagProxy, nil, false
+		return inner
+	case routing.DestDirect:
+		info.Member = "direct"
+	case routing.DestReject:
+		return app.ExitInfo{}
+	case routing.DestAuto:
+		info.Member = configgen.TagAuto
+		info.Node, info.DelayMS = f.fastest(st, "")
+	case routing.DestRegion:
+		info.Member = configgen.RegionPrefix + d.Region
+		info.Node, info.DelayMS = f.fastest(st, d.Region)
+	case routing.DestNode:
+		if d.Node == nil {
+			return info
+		}
+		id := *d.Node
+		if n, ok := f.find(st, id); ok && !f.down[n.Node.Name] {
+			ref := f.nodeRef(st, n)
+			info.Node, info.Member, info.DelayMS = &ref, n.Node.Name, f.delayOf(n)
+			return info
+		}
+		// The chosen node does not answer or is gone: a node of its region stands in.
+		info.Member = "pin"
+		info.Node, info.DelayMS = f.fastest(st, id.Region)
+		if info.Node == nil {
+			info.Node, info.DelayMS = f.fastest(st, "")
+		}
+		info.Wanted, info.StandIn = &id, true
+	}
+	return info
+}
+
+// exits works out where the main exit, the fallback and every item leave.
+func (f *fixtureBackend) exits(st routing.State) map[string]app.ExitInfo {
+	out := map[string]app.ExitInfo{"main": f.exitFor(st, st.Main, configgen.TagProxy)}
+	view := st.View()
+	out["fallback"] = f.exitFor(st, view.Fallback, "fallback")
+	for _, r := range view.Rows {
+		if r.Item.Enabled && r.Item.Dest.Kind != routing.DestReject {
+			out[r.Item.ID] = f.exitFor(st, r.Item.Dest, configgen.SelectorPrefix+r.Item.ID)
+		}
+	}
+	return out
+}
+
+// planInfo says how the plan in force came out when it was compiled.
+func (f *fixtureBackend) planInfo(st routing.State) app.PlanInfo {
+	info := app.PlanInfo{Seq: f.ver, Ready: true, Items: map[string]app.ItemStatus{}, Sources: map[string]app.SourceStatus{}}
+	needed := map[string]bool{}
+	view := st.View()
+	for _, r := range view.Rows {
+		is := app.ItemStatus{State: app.ItemReady, Sources: len(r.Item.Sources)}
+		if !r.Item.Enabled {
+			is.State = app.ItemOff
+		}
+		missing := 0
+		for _, src := range r.Item.Sources {
+			if src.Kind != routing.SourceURL {
+				continue
+			}
+			ss, ok := info.Sources[src.URL]
+			if !ok {
+				ss = app.SourceStatus{URL: src.URL, Present: !f.missing[src.URL], Format: string(rulefmt.FormatSRS)}
+				if ss.Present {
+					ss.Size, ss.Updated, ss.Checked = 40_000, fixtureNow.Add(-26*time.Hour), fixtureNow.Add(-2*time.Hour)
+					ss.Domain, ss.IP = 1200+len(src.URL)%700, 30+len(src.URL)%40
+				}
+				if f.failing[src.URL] {
+					ss.Err = "the server answered with an error (HTTP 503)"
+					ss.Updated, ss.Checked = fixtureNow.Add(-4*24*time.Hour), fixtureNow.Add(-4*24*time.Hour)
+				}
+				if f.partial[src.URL] && ss.Present {
+					ss.Unsupported = map[string]int{"process_name": 2}
+				}
+				info.Sources[src.URL] = ss
+			}
+			if !ss.Present {
+				missing++
+				// Like the service, only what an item that is on needs counts.
+				if r.Item.Enabled {
+					needed[src.URL] = true
+				}
+			}
+			if ss.Err != "" {
+				is.Failing = true
+			}
+			if ss.Present && (is.Oldest.IsZero() || ss.Checked.Before(is.Oldest)) {
+				is.Oldest = ss.Checked
+			}
+			is.Domain += ss.Domain
+			is.IP += ss.IP
+			is.Unsupported += unsupportedCount(ss)
+		}
+		if r.Item.Enabled && missing > 0 {
+			is.Missing = missing
+			is.State = app.ItemPartial
+			if missing == len(r.Item.Sources) {
+				is.State = app.ItemUnavailable
+			}
+		}
+		info.Items[r.Item.ID] = is
+	}
+	info.Missing = len(needed)
+	// Chosen nodes that no subscription offers.
+	pin := func(owner plancompile.OwnerKind, id, name string, d routing.Dest) {
+		if d.Kind == routing.DestNode && d.Node != nil {
+			if _, ok := f.find(st, *d.Node); !ok {
+				info.Gone = append(info.Gone, app.Pin{Owner: owner, ID: id, Name: name, Node: *d.Node})
+			}
+		}
+	}
+	pin(plancompile.OwnerMain, "", "", st.Main)
+	for _, r := range view.Rows {
+		if r.Item.Enabled {
+			pin(plancompile.OwnerItem, r.Item.ID, r.Item.Name, r.Item.Dest)
+		}
+	}
+	return info
+}
+
 // groups builds the group tree of a running configuration.
-func (f *fixtureBackend) groups(exit string, exitDelay int) []app.Group {
+func (f *fixtureBackend) groups(st routing.State, exits map[string]app.ExitInfo) []app.Group {
 	var items []app.GroupItem
 	byRegion := map[string][]string{}
-	for i, n := range f.nodes {
-		d := 40 + (i*37)%320
-		if n.Node.Name == exit {
-			d = exitDelay
-		}
-		if i == 6 {
-			d = -1
-		}
-		if i == 11 {
-			d = 0
-		}
-		ref := &app.NodeRef{Key: n.Key(), Name: n.Node.Name, Protocol: n.Node.Protocol(), Transport: n.Node.Transport(),
-			Region: subscription.Region(n.Node.Name), Server: n.Node.Server, Port: n.Node.Port, SubID: n.SubID, SubName: n.SubName}
-		items = append(items, app.GroupItem{Tag: n.Node.Name, Type: n.Node.Type, DelayMS: d, Tested: fixtureNow.Add(-4 * time.Minute), Node: ref})
+	for _, n := range f.nodes {
+		ref := f.nodeRef(st, n)
+		items = append(items, app.GroupItem{Tag: n.Node.Name, Type: n.Node.Type, DelayMS: f.delayOf(n), Tested: fixtureNow.Add(-4 * time.Minute), Node: &ref})
 		if ref.Region != "" {
 			byRegion[ref.Region] = append(byRegion[ref.Region], n.Node.Name)
 		}
 	}
-	proxyItems := []app.GroupItem{{Tag: "Auto", Type: "urltest"}}
-	groups := []app.Group{}
-	for _, code := range []string{"HK", "JP", "SG", "US"} {
-		if len(byRegion[code]) >= 2 {
-			proxyItems = append(proxyItems, app.GroupItem{Tag: "region-" + code, Type: "urltest"})
-			var mem []app.GroupItem
-			for _, it := range items {
-				for _, t := range byRegion[code] {
-					if it.Tag == t {
-						mem = append(mem, it)
-					}
+	best, _ := f.fastest(st, "")
+	autoSel := ""
+	if best != nil {
+		autoSel = best.Name
+	}
+	proxyItems := []app.GroupItem{{Tag: configgen.TagAuto, Type: "urltest"}}
+	var regions []app.Group
+	codes := make([]string, 0, len(byRegion))
+	for code := range byRegion {
+		codes = append(codes, code)
+	}
+	sort.Strings(codes)
+	for _, code := range codes {
+		if len(byRegion[code]) < 2 {
+			continue
+		}
+		proxyItems = append(proxyItems, app.GroupItem{Tag: configgen.RegionPrefix + code, Type: "urltest"})
+		var mem []app.GroupItem
+		for _, it := range items {
+			for _, t := range byRegion[code] {
+				if it.Tag == t {
+					mem = append(mem, it)
 				}
 			}
-			groups = append(groups, app.Group{Tag: "region-" + code, Type: "urltest", Items: mem, Selected: mem[0].Tag})
 		}
+		sel := mem[0].Tag
+		if ref, _ := f.fastest(st, code); ref != nil {
+			sel = ref.Name
+		}
+		regions = append(regions, app.Group{Tag: configgen.RegionPrefix + code, Type: "urltest", Items: mem, Selected: sel})
 	}
 	proxyItems = append(proxyItems, items...)
-	groups = append([]app.Group{
-		{Tag: "Proxy", Type: "selector", Selectable: true, Selected: exit, Items: proxyItems},
-		{Tag: "Auto", Type: "urltest", Items: items, Selected: exit},
-	}, groups...)
-	return groups
+	main := exits["main"]
+	return append([]app.Group{
+		{Tag: configgen.TagProxy, Type: "selector", Selectable: true, Selected: main.Member, Items: proxyItems},
+		{Tag: configgen.TagAuto, Type: "urltest", Items: items, Selected: autoSel},
+	}, regions...)
+}
+
+// derive fills in what follows from the routing state: the plan's status, where
+// traffic leaves and the groups. It changes s.
+func (f *fixtureBackend) derive(s *app.Snapshot) {
+	st := f.rt
+	s.Plan = f.planInfo(st)
+	if s.Phase.Online() {
+		s.Exits = f.exits(st)
+		s.Groups = f.groups(st, s.Exits)
+	} else {
+		s.Exits, s.Groups = nil, nil
+	}
 }
 
 // disconnected returns the snapshot of an idle application.
@@ -308,10 +565,60 @@ func (f *fixtureBackend) disconnectedSnapshot() *app.Snapshot {
 	s := f.connectedSnapshot()
 	s.Phase = app.PhaseDisconnected
 	s.Status = &agentapi.Status{Service: agentapi.ServiceState_SERVICE_STATE_READY, Connection: agentapi.ConnectionState_CONNECTION_STATE_DISCONNECTED, HasConfig: true, Mode: "Rule"}
-	s.Groups = nil
 	s.Traffic = app.Traffic{}
 	s.Applied = app.AppliedInfo{At: fixtureNow.Add(-26 * time.Hour)}
+	f.derive(s)
 	return s
+}
+
+// commit stores a new routing state and brings the snapshot in line with it.
+func (f *fixtureBackend) commit(st routing.State) {
+	f.mu.Lock()
+	f.rt = st
+	f.ver++
+	cp := *f.snap
+	f.derive(&cp)
+	f.snap = &cp
+	n := f.notify
+	f.mu.Unlock()
+	if n != nil {
+		n()
+	}
+}
+
+// node finds a node of the fixture by its name.
+func (f *fixtureBackend) node(name string) (library.ActiveNode, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, n := range f.nodes {
+		if n.Node.Name == name {
+			return n, true
+		}
+	}
+	return library.ActiveNode{}, false
+}
+
+// arrange changes the routing state before (or between) the steps of a test,
+// the way a person's earlier work would have, and brings the snapshot in line.
+func (f *fixtureBackend) arrange(fn func(*routing.State)) {
+	st := f.Routing()
+	fn(&st)
+	f.commit(st)
+}
+
+// refresh recomputes the snapshot after the fixture's own state (nodes that are
+// down, rule files that are missing) was changed by a test.
+func (f *fixtureBackend) refresh() {
+	f.mu.Lock()
+	f.ver++
+	cp := *f.snap
+	f.derive(&cp)
+	f.snap = &cp
+	n := f.notify
+	f.mu.Unlock()
+	if n != nil {
+		n()
+	}
 }
 
 // -------------------------------------------------------------- Backend
@@ -360,12 +667,191 @@ func (f *fixtureBackend) Prefs() configgen.Prefs {
 	defer f.mu.Unlock()
 	return f.prefs
 }
-func (f *fixtureBackend) Rules() []configgen.CustomRule {
+
+func (f *fixtureBackend) Routing() routing.State {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]configgen.CustomRule(nil), f.rules...)
+	return f.rt.Clone()
 }
-func (f *fixtureBackend) RuleDataStatus() []app.RuleData { return f.data }
+
+func (f *fixtureBackend) LibraryVersion() uint64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.ver
+}
+
+func (f *fixtureBackend) EditRouting(ctx context.Context, fn func(*routing.State) error) error {
+	f.record("edit-routing")
+	if err := f.fail(); err != nil {
+		return err
+	}
+	st := f.Routing()
+	if err := fn(&st); err != nil {
+		return err
+	}
+	f.commit(st)
+	return nil
+}
+
+// describe words a destination for the log of calls.
+func describe(d routing.Dest) string {
+	switch d.Kind {
+	case routing.DestRegion:
+		return "region:" + d.Region
+	case routing.DestNode:
+		if d.Node != nil {
+			return "node:" + d.Node.Name
+		}
+	}
+	return string(d.Kind)
+}
+
+func (f *fixtureBackend) SetMainExit(ctx context.Context, d routing.Dest) error {
+	f.record("main %s", describe(d))
+	if err := f.fail(); err != nil {
+		return err
+	}
+	st := f.Routing()
+	if err := st.SetMain(d); err != nil {
+		return err
+	}
+	f.commit(st)
+	return nil
+}
+
+// fixtureHosts are the sites of the shipped items, for TestURL.
+var fixtureHosts = map[string][]string{
+	"ai":        {"openai.com", "anthropic.com"},
+	"telegram":  {"telegram.org", "t.me"},
+	"youtube":   {"youtube.com"},
+	"streaming": {"netflix.com", "spotify.com"},
+	"google":    {"google.com"},
+	"github":    {"github.com"},
+	"microsoft": {"microsoft.com"},
+	"apple":     {"apple.com"},
+	"cn":        {"baidu.com", "qq.com"},
+}
+
+// hostOf reads the host out of what was typed.
+func hostOf(raw string) string {
+	s := strings.TrimSpace(raw)
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	if i := strings.IndexAny(s, "/?#"); i >= 0 {
+		s = s[:i]
+	}
+	if i := strings.LastIndex(s, ":"); i >= 0 && !strings.Contains(s[i:], "]") && strings.Count(s, ":") == 1 {
+		s = s[:i]
+	}
+	if s == "" || strings.ContainsAny(s, " \t") {
+		return ""
+	}
+	return strings.ToLower(s)
+}
+
+func hostMatches(e routing.Entry, host string) bool {
+	switch e.Kind {
+	case routing.EntryDomain:
+		return host == e.Value
+	case routing.EntryDomainSuffix:
+		return host == e.Value || strings.HasSuffix(host, "."+e.Value)
+	case routing.EntryDomainKeyword:
+		return strings.Contains(host, e.Value)
+	}
+	return false
+}
+
+func (f *fixtureBackend) TestURL(ctx context.Context, raw string) (*app.TestURLResult, error) {
+	f.record("test-url %s", raw)
+	if err := f.fail(); err != nil {
+		return nil, err
+	}
+	host := hostOf(raw)
+	if host == "" {
+		return nil, app.ErrBadTarget
+	}
+	st := f.Routing()
+	res := &app.TestURLResult{Host: host, Port: 443}
+	if ip, err := netip.ParseAddr(host); err == nil {
+		res.Addrs = []netip.Addr{ip}
+	}
+	f.mu.Lock()
+	online := f.snap.Phase.Online()
+	f.mu.Unlock()
+	finish := func(d routing.Dest, group string) {
+		res.Dest = d
+		if online && d.Kind != routing.DestDirect && d.Kind != routing.DestReject {
+			ex := f.exitFor(st, d, group)
+			if ex.Node != nil {
+				res.Exit = &ex
+			}
+		}
+	}
+	for i, x := range st.Exceptions {
+		if x.Enabled && hostMatches(x.Entry(), host) {
+			res.Why = app.Why{Kind: app.WhyException, ID: x.ID, Name: x.Value, Index: i + 1}
+			e := x.Entry()
+			res.Source = &app.TestSource{Entry: &e}
+			finish(x.Dest, "exception")
+			return res, nil
+		}
+	}
+	view := st.View()
+	for _, r := range view.Rows {
+		if !r.Item.Enabled {
+			continue
+		}
+		for _, suffix := range fixtureHosts[r.Item.Key] {
+			if hostMatches(routing.Entry{Kind: routing.EntryDomainSuffix, Value: suffix}, host) {
+				res.Why = app.Why{Kind: app.WhyItem, ID: r.Item.ID, Name: r.Item.Name}
+				if len(r.Item.Sources) > 0 {
+					res.Source = &app.TestSource{Name: r.Item.Sources[0].Name, Project: r.Item.Sources[0].Project, URL: r.Item.Sources[0].URL}
+				}
+				finish(r.Item.Dest, configgen.SelectorPrefix+r.Item.ID)
+				return res, nil
+			}
+		}
+	}
+	res.Why = app.Why{Kind: app.WhyFallback}
+	finish(view.Fallback, "fallback")
+	return res, nil
+}
+
+func (f *fixtureBackend) PreviewRuleSet(ctx context.Context, raw string) (*app.RuleSetPreview, error) {
+	f.record("preview-rule-set %s", raw)
+	if err := f.fail(); err != nil {
+		return nil, err
+	}
+	switch {
+	case strings.Contains(raw, "subscription"):
+		return nil, app.ErrLooksLikeSubscription
+	case !strings.HasPrefix(raw, "https://"):
+		return nil, ruleurl.ErrAddress
+	}
+	return &app.RuleSetPreview{
+		URL: raw, Display: raw, Name: "my-list", Format: rulefmt.FormatSingBox, Project: "",
+		Stats: rulefmt.Stats{Domain: 128, IP: 4, Other: 1, Unsupported: map[string]int{"process_name": 2}},
+	}, nil
+}
+
+func (f *fixtureBackend) KeepRuleSet(ctx context.Context, canonical string) error {
+	f.record("keep-rule-set %s", canonical)
+	return f.fail()
+}
+
+func (f *fixtureBackend) UpdateRuleData(ctx context.Context, force bool) error {
+	f.record("update-rule-data %v", force)
+	if err := f.fail(); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	f.missing = map[string]bool{}
+	f.failing = map[string]bool{}
+	f.mu.Unlock()
+	f.refresh()
+	return nil
+}
 
 func (f *fixtureBackend) Connect(ctx context.Context, o app.ConnectOptions) error {
 	f.record("connect ignore=%v", o.IgnoreRouteConflicts)
@@ -378,17 +864,6 @@ func (f *fixtureBackend) Connect(ctx context.Context, o app.ConnectOptions) erro
 func (f *fixtureBackend) Disconnect(ctx context.Context) error {
 	f.record("disconnect")
 	f.set_(f.disconnectedSnapshot())
-	return nil
-}
-func (f *fixtureBackend) SelectKey(ctx context.Context, key string) error {
-	f.record("select %s", key)
-	f.mu.Lock()
-	f.set.SelectedNode = key
-	f.mu.Unlock()
-	return f.fail()
-}
-func (f *fixtureBackend) Select(ctx context.Context, tag string) error {
-	f.record("select-tag %s", tag)
 	return nil
 }
 func (f *fixtureBackend) TestLatency(ctx context.Context, tag string) error {
@@ -436,6 +911,7 @@ func (f *fixtureBackend) AddSubscription(ctx context.Context, name, link string,
 	s := library.Subscription{ID: "sub-new", Name: name, Kind: library.KindRemote, Enabled: true, NodeCount: 4, UpdatedAt: fixtureNow}
 	f.mu.Lock()
 	f.subs = append(f.subs, s)
+	f.ver++
 	f.mu.Unlock()
 	return s, &library.RefreshResult{NodeCount: 4, Added: 4, Changed: true}, nil
 }
@@ -447,6 +923,7 @@ func (f *fixtureBackend) ImportNodes(ctx context.Context, name, text string) (li
 	s := library.Subscription{ID: "sub-import", Name: name, Kind: library.KindLocal, Enabled: true, NodeCount: 2, UpdatedAt: fixtureNow}
 	f.mu.Lock()
 	f.subs = append(f.subs, s)
+	f.ver++
 	f.mu.Unlock()
 	return s, nil
 }
@@ -467,6 +944,7 @@ func (f *fixtureBackend) EditSubscription(ctx context.Context, id string, fn fun
 			fn(&f.subs[i])
 		}
 	}
+	f.ver++
 	return nil
 }
 func (f *fixtureBackend) RemoveSubscription(ctx context.Context, id string) error {
@@ -479,6 +957,7 @@ func (f *fixtureBackend) RemoveSubscription(ctx context.Context, id string) erro
 			break
 		}
 	}
+	f.ver++
 	return nil
 }
 func (f *fixtureBackend) MoveSubscription(id string, index int) error {
@@ -499,17 +978,6 @@ func (f *fixtureBackend) SavePrefs(ctx context.Context, p configgen.Prefs) ([]st
 	f.prefs = p
 	f.mu.Unlock()
 	return nil, f.fail()
-}
-func (f *fixtureBackend) SaveRules(ctx context.Context, r []configgen.CustomRule) error {
-	f.record("save-rules %d", len(r))
-	f.mu.Lock()
-	f.rules = r
-	f.mu.Unlock()
-	return f.fail()
-}
-func (f *fixtureBackend) UpdateRuleData(ctx context.Context, force bool) error {
-	f.record("update-rule-data %v", force)
-	return f.fail()
 }
 func (f *fixtureBackend) ExportDiagnostics(ctx context.Context) (string, []byte, error) {
 	f.record("diagnostics")

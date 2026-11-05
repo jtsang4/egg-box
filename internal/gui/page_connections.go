@@ -3,7 +3,6 @@ package gui
 import (
 	"context"
 	"path"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"eggbox/internal/app"
+	"eggbox/internal/routing"
 )
 
 // connsState is what the connections page remembers.
@@ -95,7 +95,7 @@ func (a *App) visibleConns() []app.Conn {
 				continue
 			}
 		}
-		if q != "" && !matchConn(cn, q) {
+		if q != "" && !a.matchConn(cn, q) {
 			continue
 		}
 		out = append(out, cn)
@@ -103,8 +103,10 @@ func (a *App) visibleConns() []app.Conn {
 	return out
 }
 
-func matchConn(cn app.Conn, q string) bool {
-	for _, s := range []string{cn.Host, cn.Destination, cn.Process, cn.Rule, cn.Outbound, cn.Protocol, cn.Network, cn.Source} {
+// matchConn says whether a search finds a connection: in where it goes, the
+// program, what decided its route and the node it leaves through.
+func (a *App) matchConn(cn app.Conn, q string) bool {
+	for _, s := range []string{cn.Host, cn.Destination, cn.Process, a.whyLabel(cn.Why), a.exitLabel(cn), cn.Protocol, cn.Network, cn.Source} {
 		if strings.Contains(strings.ToLower(s), q) {
 			return true
 		}
@@ -167,6 +169,7 @@ func (a *App) connRow(c *ui.Context, cn app.Conn) {
 			if m.Item(a.t("conns.copy_dest")).Chosen() {
 				c.WriteClipboard(cn.Destination)
 			}
+			a.futureMenu(m, cn)
 			if open {
 				m.Separator()
 				if m.Item(a.t("conns.close")).Chosen() {
@@ -183,8 +186,8 @@ func (a *App) connRow(c *ui.Context, cn app.Conn) {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					a.outboundChip(c, cn)
 				})
-				if why := a.matchedRule(cn.Rule); why != "" {
-					a.txt(c, why, 11.5, 400, p.Text3).SingleLine().Tooltip(cn.Rule)
+				if why := a.whyLabel(cn.Why); why != "" {
+					a.txt(c, why, 11.5, 400, p.Text3).SingleLine().Tooltip(a.whyText(cn.Why))
 				}
 			})
 			connCell(c, 2).Justify(ui.Center).Children(func() {
@@ -253,21 +256,63 @@ func connDetail(cn app.Conn) string {
 	return strings.Join(parts, "  ·  ")
 }
 
-// outboundChip names where a connection leaves: the last link of its chain.
-func (a *App) outboundChip(c *ui.Context, cn app.Conn) {
-	out := cn.Outbound
+// exitName is the outbound a connection leaves through: the last link of its
+// chain, as the core names it.
+func exitName(cn app.Conn) string {
 	if n := len(cn.Chain); n > 0 {
-		out = cn.Chain[0]
+		return cn.Chain[0]
 	}
+	return cn.Outbound
+}
+
+// exitLabel is where a connection leaves, as a person reads it: "Direct", a
+// node (with its subscription when another one has a node of the same name).
+func (a *App) exitLabel(cn app.Conn) string {
+	out := exitName(cn)
 	switch strings.ToLower(out) {
 	case "direct":
-		a.chip(c, a.t("target.direct"), toneNeutral, "arrow-right")
+		return a.t("dest.direct")
 	case "block", "reject":
-		a.chip(c, a.t("target.reject"), toneBad, "shield-off")
+		return a.t("dest.reject")
+	case "":
+		return ""
+	}
+	if n, ok := a.nodeByTag(out); ok {
+		return n.Label()
+	}
+	return out
+}
+
+// nodeByTag finds the node the core knows under a tag.
+func (a *App) nodeByTag(tag string) (nodeEntry, bool) {
+	nodes := a.liveNodes()
+	if a.tagMap == nil || a.tagSnap != a.snap || a.tagVer != a.nodesVer {
+		a.tagMap = make(map[string]int, len(nodes))
+		for i, n := range nodes {
+			if n.Tag != "" {
+				a.tagMap[n.Tag] = i
+			}
+		}
+		a.tagSnap, a.tagVer = a.snap, a.nodesVer
+	}
+	if i, ok := a.tagMap[tag]; ok && i < len(nodes) {
+		return nodes[i], true
+	}
+	return nodeEntry{}, false
+}
+
+// outboundChip names where a connection leaves.
+func (a *App) outboundChip(c *ui.Context, cn app.Conn) {
+	out := exitName(cn)
+	switch strings.ToLower(out) {
+	case "direct":
+		a.chip(c, a.t("dest.direct"), toneNeutral, "arrow-right")
+	case "block", "reject":
+		a.chip(c, a.t("dest.reject"), toneBad, "shield-off")
 	case "":
 		a.chip(c, "—", toneNeutral, "")
 	default:
-		a.chip(c, truncate(out, 22), toneBlue, "shield-check")
+		a.chip(c, truncate(a.exitLabel(cn), 26), toneBlue, "shield-check")
 	}
 }
 
@@ -289,52 +334,51 @@ func appName(process string) string {
 	return name
 }
 
-var ruleKind = regexp.MustCompile(`^[a-z_]+$`)
-
-// matchedRule says in a few words why a connection went where it did, from
-// the core's own description of the rule that decided it, which looks like
-// "rule_set=[geosite-cn] => route(direct)" or "final".
-func (a *App) matchedRule(rule string) string {
-	left, _, _ := strings.Cut(rule, " => ")
-	left = strings.TrimSpace(left)
-	if left == "" {
-		return ""
+// whyLabel says in a few words why a connection went where it did: the name
+// of the item or exception, never the core's own rule text.
+func (a *App) whyLabel(w app.Why) string {
+	switch w.Kind {
+	case app.WhyItem:
+		if row, _, ok := a.rv().Row(w.ID); ok {
+			return a.itemName(row.Item)
+		}
+		return w.Name
+	case app.WhyException:
+		return a.t("why.short.exception", "n", strconv.Itoa(w.Index))
+	case app.WhyFallback:
+		return a.t("why.short.fallback")
+	case app.WhyLAN:
+		return a.t("why.short.lan")
+	case app.WhyMode:
+		return a.t("why.short.mode")
 	}
-	if left == "final" {
-		return a.t("conns.rule.final")
-	}
-	kind, rest, ok := strings.Cut(left, "=")
-	if !ok || !ruleKind.MatchString(kind) {
-		return a.t("conns.rule.generic") // an inverted or composite rule
-	}
-	var value string
-	if strings.HasPrefix(rest, "[") {
-		inner, _, _ := strings.Cut(rest[1:], "]")
-		value = strings.Join(strings.Fields(inner), ", ")
-	} else {
-		value, _, _ = strings.Cut(rest, " ")
-	}
-	label := a.t("conns.rule.generic")
-	if k := "conns.rule." + kind; a.has(k) {
-		label = a.t(k)
-	}
-	if kind == "rule_set" {
-		value = a.ruleSetLabel(value)
-	}
-	if value == "" {
-		return label
-	}
-	return label + "  ·  " + value
+	return ""
 }
 
-// ruleSetLabel names the rule sets this application ships; others keep the
-// name their owner gave them.
-func (a *App) ruleSetLabel(tags string) string {
-	parts := strings.Split(tags, ", ")
-	for i, t := range parts {
-		if k := "ruleset." + t; a.has(k) {
-			parts[i] = a.t(k)
-		}
+// futureMenu is the part of a connection's menu that decides where such
+// connections go from now on: one choice for each way the connection can be
+// described (its name, its domain, its address, its program).
+func (a *App) futureMenu(m *ui.Menu, cn app.Conn) {
+	cands := app.ConnCandidates(cn)
+	if len(cands) == 0 {
+		return
 	}
-	return strings.Join(parts, ", ")
+	m.Separator()
+	for _, cand := range cands {
+		m.Submenu(a.t("conns.future", "what", a.scopeLabel(cand)), func(sm *ui.Menu) {
+			if sm.Item(a.t("dest.direct")).Chosen() {
+				a.exceptionFromConn(cn, cand, routing.Direct())
+			}
+			if sm.Item(a.t("dest.follow.menu", "main", a.destLabel(a.rt().Main))).Chosen() {
+				a.exceptionFromConn(cn, cand, routing.Follow())
+			}
+			if sm.Item(a.t("dest.reject")).Chosen() {
+				a.exceptionFromConn(cn, cand, routing.Reject())
+			}
+			sm.Separator()
+			if sm.Item(a.t("conns.future.else")).Chosen() {
+				a.openExceptionFor(cand.Entry, routing.Follow())
+			}
+		})
+	}
 }

@@ -125,7 +125,7 @@ func (a *App) Toggle() {
 }
 
 // Navigate shows a page of the window: "dashboard", "nodes", "subscriptions",
-// "rules", "connections", "logs" or "settings". Main thread.
+// "routing", "connections", "logs" or "settings". Main thread.
 func (a *App) Navigate(name string) {
 	a.refresh()
 	for pg, n := range pageSlugs {
@@ -138,7 +138,7 @@ func (a *App) Navigate(name string) {
 }
 
 // pageSlugs names the pages for the shell, in the order of the page type.
-var pageSlugs = [...]string{"dashboard", "nodes", "subscriptions", "rules", "connections", "logs", "settings"}
+var pageSlugs = [...]string{"dashboard", "nodes", "subscriptions", "routing", "connections", "logs", "settings"}
 
 // reveal brings the window to the front: what the shell does when a click
 // needs the window (adding the first subscription, a decision to make).

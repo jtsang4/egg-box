@@ -87,6 +87,25 @@ var iconData = map[string]string{
 	"command":        `<path d="M9 9V6.5A2.5 2.5 0 1 0 6.5 9H9Zm0 0h6m-6 0v6m6-6V6.5A2.5 2.5 0 1 1 17.5 9H15Zm0 0v6m0 0h2.5a2.5 2.5 0 1 1-2.5 2.5V15Zm0 0H9m0 0H6.5A2.5 2.5 0 1 0 9 17.5V15Z"/>`,
 	"edit-rule":      `<path d="M4 6h10"/><path d="M4 12h6"/><path d="M4 18h7"/><path d="m14.5 17 5-5a1.9 1.9 0 0 0-2.7-2.7l-5 5L11 18l3.5-1Z"/>`,
 	"heart":          `<path d="M12 20.5s-8-4.9-8-11A4.5 4.5 0 0 1 12 6.8a4.5 4.5 0 0 1 8 2.7c0 6.1-8 11-8 11Z"/>`,
+
+	// What the routing items are called by: the catalog and the shipped plan
+	// pick their icons from these.
+	"send":     `<path d="M21.5 2.5 10.5 13.5"/><path d="m21.5 2.5-7 19-4-8.5-8.5-4 19.5-6.5Z"/>`,
+	"film":     `<rect x="3" y="3.5" width="18" height="17" rx="2.2"/><path d="M7.5 3.5v17"/><path d="M16.5 3.5v17"/><path d="M3 8h4.5"/><path d="M3 12h18"/><path d="M3 16h4.5"/><path d="M16.5 8H21"/><path d="M16.5 16H21"/>`,
+	"users":    `<path d="M16.5 20v-1.5a4 4 0 0 0-4-4h-6a4 4 0 0 0-4 4V20"/><circle cx="9.5" cy="7.5" r="4"/><path d="M21.5 20v-1.5a4 4 0 0 0-3-3.9"/><path d="M15.5 3.7a4 4 0 0 1 0 7.6"/>`,
+	"code":     `<path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/><path d="m14 4-4 16"/>`,
+	"windows":  `<path d="M3.5 5.6 10.5 4.6v6.8h-7V5.6Z"/><path d="M12 4.4 20.5 3.2v8.2H12V4.4Z"/><path d="M3.5 12.6h7v6.8l-7-1v-5.8Z"/><path d="M12 12.6h8.5v8.2L12 19.6v-7Z"/>`,
+	"apple":    `<path d="M12 7.6c-1-1.4-3-1.9-4.5-1C5.4 7.8 4.6 10.4 5.3 13.4c.7 3.2 2.4 6.1 4.4 6.1 1 0 1.5-.6 2.3-.6s1.3.6 2.3.6c1.8 0 3.3-2.5 4.1-4.7-2.2-1.1-2.9-4-.8-5.6-1-1.4-2.5-1.9-3.7-1.6-.8.2-1.5.8-2.2.8-.4 0-.7-.2-1-.3Z"/><path d="M12.4 5.4c0-1.3.9-2.5 2.1-2.9"/>`,
+	"music":    `<path d="M9 17.5V5.5l11-2v12"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="15.5" r="2.5"/>`,
+	"gamepad":  `<path d="M6.5 8h11a4 4 0 0 1 4 3.7l.8 5a2.5 2.5 0 0 1-4.3 2l-2.3-3H8.3l-2.3 3a2.5 2.5 0 0 1-4.3-2l.8-5A4 4 0 0 1 6.5 8Z"/><path d="M7 10.8v3"/><path d="M5.5 12.3h3"/><path d="M15.5 11.8h.01"/><path d="M18 13.8h.01"/>`,
+	"chat":     `<path d="M20.5 15a2 2 0 0 1-2 2H8l-4.5 4V6a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v9Z"/>`,
+	"card":     `<rect x="2.5" y="5" width="19" height="14" rx="2.4"/><path d="M2.5 10h19"/><path d="M6.5 15h3"/>`,
+	"tv":       `<rect x="2.8" y="6.5" width="18.4" height="13" rx="2.2"/><path d="m8 2.8 4 3.7 4-3.7"/>`,
+	"book":     `<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>`,
+	"bag":      `<path d="M5.5 7h13l1 13.5h-15L5.5 7Z"/><path d="M8.5 10V6.5a3.5 3.5 0 0 1 7 0V10"/>`,
+	"building": `<rect x="4.5" y="3" width="15" height="18" rx="1.8"/><path d="M9 7.5h.01"/><path d="M15 7.5h.01"/><path d="M9 11.5h.01"/><path d="M15 11.5h.01"/><path d="M9.5 21v-4h5v4"/>`,
+	"compass":  `<circle cx="12" cy="12" r="9"/><path d="m15.8 8.2-2 5.6-5.6 2 2-5.6 5.6-2Z"/>`,
+	"pin":      `<path d="M12 16.5V22"/><path d="M8.5 3h7l-1 6.2 3.2 3.3v2.5H6.3v-2.5l3.2-3.3L8.5 3Z"/>`,
 }
 
 var (

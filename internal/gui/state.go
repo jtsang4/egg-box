@@ -11,6 +11,7 @@ func (a *App) initState() {
 	a.initNodes()
 	a.initConns()
 	a.initLogs()
+	a.initRouting()
 }
 
 // scrollFor returns the scroll state of a page, so that each page keeps its
@@ -55,13 +56,34 @@ type dlgFrame struct {
 	buttons func()
 }
 
+// openDialog shows a dialog in place of whatever was open.
 func (a *App) openDialog(d dialog) {
+	a.dlgStack = nil
 	a.dlg = d
 	a.dlgOpen = true
 	a.again()
 }
 
+// pushDialog shows a dialog over the open one; closing it comes back to that
+// one, with whatever the person typed there still in place.
+func (a *App) pushDialog(d dialog) {
+	if a.dlg != nil {
+		a.dlgStack = append(a.dlgStack, a.dlg)
+	}
+	a.dlg = d
+	a.dlgOpen = true
+	a.again()
+}
+
+// closeDialog closes the open dialog: the one under it comes back, if there
+// is one.
 func (a *App) closeDialog() {
+	if n := len(a.dlgStack); n > 0 {
+		a.dlg, a.dlgStack = a.dlgStack[n-1], a.dlgStack[:n-1]
+		a.dlgOpen = true
+		a.again()
+		return
+	}
 	a.dlg = nil
 	a.dlgOpen = false
 	a.again()

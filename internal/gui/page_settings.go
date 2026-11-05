@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -322,10 +323,17 @@ func (a *App) prefsDirty() bool {
 func (a *App) networkSection(c *ui.Context) {
 	st := &a.sett
 	a.section(c, "sliders", a.t("settings.network"), a.t("settings.network.desc"), func() {
-		regions := a.prefs.RegionGroups
-		if a.toggleRow(c, "set-regions", a.t("settings.regions"), a.t("settings.regions.desc"), &regions, false) {
+		lan := a.prefs.LANDirect
+		if a.toggleRow(c, "set-lan", a.t("settings.lan"), a.t("settings.lan.desc"), &lan, false) {
 			p := a.prefs
-			p.RegionGroups = regions
+			p.LANDirect = lan
+			a.savePrefs(p)
+		}
+		a.rowDivider(c)
+		v6 := a.prefs.IPv6
+		if a.toggleRow(c, "set-ipv6", a.t("settings.ipv6"), a.t("settings.ipv6.desc"), &v6, false) {
+			p := a.prefs
+			p.IPv6 = v6
 			a.savePrefs(p)
 		}
 		a.rowDivider(c)
@@ -417,8 +425,45 @@ var (
 	ruleIntervals = []int{0, 24, 72, 168}
 )
 
+// ruleStatusLine says how many of the rule files the plan in force uses are
+// here and how long ago they were checked.
+func (a *App) ruleStatusLine() string {
+	pl := a.snap.Plan
+	if !pl.Ready || len(pl.Sources) == 0 {
+		return a.t("settings.ruledata.none")
+	}
+	var have, failing int
+	var newest time.Time
+	for _, st := range pl.Sources {
+		if st.Present {
+			have++
+			if st.Checked.After(newest) {
+				newest = st.Checked
+			}
+		}
+		if st.Err != "" {
+			failing++
+		}
+	}
+	line := a.t("settings.ruledata.have", "have", strconv.Itoa(have), "total", strconv.Itoa(len(pl.Sources)))
+	if !newest.IsZero() {
+		line += " · " + a.t("settings.ruledata.checked", "when", a.ago(newest))
+	}
+	if failing > 0 {
+		line += " · " + a.tn("settings.ruledata.failing", failing)
+	}
+	return line
+}
+
 func (a *App) ruleDataSection(c *ui.Context) {
 	a.section(c, "database", a.t("settings.ruledata"), a.t("settings.ruledata.desc"), func() {
+		a.settingRow(c, a.t("settings.ruledata.status"), a.ruleStatusLine(), func() {
+			busy := a.snap.Busy.RuleData || a.snap.Plan.Updating || a.busy("rule-data")
+			if a.btn(c, btnSpec{kind: btnSecondary, small: true, label: a.t("plan.update"), icon: "refresh", busy: busy}).Clicked() {
+				a.job("rule-data", func(ctx context.Context) error { return a.be.UpdateRuleData(ctx, true) }, func(err error) { a.fail(err) })
+			}
+		})
+		a.rowDivider(c)
 		a.settingRow(c, a.t("settings.mirror"), a.t("settings.mirror.desc"), func() {
 			sel := indexOfString(mirrors, a.set.RuleMirror)
 			if a.segmented(c, "set-mirror", &sel, []segItem{

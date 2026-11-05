@@ -7,6 +7,7 @@ import (
 	"eggbox/internal/app"
 	"eggbox/internal/configgen"
 	"eggbox/internal/library"
+	"eggbox/internal/routing"
 )
 
 // Backend is what the interface needs from the application layer. It is
@@ -32,13 +33,29 @@ type Backend interface {
 	Settings() library.Settings
 	UpdateSettings(fn func(*library.Settings)) error
 	Prefs() configgen.Prefs
-	Rules() []configgen.CustomRule
-	RuleDataStatus() []app.RuleData
+
+	// Routing is everything the person chose about routing: the plan in force
+	// and what is laid over it, the exceptions, the main exit, the choices
+	// about single nodes. It copies; the interface asks again only when
+	// LibraryVersion has moved.
+	Routing() routing.State
+	// LibraryVersion changes whenever anything the library holds does.
+	LibraryVersion() uint64
+	// EditRouting changes it with fn, which works on a copy: when it fails
+	// nothing is kept. The result is applied when the proxy is on, and choices
+	// that only move a selection do not restart the core.
+	EditRouting(ctx context.Context, fn func(*routing.State) error) error
+	SetMainExit(ctx context.Context, d routing.Dest) error
+	// TestURL says where an address would go under the plan in force.
+	TestURL(ctx context.Context, raw string) (*app.TestURLResult, error)
+	// PreviewRuleSet fetches the file at an address and says what it holds;
+	// KeepRuleSet stores what was fetched, so that an item using it works at once.
+	PreviewRuleSet(ctx context.Context, raw string) (*app.RuleSetPreview, error)
+	KeepRuleSet(ctx context.Context, canonical string) error
+	UpdateRuleData(ctx context.Context, force bool) error
 
 	Connect(ctx context.Context, o app.ConnectOptions) error
 	Disconnect(ctx context.Context) error
-	SelectKey(ctx context.Context, key string) error
-	Select(ctx context.Context, tag string) error
 	TestLatency(ctx context.Context, tag string) error
 	SetMode(ctx context.Context, mode string) error
 	CloseConnection(ctx context.Context, id string) error
@@ -59,8 +76,6 @@ type Backend interface {
 	SetLink(id, link string) error
 
 	SavePrefs(ctx context.Context, p configgen.Prefs) ([]string, error)
-	SaveRules(ctx context.Context, rules []configgen.CustomRule) error
-	UpdateRuleData(ctx context.Context, force bool) error
 
 	ExportDiagnostics(ctx context.Context) (filename string, data []byte, err error)
 }
@@ -89,8 +104,8 @@ func (b ServiceBackend) UpdateSettings(fn func(*library.Settings)) error {
 // Prefs returns the routing preferences.
 func (b ServiceBackend) Prefs() configgen.Prefs { return b.Library().Prefs() }
 
-// Rules returns the custom rules.
-func (b ServiceBackend) Rules() []configgen.CustomRule { return b.Library().Rules() }
+// LibraryVersion changes whenever the library does.
+func (b ServiceBackend) LibraryVersion() uint64 { return b.Library().Version() }
 
 // MoveSubscription changes a subscription's position.
 func (b ServiceBackend) MoveSubscription(id string, index int) error {

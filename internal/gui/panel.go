@@ -1,7 +1,6 @@
 package gui
 
 import (
-	"sort"
 	"strconv"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	"eggbox/internal/brand"
 	"eggbox/internal/configgen"
 	"eggbox/internal/library"
+	"eggbox/internal/routing"
 )
 
 // The panel is the small window that opens from the tray icon: the
@@ -109,12 +109,15 @@ func (a *App) panelHero(c *ui.Context) {
 				eyebrow = a.t("hero.eyebrow.working")
 			}
 			a.eyebrowDot(c, eyebrow, t, ph == app.PhaseConnected)
-			if it, via, ok := a.exitNode(); ok {
-				a.panelTitle(c, it.Node.Name)
+			if ex, ok := a.mainExitNow(); ok {
+				a.panelTitle(c, ex.Node.Label())
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					a.chip(c, it.Node.Protocol, toneBlue, "")
-					if via != "" {
-						a.chip(c, a.viaLabel(via), toneNeutral, "zap")
+					a.chip(c, ex.Node.Protocol, toneBlue, "")
+					if ex.Via != "" {
+						a.chip(c, a.viaLabel(ex.Via), toneNeutral, "zap")
+					}
+					if ex.StandIn {
+						a.chip(c, a.t("hero.stand_in"), toneWarn, "alert").Tooltip(a.t("hero.stand_in.tip"))
 					}
 				})
 			} else {
@@ -212,59 +215,105 @@ func (a *App) panelMode(c *ui.Context) {
 	}
 }
 
-// panelNodes lists the fastest nodes; one click moves traffic to it.
+// quick is a way to switch the main exit from the panel.
+type quick struct {
+	key, title string
+	region     string
+	icon       string
+	dest       routing.Dest
+	selected   bool
+	delay      int
+}
+
+// quickChoices are the few ways the panel offers to change the main exit:
+// automatic, the choice in force, the nodes used last and a region. They are
+// what a person switches between, so none of them needs a search.
+func (a *App) quickChoices(limit int) []quick {
+	main := a.rt().Main
+	out := []quick{{key: "auto", title: a.t("nodes.auto"), icon: "zap", dest: routing.Auto(), selected: main.Kind == routing.DestAuto}}
+	seen := map[string]bool{}
+	node := func(id routing.NodeID, selected bool) {
+		n, m := a.nodeFor(id)
+		if m == routing.MatchNone || seen[n.Key] {
+			return
+		}
+		seen[n.Key] = true
+		out = append(out, quick{key: "n-" + n.Key, title: n.Label(), region: n.Region, dest: routing.ToNode(n.ID), selected: selected, delay: n.Delay})
+	}
+	region := func(code string, selected bool) {
+		out = append(out, quick{key: "r-" + code, title: a.t("nodes.fastest_in", "name", a.regionName(code)), region: code, dest: routing.ToRegion(code), selected: selected})
+	}
+	// The region in force, or else the one with the most nodes.
+	code := ""
+	if main.Kind == routing.DestRegion {
+		code = main.Region
+	} else if rs := regionsWithNodes(a.liveNodes(), ""); len(rs) > 0 {
+		code = rs[0].Code
+	}
+	if code != "" {
+		region(code, main.Kind == routing.DestRegion)
+	}
+	if main.Kind == routing.DestNode && main.Node != nil {
+		node(*main.Node, true)
+	}
+	for _, id := range a.rt().Recent {
+		if len(out) >= limit {
+			break
+		}
+		node(id, false)
+	}
+	return out
+}
+
+// panelNodes is the quick switch of the main exit; one click moves traffic.
 func (a *App) panelNodes(c *ui.Context) {
 	p := a.pl
-	var timed []nodeEntry
-	for _, n := range a.liveNodes() {
-		if n.Delay > 0 {
-			timed = append(timed, n)
-		}
-	}
-	sort.SliceStable(timed, func(i, j int) bool { return timed[i].Delay < timed[j].Delay })
-	if len(timed) > 3 {
-		timed = timed[:3]
-	}
-	current := ""
-	if it, _, ok := a.exitNode(); ok {
-		current = it.Node.Key
-	}
+	choices := a.quickChoices(4)
 	busy := a.snap.Busy.Testing[configgen.TagProxy] || a.busy("test-all")
 	ui.Column(c).Gap(2).Children(func() {
 		ui.Row(c).Height(24).AlignItems(ui.Center).Padding(0, 2).Children(func() {
-			a.eyebrow(c, a.t("panel.fastest")).Grow(1)
+			a.eyebrow(c, a.t("panel.switch")).Grow(1)
 			if a.btn(c, btnSpec{kind: btnGhost, label: a.t("nodes.test_all"), icon: "zap", small: true, busy: busy}).Clicked() {
 				a.testAll()
 			}
 		})
-		if len(timed) == 0 {
-			a.txt(c, a.t("panel.fastest.none"), 12.5, 400, p.Text3).Padding(6, 4)
+		if len(choices) == 0 {
+			a.txt(c, a.t("panel.switch.none"), 12.5, 400, p.Text3).Padding(6, 4)
 			return
 		}
-		for _, n := range timed {
-			a.panelNodeRow(c, n, n.Key == current)
+		for _, q := range choices {
+			a.panelQuickRow(c, q)
 		}
 	})
 }
 
-func (a *App) panelNodeRow(c *ui.Context, n nodeEntry, current bool) {
+func (a *App) panelQuickRow(c *ui.Context, q quick) {
 	p := a.pl
-	b := ui.ButtonBase(c.Key("panel-node-" + n.Key))
-	b.Label(n.Name).Height(38).Padding(0, 10).Gap(10).Radius(12).AlignItems(ui.Center).Cursor(ui.CursorPointer)
-	h := b.AnimateTo("h", boolf(b.Hovered() && !current), ui.Animation{Duration: 140 * time.Millisecond})
-	if current {
+	b := ui.ButtonBase(c.Key("panel-q-" + q.key))
+	b.Label(q.title).Height(38).Padding(0, 10).Gap(10).Radius(12).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+	h := b.AnimateTo("h", boolf(b.Hovered() && !q.selected), ui.Animation{Duration: 140 * time.Millisecond})
+	if q.selected {
 		b.Background(p.Blue.Alpha(0.14)).Border(1, p.Blue.Alpha(0.32))
 	} else {
 		b.Background(p.PanelHi.Alpha(0.9*h)).Border(1, ui.Transparent)
 	}
 	b.Children(func() {
-		a.regionBadge(c, n.Region, 24)
-		a.txt(c, n.Name, 13, boolOr(current, 650, 560), p.Text).SingleLine().Grow(1)
-		a.number(c, fmtMillis(n.Delay), 12.5, a.toneColor(latencyTone(n.Delay)))
-		a.signal(c, n.Delay)
+		if q.region != "" {
+			a.regionBadge(c, q.region, 24)
+		} else {
+			a.iconTile(c, q.icon, toneBlue, 24)
+		}
+		a.txt(c, q.title, 13, boolOr(q.selected, 650, 560), p.Text).SingleLine().Grow(1)
+		if q.delay != 0 {
+			a.number(c, boolOr(q.delay > 0, fmtMillis(q.delay), a.t("nodes.timeout")), 12.5, a.toneColor(latencyTone(q.delay)))
+			a.signal(c, q.delay)
+		}
+		if q.selected && q.delay == 0 {
+			ui.Icon(c, icon("check")).Size(15, 15).TextColor(p.BlueText)
+		}
 	})
-	if b.Clicked() && !current {
-		a.pickNode(n.Key)
+	if b.Clicked() && !q.selected {
+		a.setMain(q.dest)
 	}
 }
 
@@ -306,7 +355,7 @@ func (a *App) panelFacts(c *ui.Context) {
 		})
 		ui.Row(c).Gap(10).Children(func() {
 			ui.Column(c).Grow(1).Basis(0).Children(func() {
-				a.heroFact(c, "route", a.presetName(a.prefs.Preset), a.t("hero.fact.preset"))
+				a.heroFact(c, "route", a.planName(a.rv().Plan), a.t("hero.fact.plan"))
 			})
 			ui.Column(c).Grow(1).Basis(0).Children(func() {
 				a.heroFact(c, "clock", a.lastConnected(), a.t("hero.fact.last"))

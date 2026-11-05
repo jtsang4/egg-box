@@ -7,6 +7,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"eggbox/internal/library"
+	"eggbox/internal/routing"
 )
 
 // subscriptionsPage manages where the nodes come from.
@@ -114,6 +115,32 @@ func (a *App) subCard(c *ui.Context, idx int, s library.Subscription) {
 				a.usageRow(c, "sub-"+s.ID, "", s)
 			})
 		}
+		if plan := a.rt().PlanByID(routing.SubPlanID(s.ID)); plan != nil && plan.Kind == routing.PlanSubscription {
+			a.hr(c)
+			a.subPlanRow(c, s, plan)
+		}
+	})
+}
+
+// subPlanRow tells that the subscription came with a routing plan and offers
+// to use it.
+func (a *App) subPlanRow(c *ui.Context, s library.Subscription, plan *routing.Plan) {
+	p := a.pl
+	active := a.rt().ActiveID() == plan.ID
+	ui.Row(c.Key("sub-plan-"+s.ID)).Padding(12, 20, 14, 20).Gap(12).AlignItems(ui.Center).Children(func() {
+		a.iconTile(c, "layers", boolOr(active, toneBlue, toneNeutral), 32)
+		ui.Column(c).Grow(1).Basis(0).Gap(2).Children(func() {
+			a.txt(c, a.tn("subs.plan", len(plan.Items)), 13.5, 650, p.Text).SingleLine()
+			a.txt(c, boolOr(active, a.t("subs.plan.active"), a.t("subs.plan.hint")), 12, 400, p.Text3).SingleLine()
+		})
+		if active {
+			a.chip(c, a.t("subs.plan.in_use"), toneGood, "check-circle")
+			return
+		}
+		if a.btn(c, btnSpec{kind: btnSoft, small: true, label: a.t("subs.plan.use")}).Clicked() {
+			id := plan.ID
+			a.editRouting(func(st *routing.State) error { return st.Switch(id) }, nil)
+		}
 	})
 }
 
@@ -215,7 +242,11 @@ func (a *App) subMenu(c *ui.Context, idx int, s library.Subscription) func(m *ui
 		}
 		m.Separator()
 		if m.Item(a.t("common.delete")).Chosen() {
-			a.confirm(a.t("subs.delete.title", "name", s.Name), a.t("subs.delete.body"), a.t("common.delete"), true, func() {
+			body := a.t("subs.delete.body")
+			if pl := a.rt().PlanByID(routing.SubPlanID(id)); pl != nil && pl.Kind == routing.PlanSubscription {
+				body = a.t("subs.delete.body_plan")
+			}
+			a.confirm(a.t("subs.delete.title", "name", s.Name), body, a.t("common.delete"), true, func() {
 				a.job("sub-del-"+id, func(ctx context.Context) error { return a.be.RemoveSubscription(ctx, id) },
 					func(err error) { a.fail(err) })
 			})

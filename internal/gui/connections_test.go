@@ -1,6 +1,10 @@
 package gui
 
-import "testing"
+import (
+	"testing"
+
+	"eggbox/internal/app"
+)
 
 func TestAppName(t *testing.T) {
 	for in, want := range map[string]string{
@@ -20,31 +24,57 @@ func TestAppName(t *testing.T) {
 	}
 }
 
-func TestMatchedRule(t *testing.T) {
-	en, zh := &App{lang: "en"}, &App{lang: "zh"}
-	for in, want := range map[string]string{
-		"":                                     "",
-		"final":                                "Default route",
-		"final => route(Proxy)":                "Default route",
-		"rule_set=geosite-cn => route(direct)": "Rule set  ·  Mainland China sites",
-		"rule_set=[geosite-cn geoip-cn] => route(direct)":            "Rule set  ·  Mainland China sites, Mainland China addresses",
-		"rule_set=my-own-list => route(Proxy)":                       "Rule set  ·  my-own-list",
-		"domain_suffix=intranet.example => route(direct)":            "Domain suffix  ·  intranet.example",
-		"domain_keyword=[ads tracker] => reject":                     "Keyword  ·  ads, tracker",
-		"protocol=dns => hijack-dns":                                 "Protocol  ·  dns",
-		"clash_mode=Global => route(Proxy)":                          "Mode  ·  Global",
-		"process_name=Slack domain_suffix=slack.com => route(Proxy)": "App  ·  Slack",
-		"!(domain=example.com) => reject":                            "Rule",
-		"unheard_of=1 => reject":                                     "Rule  ·  1",
-	} {
-		if got := en.matchedRule(in); got != want {
-			t.Errorf("matchedRule(%q) = %q, want %q", in, got, want)
+// TestWhyLabel: a connection says why it went where it did in the words of the
+// routing page (an item's name, an exception's number), never the core's own
+// rule text.
+func TestWhyLabel(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	a := h.app
+	cases := []struct {
+		why  app.Why
+		want string
+	}{
+		{app.Why{Kind: app.WhyItem, ID: "b-ai", Name: "AI services"}, "AI services"},
+		// The item was deleted after the connection began: its name stays.
+		{app.Why{Kind: app.WhyItem, ID: "gone", Name: "Old name"}, "Old name"},
+		{app.Why{Kind: app.WhyException, Index: 3, Name: "Slack"}, "Exception #3"},
+		{app.Why{Kind: app.WhyFallback}, "Everything else"},
+		{app.Why{Kind: app.WhyLAN}, "Local network"},
+		{app.Why{Kind: app.WhyMode}, "Routing mode"},
+		{app.Why{}, ""},
+	}
+	for _, c := range cases {
+		if got := a.whyLabel(c.why); got != c.want {
+			t.Errorf("whyLabel(%+v) = %q, want %q", c.why, got, c.want)
 		}
 	}
-	if got := zh.matchedRule("final"); got != "默认路由" {
-		t.Errorf("zh final = %q", got)
+	a.lang = "zh"
+	if got := a.whyLabel(app.Why{Kind: app.WhyException, Index: 2}); got != "例外 #2" {
+		t.Errorf("zh exception = %q", got)
 	}
-	if got := zh.matchedRule("rule_set=geosite-cn => route(direct)"); got != "规则集  ·  中国大陆网站" {
-		t.Errorf("zh rule set = %q", got)
+	if got := a.whyLabel(app.Why{Kind: app.WhyFallback}); got != "其他所有流量" {
+		t.Errorf("zh fallback = %q", got)
+	}
+}
+
+// TestExitLabel: where a connection left is a node's name, "Direct" or "Block",
+// and a node with the name of one in another subscription says which it is.
+func TestExitLabel(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	a := h.app
+	for _, c := range []struct {
+		cn   app.Conn
+		want string
+	}{
+		{app.Conn{Outbound: "direct", Chain: []string{"direct"}}, "Direct"},
+		{app.Conn{Outbound: "reject", Chain: []string{"reject"}}, "Block"},
+		{app.Conn{Outbound: "Tokyo 01", Chain: []string{"Tokyo 01", "Auto", "Proxy"}}, "Tokyo 01"},
+		{app.Conn{}, ""},
+		// A tag nobody knows is shown as it is.
+		{app.Conn{Outbound: "mystery"}, "mystery"},
+	} {
+		if got := a.exitLabel(c.cn); got != c.want {
+			t.Errorf("exitLabel(%+v) = %q, want %q", c.cn, got, c.want)
+		}
 	}
 }

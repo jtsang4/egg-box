@@ -1,7 +1,6 @@
 package gui
 
 import (
-	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -10,7 +9,7 @@ import (
 	"eggbox/internal/app"
 	"eggbox/internal/configgen"
 	"eggbox/internal/library"
-	"eggbox/internal/subscription"
+	"eggbox/internal/routing"
 )
 
 // settingsT is the application's preferences.
@@ -19,15 +18,31 @@ type settingsT = library.Settings
 // nodeEntry is a node as the interface shows it: what the library knows,
 // joined with what the running core reports (latency, the tag to select).
 type nodeEntry struct {
+	// Key identifies the node's configuration; ID is what a person's choices
+	// about the node are kept under (the subscription and the name).
 	Key       string
+	ID        routing.NodeID
 	Name      string
 	Protocol  string
 	Transport string
-	Region    string
-	Server    string
-	Port      int
-	SubID     string
-	SubName   string
+	// Region is the one the node counts as, a correction of the person's
+	// included.
+	Region string
+	Server string
+	Port   int
+	SubID  string
+	// SubName is the subscription's name; SubAlias the short name the person
+	// gave it.
+	SubName  string
+	SubAlias string
+	// Ambiguous is set when another subscription offers a node of the same
+	// name, so the name alone does not say which one it is.
+	Ambiguous bool
+	// NoAuto keeps the node out of the automatic choice, by its own setting or
+	// its subscription's.
+	NoAuto bool
+	// Corrected is set when the person set the region by hand.
+	Corrected bool
 
 	// Live data; zero while disconnected.
 	Tag    string
@@ -35,42 +50,101 @@ type nodeEntry struct {
 	Tested time.Time
 }
 
-// refreshNodes rebuilds the node list when the subscriptions changed.
-func (a *App) refreshNodes() {
-	sig := a.libraryVersion()
-	if sig == a.nodesSig && a.nodes != nil {
+// Label is the node's name, with its subscription when the name alone would
+// not tell it apart.
+func (n nodeEntry) Label() string {
+	if !n.Ambiguous {
+		return n.Name
+	}
+	return n.Name + " · " + n.Source()
+}
+
+// Source is the subscription as a person calls it: the short name when they
+// gave one.
+func (n nodeEntry) Source() string {
+	if n.SubAlias != "" {
+		return n.SubAlias
+	}
+	return n.SubName
+}
+
+// ------------------------------------------------------------------ routing
+
+// routingCache is the routing state and the plan in force as it shows,
+// kept until the library changes: the state is copied to be read and the view
+// is worked out from it, which is more than every frame should pay.
+type routingCache struct {
+	ver  uint64
+	ok   bool
+	st   routing.State
+	view routing.View
+}
+
+// readRouting refreshes the cache when the library changed.
+func (a *App) readRouting() {
+	v := a.be.LibraryVersion()
+	if a.rtc.ok && a.rtc.ver == v {
 		return
 	}
-	a.nodesSig = sig
+	st := a.be.Routing()
+	a.rtc = routingCache{ver: v, ok: true, st: st, view: st.View()}
+}
+
+// rt is the routing state; rv the plan in force with the person's choices
+// applied.
+func (a *App) rt() *routing.State { return &a.rtc.st }
+func (a *App) rv() *routing.View  { return &a.rtc.view }
+
+// ------------------------------------------------------------------- nodes
+
+// refreshNodes rebuilds the node list when the library changed.
+func (a *App) refreshNodes() {
+	v := a.be.LibraryVersion()
+	if a.nodes != nil && v == a.nodesVer {
+		return
+	}
+	a.nodesVer = v
 	nodes, err := a.be.ActiveNodes()
 	if err != nil {
 		a.nodes = []nodeEntry{}
+		a.live = nil
 		return
 	}
-	out := make([]nodeEntry, 0, len(nodes))
+	st := a.rt()
+	names := map[string]map[string]bool{}
 	for _, n := range nodes {
+		if names[n.Node.Name] == nil {
+			names[n.Node.Name] = map[string]bool{}
+		}
+		names[n.Node.Name][n.SubID] = true
+	}
+	out := make([]nodeEntry, 0, len(nodes))
+	live := make([]routing.LiveNode, 0, len(nodes))
+	for _, n := range nodes {
+		id := n.ID()
+		pref := st.NodePref(id)
+		region := app.RegionOf(*st, n)
 		out = append(out, nodeEntry{
-			Key: n.Key(), Name: n.Node.Name, Protocol: n.Node.Protocol(), Transport: n.Node.Transport(),
-			Region: subscription.Region(n.Node.Name), Server: n.Node.Server, Port: n.Node.Port,
-			SubID: n.SubID, SubName: n.SubName,
+			Key: n.Key(), ID: id, Name: n.Node.Name, Protocol: n.Node.Protocol(), Transport: n.Node.Transport(),
+			Region: region, Server: n.Node.Server, Port: n.Node.Port,
+			SubID: n.SubID, SubName: n.SubName, SubAlias: n.SubAlias,
+			Ambiguous: len(names[n.Node.Name]) > 1,
+			NoAuto:    pref.NoAuto || !n.Auto,
+			Corrected: pref.Region != "",
 		})
+		live = append(live, routing.LiveNode{Sub: n.SubID, Name: n.Node.Name, Hash: n.Node.Key(), Region: region})
 	}
-	a.nodes = out
-}
-
-// libraryVersion identifies the content of the subscriptions list, to know
-// when the node list is stale.
-func (a *App) libraryVersion() string {
-	var b strings.Builder
-	for _, s := range a.subs {
-		fmt.Fprintf(&b, "%s|%d|%t|%s|%s|%d;", s.ID, s.UpdatedAt.UnixNano(), s.Enabled, s.Include, s.Exclude, s.NodeCount)
-	}
-	return b.String()
+	a.nodes, a.live = out, live
 }
 
 // liveNodes returns the nodes with the core's latest measurements applied.
+// The list is shared until the snapshot or the library changes: callers must
+// not change it.
 func (a *App) liveNodes() []nodeEntry {
 	a.refreshNodes()
+	if a.withLive != nil && a.withLiveSnap == a.snap && a.withLiveVer == a.nodesVer {
+		return a.withLive
+	}
 	delays := map[string]app.GroupItem{}
 	for _, g := range a.snap.Groups {
 		for _, it := range g.Items {
@@ -88,6 +162,7 @@ func (a *App) liveNodes() []nodeEntry {
 			out[i].Tag, out[i].Delay, out[i].Tested = it.Tag, it.DelayMS, it.Tested
 		}
 	}
+	a.withLive, a.withLiveSnap, a.withLiveVer = out, a.snap, a.nodesVer
 	return out
 }
 
@@ -95,6 +170,26 @@ func (a *App) liveNodes() []nodeEntry {
 func (a *App) nodeCount() int {
 	a.refreshNodes()
 	return len(a.nodes)
+}
+
+// nodeFor finds the node a choice names, the way the configuration does: by
+// subscription and name first, then by settings.
+func (a *App) nodeFor(id routing.NodeID) (nodeEntry, routing.Match) {
+	nodes := a.liveNodes()
+	i, m := routing.Resolve(id, a.live)
+	if m == routing.MatchNone || i < 0 || i >= len(nodes) {
+		return nodeEntry{}, routing.MatchNone
+	}
+	return nodes[i], m
+}
+
+// refLabel names a node of the core's groups, with its subscription when the
+// name alone would not tell it apart.
+func refLabel(r *app.NodeRef) string {
+	if r == nil {
+		return ""
+	}
+	return r.Label()
 }
 
 // group finds a group of the running core.
@@ -109,8 +204,8 @@ func groupIn(snap *app.Snapshot, tag string) (app.Group, bool) {
 	return app.Group{}, false
 }
 
-// exitNode resolves the node traffic leaves through, following the selector
-// and any fastest-node group it points at.
+// exitNode resolves the node the main exit sends traffic through, following
+// the selector and any fastest-node group it points at.
 func (a *App) exitNode() (item app.GroupItem, via string, ok bool) { return exitNodeIn(a.snap) }
 
 func exitNodeIn(snap *app.Snapshot) (item app.GroupItem, via string, ok bool) {
@@ -136,23 +231,6 @@ func exitNodeIn(snap *app.Snapshot) (item app.GroupItem, via string, ok bool) {
 	return app.GroupItem{}, "", false
 }
 
-// selectedKey is the node the user pinned, "" for automatic.
-func (a *App) selectedKey() string { return a.set.SelectedNode }
-
-// selectedEntry is the pinned node, if it still exists.
-func (a *App) selectedEntry() (nodeEntry, bool) {
-	k := a.selectedKey()
-	if k == "" {
-		return nodeEntry{}, false
-	}
-	for _, n := range a.liveNodes() {
-		if n.Key == k {
-			return n, true
-		}
-	}
-	return nodeEntry{}, false
-}
-
 // regions lists the regions among the nodes, most nodes first.
 func regionsOf(nodes []nodeEntry) []regionCount {
 	counts := map[string]int{}
@@ -175,6 +253,27 @@ func regionsOf(nodes []nodeEntry) []regionCount {
 type regionCount struct {
 	Code string
 	N    int
+}
+
+// regionsWithNodes are the regions a person can send traffic to: those with a
+// node, most nodes first, and the one a choice already names even when its
+// nodes are gone.
+func regionsWithNodes(nodes []nodeEntry, keep string) []regionCount {
+	var out []regionCount
+	seen := false
+	for _, rc := range regionsOf(nodes) {
+		if rc.Code == "" {
+			continue
+		}
+		if rc.Code == keep {
+			seen = true
+		}
+		out = append(out, rc)
+	}
+	if keep != "" && !seen {
+		out = append(out, regionCount{keep, 0})
+	}
+	return out
 }
 
 // ----------------------------------------------------------- subscriptions
@@ -214,4 +313,45 @@ func (a *App) usageSubscriptions() []library.Subscription {
 		}
 	}
 	return out
+}
+
+// subscriptionByID finds one of the subscriptions.
+func (a *App) subscriptionByID(id string) (library.Subscription, bool) {
+	for _, s := range a.subs {
+		if s.ID == id {
+			return s, true
+		}
+	}
+	return library.Subscription{}, false
+}
+
+// ---------------------------------------------------------- the main exit
+
+// mainExit is where the main exit leads right now, from what the core
+// reports: the node and how fast it answers. ok is false while nothing is
+// known (no connection, or no configuration yet).
+type mainExit struct {
+	Node    *app.NodeRef
+	DelayMS int
+	// Via is the group that picked the node ("Auto", "region-JP"), "" for a
+	// node chosen by hand.
+	Via string
+	// StandIn is set when the node is not the one somebody chose.
+	StandIn bool
+	Wanted  *routing.NodeID
+}
+
+// mainExitNow reads the main exit from the snapshot.
+func (a *App) mainExitNow() (mainExit, bool) {
+	if ex, ok := a.snap.Exits["main"]; ok && ex.Node != nil {
+		via := ""
+		if strings.HasPrefix(ex.Member, configgen.RegionPrefix) || ex.Member == configgen.TagAuto {
+			via = ex.Member
+		}
+		return mainExit{Node: ex.Node, DelayMS: ex.DelayMS, Via: via, StandIn: ex.StandIn, Wanted: ex.Wanted}, true
+	}
+	if it, via, ok := a.exitNode(); ok && it.Node != nil {
+		return mainExit{Node: it.Node, DelayMS: it.DelayMS, Via: via}, true
+	}
+	return mainExit{}, false
 }

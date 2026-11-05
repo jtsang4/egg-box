@@ -51,7 +51,7 @@ func (d *desktop) buildMenu() {
 		{"nav.dashboard", "dashboard", "CmdOrCtrl+1"},
 		{"nav.nodes", "nodes", "CmdOrCtrl+2"},
 		{"nav.subscriptions", "subscriptions", "CmdOrCtrl+3"},
-		{"nav.rules", "rules", "CmdOrCtrl+4"},
+		{"nav.routing", "routing", "CmdOrCtrl+4"},
 		{"nav.connections", "connections", "CmdOrCtrl+5"},
 		{"nav.logs", "logs", "CmdOrCtrl+6"},
 	}

@@ -148,9 +148,8 @@ func shellLiterals(t *testing.T) (all, said map[string]bool) {
 
 // dynamicPrefixes are the keys built at run time from a known stem.
 var dynamicPrefixes = []string{
-	"notice.", "err.", "phase.", "rulekind.", "ruleset.", "ruledlg.hint.", "ruledlg.example.",
-	"preset.", "target.", "welcome.f", "welcome.sub.", "nav.", "time.", "mode.", "sort.",
-	"region.", "tray.", "empty.", "hero.hint.", "conns.rule.",
+	"notice.", "err.", "phase.", "entry.", "fmt.", "welcome.f", "welcome.sub.", "nav.", "time.",
+	"mode.", "sort.", "region.", "tray.", "empty.", "hero.hint.", "icon.",
 }
 
 func isDynamic(k string) bool {

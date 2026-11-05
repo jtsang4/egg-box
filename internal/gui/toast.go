@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"maps"
 	"sort"
 	"time"
 
@@ -80,22 +81,50 @@ func (a *App) absorbNotices() {
 
 // noticeTitle words a notice.
 func (a *App) noticeTitle(n app.Notice) string {
-	kv := make([]string, 0, 2*len(n.Args))
-	keys := make([]string, 0, len(n.Args))
-	for k := range n.Args {
+	args := n.Args
+	// The service names an item as it is stored; a shipped item has a name in
+	// each language, so the interface words it itself.
+	if id := args["item"]; id != "" {
+		if row, _, ok := a.rv().Row(id); ok {
+			args = maps.Clone(args)
+			args["for"] = a.itemName(row.Item)
+		}
+	}
+	kv := make([]string, 0, 2*len(args))
+	keys := make([]string, 0, len(args))
+	for k := range args {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		kv = append(kv, k, n.Args[k])
+		kv = append(kv, k, args[k])
 	}
-	if key := "notice." + n.Code; a.has(key) {
+	key := "notice." + n.Code
+	// A notice about a number of things has a text for one and one for more.
+	if _, plural := noticeCounts[n.Code]; plural {
+		form := ".other"
+		if a.lang != "zh" && n.Args[noticeCounts[n.Code]] == "1" {
+			form = ".one"
+		}
+		if a.has(key + form) {
+			return a.t(key+form, kv...)
+		}
+	}
+	if a.has(key) {
 		return a.t(key, kv...)
 	}
 	if n.Detail != "" {
 		return n.Detail
 	}
 	return n.Code
+}
+
+// noticeCounts names, for the notices that count something, the argument that
+// holds the count: their text has a form for one and a form for more.
+var noticeCounts = map[string]string{
+	"nodes_dropped": "count", "subscription_added": "nodes", "nodes_imported": "nodes", "subscription_updated": "nodes",
+	"subscriptions_updated": "count", "plan_items_added": "count", "plan_items_removed": "count",
+	"migrate_rules_dropped": "count", "items_waiting": "count",
 }
 
 // noticeBody explains why, for notices that report a failure.

@@ -22,7 +22,7 @@ var navMain = []navItem{
 	{pageDashboard, "home", "nav.dashboard"},
 	{pageNodes, "globe", "nav.nodes"},
 	{pageSubscriptions, "rss", "nav.subscriptions"},
-	{pageRules, "route", "nav.rules"},
+	{pageRouting, "route", "nav.routing"},
 }
 
 var navMonitor = []navItem{
@@ -367,8 +367,8 @@ func (a *App) pageHost(c *ui.Context) {
 			a.nodesPage(c)
 		case pageSubscriptions:
 			a.subscriptionsPage(c)
-		case pageRules:
-			a.rulesPage(c)
+		case pageRouting:
+			a.routingPage(c)
 		case pageConnections:
 			a.connectionsPage(c)
 		case pageLogs:

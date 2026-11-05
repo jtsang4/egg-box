@@ -127,7 +127,7 @@ func (d *desktop) tour(dir string) {
 		}
 		pause(warm * 1000)
 	}
-	pages := []string{"dashboard", "nodes", "subscriptions", "rules", "connections", "logs", "settings"}
+	pages := []string{"dashboard", "nodes", "subscriptions", "routing", "connections", "logs", "settings"}
 	for _, theme := range []string{"dark", "light"} {
 		if err := d.rt.Library.UpdateSettings(func(s *library.Settings) { s.Theme = theme }); err != nil {
 			log.Printf("tour: %v", err)
