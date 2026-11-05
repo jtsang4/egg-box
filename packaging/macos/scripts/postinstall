@@ -1,0 +1,33 @@
+#!/bin/sh
+# Runs as root after the files of the new version are in place.
+#
+# The application that is running during an installation asks for the service
+# whenever it loses it, which starts the old version's service again from the
+# files that were just replaced: stop it, so that the service that runs is the
+# one that was just installed. Then, if the preinstall stopped a running
+# service for this upgrade (it left the note "upgrade-pending"), start the new
+# one now: it finds the note and brings back the connection the person had.
+# With no note, nothing was running, and the service starts the way it always
+# does, when the application asks for it.
+#
+# Nothing here fails the installation.
+label=me.jtsang.singboxui.agent
+data="/Library/Application Support/SingBoxUI/agent"
+
+running() {
+  /bin/launchctl print "system/$label" 2>/dev/null | /usr/bin/grep -Eq '^[[:space:]]*pid = [0-9]+'
+}
+
+if running; then
+  /bin/launchctl kill SIGTERM "system/$label" >/dev/null 2>&1
+  i=0
+  while running && [ "$i" -lt 30 ]; do
+    /bin/sleep 1
+    i=$((i + 1))
+  done
+fi
+
+if [ -e "$data/upgrade-pending" ]; then
+  /bin/launchctl kickstart "system/$label" >/dev/null 2>&1
+fi
+exit 0

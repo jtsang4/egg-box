@@ -25,6 +25,7 @@ const platformUsage = `  service    run as the Windows service (the system start
   uninstall  disconnect, clean up and remove the service; --purge also removes its data (administrator)
   authorize  allow a user to control the service, then restart it (administrator)
              --sid S-1-5-... --name DOMAIN\user; without them, the user signed in here
+             --if-unowned: only when nobody is allowed yet (an upgrade changes nothing)
   set-boot   on | off: whether the service starts with the computer (administrator)
   start      start the service (administrator)
   stop       stop the service: disconnect and clean up first (administrator)
@@ -183,8 +184,20 @@ func cmdAuthorize(args []string) error {
 	fs := flag.NewFlagSet("authorize", flag.ContinueOnError)
 	sid := fs.String("sid", "", "the user's security identifier")
 	name := fs.String("name", "", "the user's name, for display")
+	ifUnowned := fs.Bool("if-unowned", false, "do nothing when a user is already allowed")
 	if err := fs.Parse(args); err != nil {
 		return errUsage
+	}
+	if *ifUnowned {
+		// An upgrade runs this too. Whoever is signed in while an
+		// administrator updates the computer does not become the one who
+		// controls the service, and the service is not restarted a second time:
+		// that would lose the connection the upgrade has just brought back.
+		if dir, err := dataDir(); err == nil {
+			if _, err := winsys.LoadOwner(dir); err == nil {
+				return nil
+			}
+		}
 	}
 	owner := winsys.Owner{SID: *sid, Name: *name}
 	if *sid == "" {

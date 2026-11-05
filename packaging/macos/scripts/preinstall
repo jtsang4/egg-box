@@ -4,18 +4,24 @@
 # The service of an older version may be running from the very files that are
 # about to be replaced. Ask launchd to stop it with a termination signal, which
 # the service answers by disconnecting and putting the network back before it
-# exits; launchd starts the new one when the application next connects to it.
-# (A job is signalled through launchd, not found by its name: it runs as
-# "agentd", whatever folder it came from.)
+# exits. A service that is running is stopped for this upgrade, so it is left a
+# note saying so ("upgrade-pending" in its data folder, which only root can
+# write in): the new version brings back the connection the person had. The
+# postinstall starts it. (A job is signalled through launchd, not found by its
+# name: it runs as "agentd", whatever folder it came from.)
 #
 # Nothing here fails the installation: with no service, there is nothing to do.
 label=me.jtsang.singboxui.agent
+data="/Library/Application Support/SingBoxUI/agent"
 
 running() {
   /bin/launchctl print "system/$label" 2>/dev/null | /usr/bin/grep -Eq '^[[:space:]]*pid = [0-9]+'
 }
 
 if running; then
+  if [ -d "$data" ]; then
+    /usr/bin/touch "$data/upgrade-pending"
+  fi
   /bin/launchctl kill SIGTERM "system/$label" >/dev/null 2>&1
   i=0
   while running && [ "$i" -lt 30 ]; do

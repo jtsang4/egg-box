@@ -4,7 +4,8 @@ name: release
 #
 # They are signed when the secrets below exist. Without them they are signed
 # ad hoc on macOS and not at all on Windows: good to try, not good to hand to
-# anybody (macOS will not let the service be approved without a Developer ID).
+# anybody (Gatekeeper, and the approval of the macOS service, expect a
+# Developer ID signature).
 #
 #   SBUI_SIGN_IDENTITY       Developer ID Application identity (macOS)
 #   SBUI_INSTALLER_IDENTITY  Developer ID Installer identity (macOS)

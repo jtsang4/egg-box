@@ -113,6 +113,7 @@ func Build(cfg Config) (*Daemon, error) {
 	if err != nil {
 		return nil, d.fail(err)
 	}
+	consumeUpgradeMarker(cfg.DataDir, intent, logger)
 
 	d.log = logger
 	instance := fmt.Sprintf("agent-%d-%d", os.Getpid(), time.Now().UnixNano())

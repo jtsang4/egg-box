@@ -36,6 +36,7 @@ SetCompressor /SOLID lzma
 
 !define NAME      "Sing-Box UI"
 !define SLUG      "SingBoxUI"
+!define SERVICE   "SingBoxUIAgent"
 !define GUI_EXE   "Sing-Box UI.exe"       ; the service looks for this exact name next to itself
 !define AGENT_EXE "agentd.exe"
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${SLUG}"
@@ -44,6 +45,8 @@ SetCompressor /SOLID lzma
 !include "LogicLib.nsh"
 !include "x64.nsh"
 !include "FileFunc.nsh"
+!include "StrFunc.nsh"
+${StrStr}
 
 Name "${NAME}"
 OutFile "${OUTFILE}"
@@ -88,6 +91,26 @@ Section "Install"
   ; An earlier version may be running: stopping the service disconnects and
   ; puts the network back before its program is replaced.
   ${If} ${FileExists} "$INSTDIR\${AGENT_EXE}"
+    ; A service that is running is stopped for this upgrade: leave it a note
+    ; saying so, and the new version brings back the connection the person had
+    ; (that is the whole of what the note does). The folder is open to
+    ; administrators and the system only, which is why the note can be trusted.
+    ; The agent looks for the note in its own data folder, under the data that
+    ; belongs to all users (ProgramData).
+    nsExec::ExecToStack '"$INSTDIR\${AGENT_EXE}" status'
+    Pop $0
+    Pop $1
+    ${StrStr} $2 $1 "running true"
+    ${If} $2 != ""
+      SetShellVarContext all
+      ${If} ${FileExists} "$APPDATA\${SLUG}\agent\*.*"
+        ClearErrors
+        FileOpen $3 "$APPDATA\${SLUG}\agent\upgrade-pending" w
+        ${IfNot} ${Errors}
+          FileClose $3
+        ${EndIf}
+      ${EndIf}
+    ${EndIf}
     nsExec::ExecToLog '"$INSTDIR\${AGENT_EXE}" stop'
     Pop $0
   ${EndIf}
@@ -106,9 +129,12 @@ Section "Install"
     Abort
   ${EndIf}
 
-  ; Let the person who is signed in use it. If nobody is (an unattended
-  ; installation), that is left to the application, which asks the first time.
-  nsExec::ExecToLog '"$INSTDIR\${AGENT_EXE}" authorize'
+  ; Let the person who is signed in use it, when nobody is allowed yet: an
+  ; upgrade leaves things as they are (and so does not restart the service a
+  ; second time, which would lose the connection it has just brought back). If
+  ; nobody is signed in (an unattended installation), that is left to the
+  ; application, which asks the first time.
+  nsExec::ExecToLog '"$INSTDIR\${AGENT_EXE}" authorize --if-unowned'
   Pop $0
 
   CreateDirectory "$SMPROGRAMS\${NAME}"

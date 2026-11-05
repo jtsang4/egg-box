@@ -18,7 +18,8 @@ import (
 const ServiceArgs = "service"
 
 // Install registers the service: automatic start, LocalSystem, restarted by
-// the system when it fails. It replaces a registration of an older version.
+// the system when it fails. It replaces a registration of an older version,
+// keeping what the person chose about starting with the computer.
 // It needs administrator rights, and it refuses a program an ordinary user
 // could replace, because the service would run it as SYSTEM.
 func Install(exe string) error {
@@ -47,7 +48,10 @@ func Install(exe string) error {
 			return qerr
 		}
 		old.BinaryPathName = quoteCommand(exe, ServiceArgs)
-		old.StartType, old.DisplayName, old.Description = cfg.StartType, cfg.DisplayName, cfg.Description
+		// The start type stays as it is: whether the service starts with the
+		// computer is the person's choice (set-boot), and an upgrade must not
+		// undo it.
+		old.DisplayName, old.Description = cfg.DisplayName, cfg.Description
 		if err := s.UpdateConfig(old); err != nil {
 			return fmt.Errorf("update the service: %w", err)
 		}
