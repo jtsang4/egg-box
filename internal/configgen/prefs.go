@@ -55,6 +55,23 @@ const (
 	RuleSetForeign = "geosite-geolocation-!cn"
 )
 
+// RequiredRuleSets lists the rule sets the preferences need, so the application
+// can fetch them before generating a configuration.
+func RequiredRuleSets(p Prefs) []string {
+	p, _ = p.Normalize()
+	var ids []string
+	switch p.Preset {
+	case PresetChina:
+		ids = append(ids, RuleSetCN, RuleSetCNIP)
+	case PresetForeignOnly:
+		ids = append(ids, RuleSetForeign)
+	}
+	if p.BlockAds {
+		ids = append(ids, RuleSetAds)
+	}
+	return ids
+}
+
 // RuleSetFile is the resource name a rule set is shipped under.
 func RuleSetFile(id string) string {
 	return strings.NewReplacer("!", "not-").Replace(id) + ".srs"

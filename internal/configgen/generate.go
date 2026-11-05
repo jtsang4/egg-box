@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,7 +26,8 @@ type Input struct {
 	Rules []CustomRule
 	// RuleSets holds the downloaded binary rule sets by id (RuleSetCN...).
 	RuleSets map[string][]byte
-	// Selected is the Key of the node to preselect; empty selects the fastest ("Auto").
+	// Selected is what the Proxy group starts on: the Key of a node, the tag of a
+	// region group, or empty for the fastest node ("Auto").
 	Selected string
 }
 
@@ -135,6 +137,8 @@ func Generate(in Input) (*Output, error) {
 	defaultTag := TagAuto
 	if t, ok := out.Tags[in.Selected]; ok && in.Selected != "" {
 		defaultTag = t
+	} else if slices.Contains(groupTags, in.Selected) && in.Selected != TagProxy {
+		defaultTag = in.Selected
 	}
 	outbounds = append(outbounds,
 		map[string]any{"type": "selector", "tag": TagProxy, "outbounds": anyStrings(selectorMembers), "default": defaultTag},

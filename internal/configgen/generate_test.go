@@ -487,3 +487,51 @@ func TestDNSServerSpecs(t *testing.T) {
 		t.Fatal("literal addresses need no bootstrap resolver")
 	}
 }
+
+func TestSelectedMayNameARegionGroup(t *testing.T) {
+	ns := nodes(t)
+	out := generate(t, configgen.Input{Nodes: ns, Prefs: configgen.DefaultPrefs(), RuleSets: ruleSets(t), Selected: "region-HK"})
+	var cfg struct {
+		Outbounds []map[string]any `json:"outbounds"`
+	}
+	if err := json.Unmarshal(out.JSON, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range cfg.Outbounds {
+		if o["tag"] == "Proxy" && o["default"] != "region-HK" {
+			t.Fatalf("selector default = %v, want the region group", o["default"])
+		}
+	}
+	// A group that does not exist, and the selector itself, fall back to Auto.
+	for _, sel := range []string{"region-ZZ", "Proxy"} {
+		out = generate(t, configgen.Input{Nodes: ns, Prefs: configgen.DefaultPrefs(), RuleSets: ruleSets(t), Selected: sel})
+		if err := json.Unmarshal(out.JSON, &cfg); err != nil {
+			t.Fatal(err)
+		}
+		for _, o := range cfg.Outbounds {
+			if o["tag"] == "Proxy" && o["default"] != "Auto" {
+				t.Fatalf("selected %q: default = %v, want Auto", sel, o["default"])
+			}
+		}
+	}
+}
+
+func TestRequiredRuleSetsFollowThePreferences(t *testing.T) {
+	p := configgen.DefaultPrefs()
+	got := configgen.RequiredRuleSets(p)
+	if len(got) != 2 || got[0] != configgen.RuleSetCN || got[1] != configgen.RuleSetCNIP {
+		t.Errorf("china preset: %v", got)
+	}
+	p.BlockAds = true
+	if got := configgen.RequiredRuleSets(p); len(got) != 3 || got[2] != configgen.RuleSetAds {
+		t.Errorf("with ad blocking: %v", got)
+	}
+	p.Preset = configgen.PresetProxyAll
+	if got := configgen.RequiredRuleSets(p); len(got) != 1 || got[0] != configgen.RuleSetAds {
+		t.Errorf("proxy-all with ad blocking: %v", got)
+	}
+	p.Preset, p.BlockAds = configgen.PresetForeignOnly, false
+	if got := configgen.RequiredRuleSets(p); len(got) != 1 || got[0] != configgen.RuleSetForeign {
+		t.Errorf("foreign-only: %v", got)
+	}
+}
