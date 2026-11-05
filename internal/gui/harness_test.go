@@ -115,9 +115,6 @@ func (h *harness) click(text string) {
 	h.ui.Advance(400 * time.Millisecond)
 }
 
-// has reports whether text is on screen.
-func (h *harness) has(text string) bool { return h.ui.HasText(text) }
-
 func (h *harness) mustHave(texts ...string) {
 	h.t.Helper()
 	for _, s := range texts {
@@ -159,11 +156,6 @@ func writePNG(t *testing.T, path string, img image.Image) {
 	if err := png.Encode(f, img); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// slug turns a test name into a file name.
-func slug(s string) string {
-	return strings.NewReplacer("/", "-", " ", "-").Replace(strings.ToLower(s))
 }
 
 // digest is the texts on screen, shortened for a failure message.

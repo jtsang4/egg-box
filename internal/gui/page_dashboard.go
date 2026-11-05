@@ -11,8 +11,6 @@ import (
 	"github.com/jtsang4/sing-box-ui/internal/configgen"
 )
 
-type dashState struct{}
-
 // dashboardPage is the home of the application: the connection and what
 // flows through it.
 func (a *App) dashboardPage(c *ui.Context) {

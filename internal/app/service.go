@@ -61,7 +61,6 @@ type Service struct {
 	rawGroups  *agentapi.Groups
 	noticeSeq  uint64
 	lastSample time.Time
-	lastTotals struct{ up, down int64 }
 	conns      map[string]*Conn
 	connCancel context.CancelFunc
 	digest     string

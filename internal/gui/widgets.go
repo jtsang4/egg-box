@@ -62,10 +62,6 @@ func (a *App) heading(c *ui.Context, s string) ui.Element {
 	return a.txt(c, s, 15, 650, a.pl.Text).LetterSpacing(-0.1).SingleLine()
 }
 
-func (a *App) body(c *ui.Context, s string) ui.Element {
-	return a.txt(c, s, 13, 400, a.pl.Text2)
-}
-
 func (a *App) caption(c *ui.Context, s string) ui.Element {
 	return a.txt(c, s, 12, 400, a.pl.Text3)
 }
@@ -100,29 +96,6 @@ func (a *App) card(c *ui.Context) ui.Element {
 		e.Shadow(0, 1, 2, 0, ui.RGBA(16, 40, 96, 0.05)).Shadow(0, 12, 28, -14, p.Shadow)
 	}
 	return e
-}
-
-// hoverCard is a card that lifts under the pointer; the caller handles clicks.
-func (a *App) pressCard(c *ui.Context) ui.Element {
-	p := a.pl
-	e := ui.ButtonBase(c).Padding(cardPadding).Radius(radiusCard).Border(1, p.Line)
-	e.Cursor(ui.CursorPointer)
-	h := e.AnimateTo("hover", boolf(e.Hovered()), ui.Animation{Duration: 160 * time.Millisecond})
-	e.Background(p.Panel.Mix(p.PanelHi, h))
-	e.BorderColor(p.Line.Mix(p.LineHi, h))
-	if p.Dark {
-		e.InsetShadow(0, 1, 0, 0, ui.RGBA(255, 255, 255, 0.055))
-	} else {
-		e.Shadow(0, 1, 2, 0, ui.RGBA(16, 40, 96, 0.05)).Shadow(0, 12, 28, -14, p.Shadow)
-	}
-	lift := ui.Pose{}
-	switch {
-	case e.Pressed():
-		lift = ui.Pose{Scale: 0.992}
-	case e.Hovered():
-		lift = ui.Pose{Y: -1.5}
-	}
-	return e.AnimatePose(lift, ui.Snappy)
 }
 
 func boolf(b bool) float32 {
@@ -576,22 +549,6 @@ func arcPath(cx, cy, r, a0, a1 float32) *ui.Path {
 	return &path
 }
 
-// meter is a thin determinate bar.
-func (a *App) meter(c *ui.Context, key string, frac float64, t tone, h float32) ui.Element {
-	p := a.pl
-	track := ui.Box(c.Key(key)).Height(h).Radius(h / 2).Background(p.Line).Clip()
-	f := track.AnimateTo("f", float32(clamp01(frac)), ui.Animation{Duration: 600 * time.Millisecond, Ease: ui.EaseOut})
-	col := a.toneColor(t)
-	if t == toneBlue || t == toneNeutral {
-		col = p.Blue
-	}
-	track.Children(func() {
-		ui.Box(c).Absolute().Left(0).Top(0).Height(h).WidthPercent(f * 100).Radius(h / 2).
-			LinearGradient(ui.LinearGradient{From: col.Mix(p.Cyan, 0.0), To: col.Mix(p.Cyan, 0.5), Angle: 90})
-	})
-	return track
-}
-
 // signal draws four ascending bars lit by how fast a node answers.
 func (a *App) signal(c *ui.Context, ms int) ui.Element {
 	p := a.pl
@@ -701,13 +658,5 @@ func (a *App) emptyState(c *ui.Context, iconName, title, desc string, actions fu
 		if actions != nil {
 			ui.Row(c).Gap(10).Padding(12, 0, 0, 0).Children(actions)
 		}
-	})
-}
-
-// kbd is a keyboard shortcut hint.
-func (a *App) kbd(c *ui.Context, s string) ui.Element {
-	p := a.pl
-	return ui.Box(c).Padding(1, 6).Radius(5).Border(1, p.LineHi).Background(p.Field).Children(func() {
-		a.txt(c, s, 11, 600, p.Text3).SingleLine()
 	})
 }

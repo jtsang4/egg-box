@@ -1,7 +1,6 @@
 package gui
 
 import (
-	"slices"
 	"sync"
 
 	"github.com/egoist/mygo/ui"
@@ -109,16 +108,6 @@ func icon(name string) *ui.SVG {
 	s := ui.MustParseSVG([]byte(svgHead + inner + svgFoot))
 	iconCache[name] = s
 	return s
-}
-
-// iconNames lists every icon, for the icon sheet.
-func iconNames() []string {
-	names := make([]string, 0, len(iconData))
-	for k := range iconData {
-		names = append(names, k)
-	}
-	slices.Sort(names)
-	return names
 }
 
 // mustSVG parses an SVG that is part of the program.

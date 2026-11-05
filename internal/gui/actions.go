@@ -2,7 +2,6 @@ package gui
 
 import (
 	"context"
-	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -103,14 +102,6 @@ func (a *App) testAll() {
 	a.job("test-all", func(ctx context.Context) error { return a.be.TestLatency(ctx, configgen.TagProxy) }, nil)
 }
 
-// testGroup measures the members of a group (or one node, by its tag).
-func (a *App) testTag(tag string) {
-	if tag == "" {
-		return
-	}
-	a.job("test-"+tag, func(ctx context.Context) error { return a.be.TestLatency(ctx, tag) }, nil)
-}
-
 // refreshAll updates every subscription.
 func (a *App) refreshAll() {
 	a.job("refresh-all", func(ctx context.Context) error {
@@ -134,12 +125,6 @@ func (a *App) pickNode(key string) {
 			a.fail(err)
 		}
 	})
-}
-
-// copyText puts text on the clipboard and confirms it for a moment.
-func (a *App) copyText(c *ui.Context, flashKey, text string) {
-	c.WriteClipboard(text)
-	a.setFlash(flashKey, 1600*time.Millisecond)
 }
 
 // updateSettings changes a preference and reports a failure.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"time"
 
@@ -324,6 +323,3 @@ func (s *Service) requireLink(ctx context.Context) error {
 	}
 	return nil
 }
-
-// errInvalid is returned for requests the interface should not have made.
-var errInvalid = errors.New("invalid request")

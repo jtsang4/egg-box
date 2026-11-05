@@ -38,11 +38,6 @@ func (a *App) pushToast(t *toast) {
 	time.AfterFunc(t.ttl+80*time.Millisecond, a.invalidate)
 }
 
-// toastOK confirms something that worked.
-func (a *App) toastOK(title string) {
-	a.pushToast(&toast{tone: toneGood, icon: "check-circle", title: title})
-}
-
 // toastInfo tells something neutral.
 func (a *App) toastInfo(title string) {
 	a.pushToast(&toast{tone: toneBlue, icon: "info", title: title, ttl: 3200 * time.Millisecond})

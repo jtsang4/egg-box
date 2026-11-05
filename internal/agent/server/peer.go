@@ -67,7 +67,7 @@ func (creds) ClientHandshake(_ context.Context, _ string, conn net.Conn) (net.Co
 }
 
 func (creds) Info() credentials.ProtocolInfo {
-	return credentials.ProtocolInfo{SecurityProtocol: "sbui-local", SecurityVersion: "1", ServerName: "agent"}
+	return credentials.ProtocolInfo{SecurityProtocol: "sbui-local"}
 }
 
 func (c creds) Clone() credentials.TransportCredentials { return c }

@@ -76,19 +76,6 @@ func fmtCount(n int64) string {
 	return s
 }
 
-// fmtClock writes a duration as H:MM:SS (or M:SS under an hour).
-func fmtClock(d time.Duration) string {
-	if d < 0 {
-		d = 0
-	}
-	s := int64(d / time.Second)
-	h, m, sec := s/3600, s/60%60, s%60
-	if h > 0 {
-		return fmt.Sprintf("%d:%02d:%02d", h, m, sec)
-	}
-	return fmt.Sprintf("%d:%02d", m, sec)
-}
-
 // fmtMillis writes a latency: "86 ms".
 func fmtMillis(ms int) string {
 	return strconv.Itoa(ms) + " ms"
@@ -118,17 +105,6 @@ func clamp01(v float64) float64 {
 
 // lerp is the linear interpolation from a to b.
 func lerp(a, b, t float32) float32 { return a + (b-a)*t }
-
-// smoothstep eases t in [0, 1].
-func smoothstep(t float32) float32 {
-	if t <= 0 {
-		return 0
-	}
-	if t >= 1 {
-		return 1
-	}
-	return t * t * (3 - 2*t)
-}
 
 // initials returns up to two letters for a name's avatar.
 func initials(name string) string {

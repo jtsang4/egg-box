@@ -9,8 +9,6 @@ import (
 	"github.com/jtsang4/sing-box-ui/internal/library"
 )
 
-type subsState struct{}
-
 // subscriptionsPage manages where the nodes come from.
 func (a *App) subscriptionsPage(c *ui.Context) {
 	sub := a.t("subs.sub.empty")

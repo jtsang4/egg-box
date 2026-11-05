@@ -11,8 +11,6 @@ import (
 	"github.com/jtsang4/sing-box-ui/internal/configgen"
 )
 
-type rulesState struct{}
-
 // presets are the routing presets in the order the page shows them.
 var presets = []struct {
 	id   configgen.Preset

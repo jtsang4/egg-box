@@ -80,12 +80,6 @@ func dnsServerFor(spec string) (dnsServer, error) {
 	return dnsServer{obj: obj, hostname: err != nil}, nil
 }
 
-// needsQUIC reports whether the server type is only available in builds with QUIC.
-func (d dnsServer) needsQUIC() bool {
-	t, _ := d.obj["type"].(string)
-	return t == "quic" || t == "h3"
-}
-
 func compileRegex(s string) (*regexp.Regexp, error) { return regexp.Compile(s) }
 
 func validCIDR(s string) bool {

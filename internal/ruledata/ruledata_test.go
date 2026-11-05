@@ -118,7 +118,7 @@ func TestConditionalRequestsAndMaxAge(t *testing.T) {
 
 func TestFallsBackToTheNextMirror(t *testing.T) {
 	data := srs.DomainSuffixes(t, "example.cn")
-	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "down", 503) }))
+	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "down", http.StatusServiceUnavailable) }))
 	t.Cleanup(broken.Close)
 	bad := ruledata.Mirror{Name: "broken", URL: func(repo, file string) string { return broken.URL + "/" + repo + "/" + file }}
 	good := mirrorOf(t, "good", map[string][]byte{"sing-geosite/geosite-cn.srs": data}, nil)

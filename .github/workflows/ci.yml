@@ -58,6 +58,17 @@ jobs:
       - name: Shell scripts
         run: git ls-files -z '*.sh' 'packaging/macos/scripts/*' | xargs -0 shellcheck
 
+      # Code left behind, deprecated calls, mistakes vet does not see; the code
+      # of each platform is analysed as that platform builds it. The version is
+      # pinned so that a new check cannot fail a change that did not cause it.
+      - name: Static analysis
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
+          for target in linux/amd64 darwin/arm64 windows/amd64; do
+            echo "== $target"
+            CGO_ENABLED=0 GOOS="${target%/*}" GOARCH="${target#*/}" staticcheck -tags "$SBUI_TAGS" ./...
+          done
+
       - name: Vet
         run: |
           go vet ./...

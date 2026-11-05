@@ -132,20 +132,14 @@ type App struct {
 	dlg     dialog
 	dlgOpen bool
 	jobs    map[string]bool
-	flash   map[string]time.Time // brief confirmations: "copied", keyed by id
 
-	dash dashState
 	node nodesState
-	sub  subsState
-	rule rulesState
 	conn connsState
 	logs logsState
 	sett settingsState
 	boot onboardState
 
 	pending atomic.Bool
-	mu      sync.Mutex
-	queue   []func()
 
 	// What the system notifications have told so far (see notifyNew).
 	nmu      sync.Mutex
@@ -161,7 +155,7 @@ func New(opt Options) *App {
 	if opt.Platform == "" {
 		opt.Platform = "darwin"
 	}
-	a := &App{opt: opt, be: opt.Backend, platform: opt.Platform, jobs: map[string]bool{}, flash: map[string]time.Time{}}
+	a := &App{opt: opt, be: opt.Backend, platform: opt.Platform, jobs: map[string]bool{}}
 	a.initState()
 	if a.be != nil {
 		a.be.SetNotify(func() {
@@ -258,7 +252,6 @@ func (a *App) frame(c *ui.Context, slot *atomic.Pointer[ui.Services]) {
 	a.resolve(c, slot)
 	a.absorbNotices()
 	a.pruneToasts()
-	a.pruneFlash()
 }
 
 // resolve reads the backend and the preferences into the App's per-frame
@@ -329,26 +322,6 @@ func themeCache(p *palette) *ui.Theme {
 	t := themeFor(p)
 	themeByDark[p.Dark] = t
 	return t
-}
-
-// flashed reports whether a brief confirmation is showing.
-func (a *App) flashed(key string) bool {
-	_, ok := a.flash[key]
-	return ok
-}
-
-// setFlash shows a brief confirmation for a moment.
-func (a *App) setFlash(key string, d time.Duration) {
-	a.flash[key] = a.now.Add(d)
-	time.AfterFunc(d+50*time.Millisecond, a.invalidate)
-}
-
-func (a *App) pruneFlash() {
-	for k, until := range a.flash {
-		if !a.now.Before(until) {
-			delete(a.flash, k)
-		}
-	}
 }
 
 // again asks for another frame: state that changed while the view was being
