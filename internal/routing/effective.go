@@ -41,6 +41,9 @@ type Row struct {
 	Overridden bool
 	// Locked rows cannot be moved or removed.
 	Locked bool
+	// Extra are the ids of the sources the user added to an item the plan
+	// itself owns; the others cannot be removed from it.
+	Extra []string
 }
 
 // View is the plan in force, ready to show or to turn into a configuration.
@@ -127,6 +130,13 @@ func (s State) ViewOf(id string) View {
 		}
 		if on, ok := lookup(ov.Enabled, it); ok {
 			row.Item.Enabled, row.Overridden = on, true
+		}
+		if extra, ok := lookup(ov.Extra, it); ok && len(extra) > 0 {
+			row.Item.Sources = append(cloneSources(it.Sources), cloneSources(extra)...)
+			for _, e := range extra {
+				row.Extra = append(row.Extra, e.ID)
+			}
+			row.Overridden = true
 		}
 		base = append(base, row)
 	}
@@ -552,6 +562,7 @@ func (s *State) Switch(id string) error {
 				}
 				ov.Enabled[primary(it)] = row.Item.Enabled
 			}
+			carryExtras(ov, it, row)
 			break
 		}
 	}
@@ -564,6 +575,31 @@ func (s *State) Switch(id string) error {
 		}
 	}
 	return nil
+}
+
+// carryExtras gives the item of the plan being switched to the sources the
+// person added to the item of the same name in the plan being left, unless it
+// has them already.
+func carryExtras(ov *Overlay, it Item, from Row) {
+	if len(from.Extra) == 0 {
+		return
+	}
+	have := map[string]bool{}
+	for _, s := range it.Sources {
+		have[sourceKey(s)] = true
+	}
+	for _, s := range ov.Extra[primary(it)] {
+		have[sourceKey(s)] = true
+	}
+	for _, s := range from.Item.Sources {
+		if !slices.Contains(from.Extra, s.ID) || have[sourceKey(s)] {
+			continue
+		}
+		if ov.Extra == nil {
+			ov.Extra = map[string][]Source{}
+		}
+		ov.Extra[primary(it)] = append(ov.Extra[primary(it)], s.clone())
+	}
 }
 
 // SaveAsMine keeps the effective plan as a plan of the user's own and

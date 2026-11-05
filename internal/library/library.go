@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"eggbox/internal/configgen"
@@ -159,7 +160,14 @@ type Library struct {
 	data      fileData
 	nodes     map[string][]subscription.Node
 	listeners []func()
+	// version counts the changes made since the library was opened.
+	version atomic.Uint64
 }
+
+// Version changes whenever something stored in the library did. Readers that
+// keep a copy of a part of it (the routing state, which is expensive to copy)
+// can tell from it whether their copy is still current.
+func (l *Library) Version() uint64 { return l.version.Load() }
 
 // Options configure Open.
 type Options struct {
@@ -238,6 +246,8 @@ func (l *Library) mutate(fn func() error) error {
 	if err == nil {
 		err = l.saveLocked()
 	}
+	// A change that could not be saved is still a change in memory.
+	l.version.Add(1)
 	listeners := append([]func(){}, l.listeners...)
 	l.mu.Unlock()
 	if err == nil {

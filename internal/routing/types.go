@@ -395,14 +395,22 @@ type Item struct {
 
 // Clone copies an item.
 func (it Item) Clone() Item {
-	it.Sources = append([]Source(nil), it.Sources...)
-	for i, s := range it.Sources {
-		it.Sources[i].Entries = append([]Entry(nil), s.Entries...)
-	}
+	it.Sources = cloneSources(it.Sources)
 	it.Aliases = append([]string(nil), it.Aliases...)
 	it.Notes = append([]string(nil), it.Notes...)
 	it.Dest = it.Dest.Clone()
 	return it
+}
+
+func cloneSources(in []Source) []Source {
+	if in == nil {
+		return nil
+	}
+	out := append([]Source(nil), in...)
+	for i, s := range out {
+		out[i].Entries = append([]Entry(nil), s.Entries...)
+	}
+	return out
 }
 
 // Keys are the normalized names the item answers to.
@@ -504,6 +512,11 @@ type Overlay struct {
 	Enabled  map[string]bool `json:"enabled,omitempty"`
 	Items    []Item          `json:"items,omitempty"`
 	Fallback *Dest           `json:"fallback,omitempty"`
+	// Extra are sources the user added to an item the plan itself owns (a
+	// domain the plan's AI rule set misses), keyed like Dest. They stay when
+	// the plan is refreshed and follow the item to a plan that has one of the
+	// same name.
+	Extra map[string][]Source `json:"extra,omitempty"`
 	// Seen are the names the plan had when it was last looked at, to tell the
 	// person what a refresh added or removed.
 	Seen []string `json:"seen,omitempty"`
@@ -525,6 +538,12 @@ func (o *Overlay) Clone() *Overlay {
 		c.Enabled = make(map[string]bool, len(o.Enabled))
 		for k, v := range o.Enabled {
 			c.Enabled[k] = v
+		}
+	}
+	if len(o.Extra) > 0 {
+		c.Extra = make(map[string][]Source, len(o.Extra))
+		for k, v := range o.Extra {
+			c.Extra[k] = cloneSources(v)
 		}
 	}
 	for _, it := range o.Items {
