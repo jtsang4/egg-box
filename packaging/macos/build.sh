@@ -117,8 +117,11 @@ cp "$work/ServiceBridge.dylib" "$app/Contents/Frameworks/ServiceBridge.dylib"
 cp "$work/$agent_id.plist" "$app/Contents/Library/LaunchDaemons/$agent_id.plist"
 chmod 755 "$app/Contents/MacOS/agentd"
 
-# Extended attributes (provenance, quarantine, ...) do not belong in the
-# signature or in the installer, which would carry them as "._" files.
+# Extended attributes (quarantine, Finder information, ...) do not belong in
+# the signature or in the installer, which would carry them as "._" files.
+# The mark some systems put on every file a tracked program writes
+# (com.apple.provenance) is the one thing this cannot remove; it is only a
+# mark, and the signature is verified with it below.
 xattr -cr "$app"
 
 sign_flags=(--force --timestamp=none)

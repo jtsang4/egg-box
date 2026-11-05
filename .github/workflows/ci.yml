@@ -51,6 +51,10 @@ jobs:
           go mod tidy
           git diff --exit-code -- go.mod go.sum
 
+      # The installer scripts run as root on somebody else's computer.
+      - name: Shell scripts
+        run: git ls-files -z '*.sh' 'packaging/macos/scripts/*' | xargs -0 shellcheck
+
       - name: Vet
         run: |
           go vet ./...
