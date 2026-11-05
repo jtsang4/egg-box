@@ -103,8 +103,9 @@ go test -tags "sbui_dev,$TAGS" ./internal/agent/engine/... ./internal/agent/e2e/
                                                                   # with the real sing-box core
 ```
 
-CI also runs `staticcheck` for the three platforms, `shellcheck` on the installer scripts, and `govulncheck` (on every
-change and weekly): the service runs as root, so a dependency with a known vulnerability the code reaches is a failure.
+CI also runs `staticcheck` for the three platforms, `shellcheck` on the installer scripts, `actionlint` on the workflows,
+and `govulncheck` (on every change and weekly): the service runs as root, so a dependency with a known vulnerability
+the code reaches is a failure.
 
 The interface is tested without a window (`ui.NewTester`), including screenshots rendered in memory (`ui.Render`), so a
 change can be reviewed without opening anything: `SBUI_SHOTS=/some/dir go test ./internal/gui -run TestShots`.

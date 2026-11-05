@@ -58,6 +58,11 @@ jobs:
       - name: Shell scripts
         run: git ls-files -z '*.sh' 'packaging/macos/scripts/*' | xargs -0 shellcheck
 
+      # The workflows that build and publish the installers; actionlint also
+      # hands the scripts inside them to shellcheck.
+      - name: Workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
       # Code left behind, deprecated calls, mistakes vet does not see; the code
       # of each platform is analysed as that platform builds it. The version is
       # pinned so that a new check cannot fail a change that did not cause it.
