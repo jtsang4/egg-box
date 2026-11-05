@@ -1,6 +1,10 @@
 package routing
 
-import "strings"
+import (
+	"strings"
+
+	"eggbox/internal/ruleurl"
+)
 
 // BuiltinVersion changes whenever the shipped plan does. A refresh of the
 // shipped plan keeps what the person chose, because choices are kept by name.
@@ -11,11 +15,10 @@ const BuiltinVersion = 1
 // also has the address ranges of services, which the sing-box project's own
 // rule sets do not, and its names match what most subscription templates use,
 // so a plan that came with a subscription and the shipped plan can share files.
-const metaBase = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/"
 
 // GeoSite and GeoIP are the canonical addresses of MetaCubeX's rule sets.
-func GeoSite(name string) string { return metaBase + "geosite/" + name + ".srs" }
-func GeoIP(name string) string   { return metaBase + "geoip/" + name + ".srs" }
+func GeoSite(name string) string { return ruleurl.GeoSite(name) }
+func GeoIP(name string) string   { return ruleurl.GeoIP(name) }
 
 // MetaCubeX is the project name shown for these sources.
 const MetaCubeX = "MetaCubeX"
