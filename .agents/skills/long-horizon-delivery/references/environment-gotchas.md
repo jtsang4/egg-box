@@ -5,7 +5,6 @@ Small things that cost hours when met for the first time. Written for an agent d
 ## Running things
 
 - **Background jobs started as `( cmd ) &` can die when the tool call returns.** Use the tool's own background mode, and poll for a marker line you print at the end (`ALLDONE`) with a wait/await primitive rather than `sleep` in the shell.
-- **Do not `cd` inside commands.** Give the tool the working directory; with some shell setups a `cd` produces floods of harmless but noisy errors.
 - **Long runs**: give `go test -race` an explicit `-timeout`; run heavy builds and timing-sensitive tests one after the other, not together.
 - **Big outputs**: write them to a file and grep it. Do not cut with `head` when the error is at the end; use targeted searches or read the tail.
 - **Parallel tool calls share the machine.** Never run, in parallel with other calls, anything that kills processes by pattern, cleans a shared directory, or reuses a fixed port.
