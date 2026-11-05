@@ -114,5 +114,6 @@ func DNSTransportRegistry() *dns.TransportRegistry {
 	local.RegisterTransport(registry)
 	fakeip.RegisterTransport(registry)
 	registerQUICTransports(registry)
+	registerDHCPTransport(registry)
 	return registry
 }

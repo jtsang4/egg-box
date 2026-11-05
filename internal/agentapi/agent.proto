@@ -1,0 +1,415 @@
+// The contract between the unprivileged GUI and the privileged agent.
+//
+// Design rules (mirrored by the server implementation):
+//   * Every state-changing call carries a request_id. Replaying a request_id
+//     returns the original result instead of repeating the work.
+//   * State-changing calls are executed strictly one at a time, in arrival order.
+//   * The agent never returns the stored configuration: it can contain
+//     credentials and the GUI already owns the source of truth.
+//   * "service ready" and "proxy connected" are separate states.
+syntax = "proto3";
+
+package singboxui.agent.v1;
+
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/jtsang4/sing-box-ui/internal/agentapi;agentapi";
+
+service Agent {
+  // Handshake reports versions and the identity the agent verified for the
+  // caller. Clients call it first; a protocol mismatch means "reinstall".
+  rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
+
+  rpc GetStatus(google.protobuf.Empty) returns (Status);
+  // WatchStatus sends the current status immediately and then every change.
+  // A slow consumer receives the latest status, never a backlog.
+  rpc WatchStatus(google.protobuf.Empty) returns (stream Status);
+
+  rpc GetSettings(google.protobuf.Empty) returns (Settings);
+  rpc UpdateSettings(UpdateSettingsRequest) returns (Settings);
+
+  // ValidateConfig runs the same preparation pipeline as ApplyConfig without
+  // storing or starting anything.
+  rpc ValidateConfig(ValidateConfigRequest) returns (ValidateConfigResponse);
+  // ApplyConfig validates and stores a new revision. While connected it
+  // hot-applies the revision and rolls back to the last good one on failure.
+  rpc ApplyConfig(ApplyConfigRequest) returns (OperationResult);
+
+  rpc Connect(ConnectRequest) returns (OperationResult);
+  rpc Disconnect(DisconnectRequest) returns (OperationResult);
+
+  rpc SelectOutbound(SelectOutboundRequest) returns (OperationResult);
+  rpc URLTest(URLTestRequest) returns (OperationResult);
+  rpc SetMode(SetModeRequest) returns (OperationResult);
+  rpc CloseConnection(CloseConnectionRequest) returns (OperationResult);
+  rpc CloseAllConnections(CloseAllConnectionsRequest) returns (OperationResult);
+
+  rpc WatchGroups(google.protobuf.Empty) returns (stream Groups);
+  rpc WatchTraffic(WatchTrafficRequest) returns (stream Traffic);
+  rpc WatchConnections(WatchConnectionsRequest) returns (stream ConnectionEvents);
+  rpc WatchLogs(WatchLogsRequest) returns (stream LogBatch);
+
+  // GetDiagnostics returns a redacted report suitable for sharing.
+  rpc GetDiagnostics(GetDiagnosticsRequest) returns (DiagnosticsReport);
+  // RetryCleanup re-runs resource cleanup after a failed attempt.
+  rpc RetryCleanup(RetryCleanupRequest) returns (OperationResult);
+  // PrepareUpgrade disconnects, cleans up and records the connection intent so
+  // an installer can replace the service and the intent is restored afterwards.
+  rpc PrepareUpgrade(PrepareUpgradeRequest) returns (OperationResult);
+}
+
+// ---------------------------------------------------------------- handshake
+
+message HandshakeRequest {
+  uint32 protocol_version = 1;
+  string client_version = 2;
+}
+
+message HandshakeResponse {
+  uint32 protocol_version = 1;
+  string agent_version = 2;
+  string core_version = 3;
+  string platform = 4;     // "darwin" | "windows" | "linux"
+  string arch = 5;
+  uint32 agent_pid = 6;
+  int64 agent_started_unix = 7;
+  // instance_id changes every time the agent process starts, so a client can
+  // tell "same agent" from "agent restarted" across reconnects.
+  string instance_id = 8;
+  // peer is the identity the agent verified for this caller (user + executable).
+  string peer = 9;
+  string driver = 10;      // "sim" for the development driver, otherwise the platform name
+  bool dev_mode = 11;
+}
+
+// ------------------------------------------------------------------- status
+
+enum ServiceState {
+  SERVICE_STATE_UNSPECIFIED = 0;
+  SERVICE_STATE_STARTING = 1;  // recovering leftovers, loading state
+  SERVICE_STATE_READY = 2;
+  SERVICE_STATE_DEGRADED = 3;  // running, but a platform capability or cleanup is broken
+  SERVICE_STATE_STOPPING = 4;
+}
+
+enum ConnectionState {
+  CONNECTION_STATE_UNSPECIFIED = 0;
+  CONNECTION_STATE_DISCONNECTED = 1;
+  CONNECTION_STATE_CONNECTING = 2;
+  CONNECTION_STATE_CONNECTED = 3;
+  CONNECTION_STATE_RECONNECTING = 4;   // intent is "connected", the core is being re-established
+  CONNECTION_STATE_DISCONNECTING = 5;
+  CONNECTION_STATE_FAILED = 6;         // last attempt failed; the core is not running
+}
+
+enum CleanupState {
+  CLEANUP_STATE_UNSPECIFIED = 0;
+  CLEANUP_STATE_IDLE = 1;      // nothing owned, nothing to clean
+  CLEANUP_STATE_RUNNING = 2;
+  CLEANUP_STATE_RECOVERED = 3; // leftovers from a previous run were removed
+  CLEANUP_STATE_FAILED = 4;    // something could not be removed; see cleanup_detail
+}
+
+enum NetworkState {
+  NETWORK_STATE_UNSPECIFIED = 0;
+  NETWORK_STATE_ONLINE = 1;
+  NETWORK_STATE_OFFLINE = 2;
+  NETWORK_STATE_SETTLING = 3;  // events are being coalesced before reconnecting
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_INVALID_ARGUMENT = 1;
+  ERROR_CODE_INVALID_CONFIG = 2;
+  ERROR_CODE_POLICY_DENIED = 3;
+  ERROR_CODE_REVISION_CONFLICT = 4;
+  ERROR_CODE_NO_CONFIG = 5;
+  ERROR_CODE_NOT_CONNECTED = 6;
+  ERROR_CODE_BUSY = 7;
+  ERROR_CODE_ROUTE_CONFLICT = 8;
+  ERROR_CODE_CORE_START_FAILED = 9;
+  ERROR_CODE_PLATFORM = 10;
+  ERROR_CODE_CLEANUP_FAILED = 11;
+  ERROR_CODE_CANCELLED = 12;
+  ERROR_CODE_NOT_FOUND = 13;
+  ERROR_CODE_UNAVAILABLE = 14;
+  ERROR_CODE_INTERNAL = 15;
+}
+
+message Status {
+  // seq grows by one with every published change.
+  uint64 seq = 1;
+  ServiceState service = 2;
+  ConnectionState connection = 3;
+  // active_revision is the configuration revision the running core uses (0 when none).
+  uint64 active_revision = 4;
+  // stored_revision is the newest accepted revision.
+  uint64 stored_revision = 5;
+  // intent_connected is what the user asked for, independent of the current state.
+  bool intent_connected = 6;
+  ErrorCode last_error_code = 7;
+  string last_error = 8;
+  int64 connected_since_unix = 9;
+  CleanupState cleanup = 10;
+  string cleanup_detail = 11;
+  NetworkState network = 12;
+  string mode = 13;
+  string tun_interface = 14;
+  repeated string warnings = 15;
+  string core_version = 16;
+  string agent_version = 17;
+  string authorized_user = 18;
+  bool has_config = 19;
+  // reconnect_attempts counts consecutive automatic reconnect attempts.
+  uint32 reconnect_attempts = 20;
+  int64 updated_unix = 21;
+}
+
+// ----------------------------------------------------------------- settings
+
+message Settings {
+  // auto_connect restores the connection when the service starts or the
+  // authorized user logs in, provided a configuration exists.
+  bool auto_connect = 1;
+  // resume_after_crash reconnects after the agent restarted unexpectedly while
+  // the user intended to be connected. Cleanup always runs first.
+  bool resume_after_crash = 2;
+  // reconnect_on_network_change rebuilds the connection after network changes and wake.
+  bool reconnect_on_network_change = 3;
+  string log_level = 4;  // trace | debug | info | warn | error
+}
+
+message UpdateSettingsRequest {
+  string request_id = 1;
+  optional bool auto_connect = 2;
+  optional bool resume_after_crash = 3;
+  optional bool reconnect_on_network_change = 4;
+  optional string log_level = 5;
+}
+
+// ------------------------------------------------------------------- config
+
+// Resource is a file the configuration references, handed over by value so the
+// agent can store it in a protected directory. In the configuration JSON it is
+// referenced as "res:<name>".
+message Resource {
+  string name = 1;      // [A-Za-z0-9._-]{1,64}
+  bytes data = 2;
+  string sha256 = 3;    // optional integrity check, lowercase hex
+}
+
+message ConfigBundle {
+  bytes config_json = 1;
+  repeated Resource resources = 2;
+  string profile_id = 3;    // display and diagnostics only
+  string profile_name = 4;  // display and diagnostics only
+}
+
+message Issue {
+  enum Severity {
+    SEVERITY_UNSPECIFIED = 0;
+    SEVERITY_ERROR = 1;
+    SEVERITY_WARNING = 2;
+  }
+  Severity severity = 1;
+  string path = 2;     // JSON path inside the configuration
+  string code = 3;     // stable machine readable reason, e.g. "outbound_type_not_allowed"
+  string message = 4;
+}
+
+message ValidateConfigRequest {
+  ConfigBundle bundle = 1;
+}
+
+message ValidateConfigResponse {
+  bool valid = 1;
+  repeated Issue issues = 2;
+}
+
+enum ApplyMode {
+  APPLY_MODE_UNSPECIFIED = 0;  // same as AUTO
+  APPLY_MODE_AUTO = 1;         // hot-apply when connected or connecting, otherwise just store
+  APPLY_MODE_STORE_ONLY = 2;
+}
+
+message ApplyConfigRequest {
+  string request_id = 1;
+  // expected_revision must equal the agent's stored revision, otherwise the call
+  // fails with REVISION_CONFLICT. Use 0 for "no configuration stored yet".
+  uint64 expected_revision = 2;
+  ConfigBundle bundle = 3;
+  ApplyMode mode = 4;
+}
+
+// ---------------------------------------------------------------- operations
+
+message OperationResult {
+  string request_id = 1;
+  bool ok = 2;
+  ErrorCode error_code = 3;
+  string message = 4;
+  repeated Issue issues = 5;
+  uint64 revision = 6;     // stored revision after the operation
+  uint64 status_seq = 7;   // status.seq after the operation completed
+  bool replayed = 8;       // answered from the idempotency cache
+  bool rolled_back = 9;    // the operation failed and the previous configuration is running again
+  map<string, string> details = 10;
+}
+
+message ConnectRequest {
+  string request_id = 1;
+  // expected_revision, when non-zero, must equal the stored revision.
+  uint64 expected_revision = 2;
+  // ignore_route_conflicts proceeds although another VPN already owns
+  // overlapping routes. Only set after the user confirmed the warning.
+  bool ignore_route_conflicts = 3;
+}
+
+message DisconnectRequest {
+  string request_id = 1;
+}
+
+message SelectOutboundRequest {
+  string request_id = 1;
+  string group_tag = 2;
+  string outbound_tag = 3;
+}
+
+message URLTestRequest {
+  string request_id = 1;
+  string outbound_tag = 2;  // a group or a single outbound
+}
+
+message SetModeRequest {
+  string request_id = 1;
+  string mode = 2;
+}
+
+message CloseConnectionRequest {
+  string request_id = 1;
+  string id = 2;
+}
+
+message CloseAllConnectionsRequest {
+  string request_id = 1;
+}
+
+message RetryCleanupRequest {
+  string request_id = 1;
+}
+
+message PrepareUpgradeRequest {
+  string request_id = 1;
+}
+
+// --------------------------------------------------------------- observation
+
+message GroupItem {
+  string tag = 1;
+  string type = 2;
+  int32 delay_ms = 3;       // last URL test delay, 0 when unknown
+  int64 tested_unix = 4;
+}
+
+message Group {
+  string tag = 1;
+  string type = 2;
+  bool selectable = 3;
+  string selected = 4;
+  repeated GroupItem items = 5;
+}
+
+message Groups {
+  repeated Group groups = 1;
+}
+
+message WatchTrafficRequest {
+  uint32 interval_ms = 1;  // default 1000, clamped to [250, 10000]
+}
+
+message Traffic {
+  int64 uplink = 1;            // bytes during the last interval
+  int64 downlink = 2;
+  int64 uplink_total = 3;
+  int64 downlink_total = 4;
+  int32 connections_in = 5;
+  int32 connections_out = 6;
+  uint64 memory = 7;
+  int32 goroutines = 8;
+  bool available = 9;          // false while the core is not running
+  int64 time_unix_ms = 10;
+}
+
+message ProcessInfo {
+  uint32 pid = 1;
+  string path = 2;
+  string user = 3;
+}
+
+message Connection {
+  string id = 1;
+  string inbound = 2;
+  string network = 3;
+  string source = 4;
+  string destination = 5;
+  string domain = 6;
+  string protocol = 7;
+  string rule = 8;
+  string outbound = 9;
+  string outbound_type = 10;
+  repeated string chain = 11;
+  int64 created_unix_ms = 12;
+  int64 closed_unix_ms = 13;
+  int64 uplink_total = 14;
+  int64 downlink_total = 15;
+  ProcessInfo process = 16;
+}
+
+message ConnectionEvent {
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    TYPE_NEW = 1;
+    TYPE_UPDATE = 2;
+    TYPE_CLOSED = 3;
+  }
+  Type type = 1;
+  string id = 2;
+  Connection connection = 3;  // set for NEW and CLOSED
+  int64 uplink_delta = 4;     // set for UPDATE
+  int64 downlink_delta = 5;
+}
+
+message WatchConnectionsRequest {
+  uint32 interval_ms = 1;  // default 1000
+}
+
+message ConnectionEvents {
+  repeated ConnectionEvent events = 1;
+  // reset tells the client to discard everything it knows before applying events.
+  bool reset = 2;
+}
+
+message LogEntry {
+  int64 time_unix_ms = 1;
+  string level = 2;
+  string source = 3;   // "core" | "agent" | "platform"
+  string message = 4;
+}
+
+message WatchLogsRequest {
+  uint32 tail = 1;         // number of buffered entries to replay first
+  string min_level = 2;
+}
+
+message LogBatch {
+  repeated LogEntry entries = 1;
+  bool reset = 2;
+}
+
+message GetDiagnosticsRequest {}
+
+message DiagnosticsReport {
+  string suggested_filename = 1;
+  bytes json = 2;           // redacted: no credentials, no configuration content
+  int64 generated_unix_ms = 3;
+}
