@@ -588,6 +588,18 @@ func (a *App) aboutSection(c *ui.Context) {
 				a.exportDiagnostics()
 			}
 		})
+		if a.opt.OpenNotices != nil {
+			a.rowDivider(c)
+			ui.Row(c).Padding(14, 0).Gap(10).Children(func() {
+				ui.Column(c).Grow(1).Basis(0).Gap(3).Children(func() {
+					a.txt(c, a.t("settings.licenses"), 13.5, 600, p.Text)
+					a.txt(c, a.t("settings.licenses.desc"), 12, 400, p.Text3).LineHeight(1.45)
+				})
+				if a.btn(c, btnSpec{kind: btnSecondary, label: a.t("settings.licenses.open"), icon: "external"}).Clicked() {
+					a.opt.OpenNotices()
+				}
+			})
+		}
 		a.rowDivider(c)
 		ui.Row(c).Padding(14, 0).Gap(10).Children(func() {
 			ui.Column(c).Grow(1).Basis(0).Gap(3).Children(func() {

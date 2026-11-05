@@ -162,6 +162,15 @@ func (d *desktop) guiOptions(cfg boot.Config) gui.Options {
 		o.OpenServiceSettings = func() { go d.openServiceSettings() }
 	}
 	o.RemoveService = d.removeService
+	if path := noticesPath(); path != "" {
+		o.OpenNotices = func() {
+			go func() {
+				if err := mygo.Shell.OpenPath(path); err != nil {
+					log.Printf("open the licenses: %v", err)
+				}
+			}()
+		}
+	}
 	if d.mode() == boot.Installed {
 		// Only the installed application is a login item: a demonstration or
 		// a development build must leave nothing behind.

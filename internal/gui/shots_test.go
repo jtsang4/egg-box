@@ -103,7 +103,13 @@ func TestShots(t *testing.T) {
 				if hh == 0 {
 					hh = 860
 				}
-				h := newHarness(t, harnessOpt{dark: dark, w: w, h: hh, lang: s.lang, platform: s.platform, setup: s.setup})
+				setup := func(be *fixtureBackend, o *Options) {
+					o.OpenNotices = func() {} // an installed build carries its notices
+					if s.setup != nil {
+						s.setup(be, o)
+					}
+				}
+				h := newHarness(t, harnessOpt{dark: dark, w: w, h: hh, lang: s.lang, platform: s.platform, setup: setup})
 				if s.run != nil {
 					s.run(h)
 				}

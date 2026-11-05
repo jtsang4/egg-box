@@ -280,6 +280,26 @@ func TestNoManagedServiceRowWhereTheSwitchIsOurs(t *testing.T) {
 	h.mustNotHave("Open Login Items")
 }
 
+func TestNoticesAreOfferedOnlyWhereTheBuildCarriesThem(t *testing.T) {
+	h := newHarness(t, harnessOpt{h: 2800, setup: func(be *fixtureBackend, o *Options) {
+		o.OpenNotices = func() { be.record("open-notices") }
+	}})
+	h.click("Settings")
+	h.settle()
+	h.mustHave("Open-source licenses")
+	h.click("View licenses")
+	h.settle()
+	if !h.be.took("open-notices") {
+		t.Fatalf("the licenses were not opened: %v", h.be.called())
+	}
+
+	// A development build or a demonstration has none to show.
+	h = newHarness(t, harnessOpt{h: 2800})
+	h.click("Settings")
+	h.settle()
+	h.mustNotHave("Open-source licenses")
+}
+
 func TestRemovingTheServiceAsksFirstAndDisconnectsBeforeRemoving(t *testing.T) {
 	h := newHarness(t, harnessOpt{h: 2800, platform: "darwin", setup: func(be *fixtureBackend, o *Options) {
 		o.RemoveService = func(context.Context) error { be.record("remove-service"); return nil }

@@ -137,11 +137,13 @@ packaging/macos/build.sh [--arch universal|arm64|x86_64] [--no-pkg]
 packaging/windows/build.sh --arch amd64|arm64
 ```
 
-The macOS package installs `Sing-Box UI.app` into `/Applications`; the app bundles `agentd`, `ServiceBridge.dylib` and
-the LaunchDaemon plist, and asks the person to approve the service in System Settings the first time. To remove
-everything, use Settings → Network service → Remove the service, or `sudo packaging/macos/uninstall.sh [--keep-data]`.
-The Windows installer is per machine: it installs under Program Files, registers the service, authorizes the installing
-user, and its uninstaller removes the service, the adapter and the data (`agentd.exe uninstall --purge`).
+The macOS package installs `Sing-Box UI.app` into `/Applications`; the app bundles `agentd`, `ServiceBridge.dylib`, the
+LaunchDaemon plist and the licenses of everything inside (`THIRD-PARTY-NOTICES.txt`, which Settings → About opens), and
+asks the person to approve the service in System Settings the first time. To remove everything, use Settings → Network
+service → Remove the service, or `sudo packaging/macos/uninstall.sh [--keep-data]`.
+The Windows installer is per machine: it installs under Program Files (the programs and the same notices file),
+registers the service, authorizes the installing user, and its uninstaller removes the service, the adapter and the data
+(`agentd.exe uninstall --purge`).
 
 CI (`.github/workflows/ci.yml`) runs the checks and the tests on Linux, macOS and Windows, builds both installers, and
 cross-builds every target. A `v*` tag builds the installers and attaches them to a release
@@ -167,6 +169,7 @@ fit to hand to anybody.
 | `internal/darwin`, `internal/macsys`, `internal/winsys` | platform services behind the GUI and the agent |
 | `native/macos` | the Swift bridge (SMAppService, XPC, SCDynamicStore) |
 | `packaging` | macOS `.pkg` and Windows installer, uninstaller, scripts |
+| `scripts` | protobuf generation; `notices`, which collects the licenses of the modules a build contains |
 
 ## What is verified here and what needs a real machine
 

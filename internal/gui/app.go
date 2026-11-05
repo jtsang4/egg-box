@@ -57,6 +57,9 @@ type Options struct {
 	RemoveService func(ctx context.Context) error
 	// OpenURL opens a link in the browser; nil uses the context's.
 	OpenURL func(url string)
+	// OpenNotices shows the licenses of the software the application is built
+	// from, for builds that carry them; nil hides the row.
+	OpenNotices func()
 	// Sync runs jobs inline, for tests.
 	Sync bool
 	// OnLanguage is told the language the interface settled on ("en", "zh").
