@@ -51,7 +51,7 @@ type Engine struct {
 
 	mode   string
 	modes  []string
-	rules  bool // the configuration declares rule sets
+	router *router
 	nodes  map[string]*node
 	groups []*group
 	byTag  map[string]*group
@@ -79,9 +79,10 @@ type group struct {
 	tag, typ string
 	selected string
 	members  []string
-	// fallbacks is, for a preferred group, the member that stands in for a
-	// member that does not answer.
-	fallbacks map[string]string
+	// standIns are, for a preferred group, the groups whose members take over
+	// when the chosen node does not answer: the one that holds the chosen node
+	// and has another that works.
+	standIns []string
 }
 
 type conn struct {
@@ -132,20 +133,20 @@ func (e *Engine) SetLogSink(s engine.LogSink) {
 
 type rawConfig struct {
 	Outbounds []struct {
-		Type      string            `json:"type"`
-		Tag       string            `json:"tag"`
-		Outbounds []string          `json:"outbounds"`
-		Default   string            `json:"default"`
-		Fallbacks map[string]string `json:"fallbacks"`
+		Type      string   `json:"type"`
+		Tag       string   `json:"tag"`
+		Outbounds []string `json:"outbounds"`
+		Default   string   `json:"default"`
+		StandIns  []string `json:"stand_ins"`
 	} `json:"outbounds"`
 	Endpoints []struct {
 		Type string `json:"type"`
 		Tag  string `json:"tag"`
 	} `json:"endpoints"`
 	Route struct {
-		RuleSet []struct {
-			Tag string `json:"tag"`
-		} `json:"rule_set"`
+		RuleSet []rawRuleSet `json:"rule_set"`
+		Rules   []rawRule    `json:"rules"`
+		Final   string       `json:"final"`
 	} `json:"route"`
 }
 
@@ -161,15 +162,24 @@ func parse(raw []byte) (*rawConfig, error) {
 	return &cfg, nil
 }
 
-// Check reads the configuration without starting anything.
+// Check reads the configuration without starting anything, rule sets
+// included.
 func (e *Engine) Check(_ context.Context, p engine.Prepared) error {
-	_, err := parse(p.JSON)
+	cfg, err := parse(p.JSON)
+	if err != nil {
+		return err
+	}
+	_, err = loadRouter(cfg)
 	return err
 }
 
 // Start builds the world from the configuration and begins the simulation.
 func (e *Engine) Start(ctx context.Context, p engine.Prepared) error {
 	cfg, err := parse(p.JSON)
+	if err != nil {
+		return err
+	}
+	rt, err := loadRouter(cfg)
 	if err != nil {
 		return err
 	}
@@ -182,6 +192,7 @@ func (e *Engine) Start(ctx context.Context, p engine.Prepared) error {
 		return fmt.Errorf("demo core: start while running")
 	}
 	e.build(cfg)
+	e.router = rt
 	e.prepared = p
 	e.running = true
 	e.runDone = make(chan struct{})
@@ -192,7 +203,7 @@ func (e *Engine) Start(ctx context.Context, p engine.Prepared) error {
 	go e.world(e.runDone)
 	go e.firstTest(e.runDone)
 
-	e.logLocked("info", "router: loaded %d outbounds, %d groups", len(e.nodes), len(e.groups))
+	e.logLocked("info", "router: loaded %d outbounds, %d groups, %d rules, %d rule sets", len(e.nodes), len(e.groups), len(rt.rules), len(rt.sets))
 	if p.HasTun {
 		e.logLocked("info", "inbound/tun[%s]: started at %s", p.TunTag, e.opt.TunName)
 	}
@@ -201,11 +212,11 @@ func (e *Engine) Start(ctx context.Context, p engine.Prepared) error {
 }
 
 // effectiveLocked is what a group sends traffic to: its choice, or for a
-// preferred group whose choice does not answer, the member standing in.
+// preferred group whose chosen node does not answer, the node standing in.
 func (e *Engine) effectiveLocked(g *group) string {
 	if g.typ == "preferred" {
-		if alt, ok := g.fallbacks[g.selected]; ok {
-			if n := e.nodes[g.selected]; n != nil && n.down {
+		if n := e.nodes[g.selected]; n != nil && n.down {
+			if alt := e.standInLocked(g); alt != "" {
 				return alt
 			}
 		}
@@ -213,23 +224,45 @@ func (e *Engine) effectiveLocked(g *group) string {
 	return g.selected
 }
 
+// standInLocked is the fastest working node among the members of the stand-in
+// group that holds the chosen node.
+func (e *Engine) standInLocked(g *group) string {
+	for _, tag := range g.standIns {
+		sg := e.byTag[tag]
+		if sg == nil || !contains(sg.members, g.selected) {
+			continue
+		}
+		best, bestDelay := "", int32(math.MaxInt32)
+		for _, m := range sg.members {
+			n := e.nodes[m]
+			if n == nil || n.down || m == g.selected {
+				continue
+			}
+			// Nodes not tested yet count as slow, so a tested one is preferred.
+			d := n.delay
+			if d <= 0 {
+				d = math.MaxInt32 - 1
+			}
+			if d < bestDelay {
+				best, bestDelay = m, d
+			}
+		}
+		if best != "" {
+			return best
+		}
+	}
+	return ""
+}
+
 // build derives nodes and groups from a configuration.
 func (e *Engine) build(cfg *rawConfig) {
 	e.nodes = map[string]*node{}
 	e.groups = nil
 	e.byTag = map[string]*group{}
-	e.rules = len(cfg.Route.RuleSet) > 0
-	types := map[string]string{}
-	for _, o := range cfg.Outbounds {
-		types[o.Tag] = o.Type
-	}
-	for _, ep := range cfg.Endpoints {
-		types[ep.Tag] = ep.Type
-	}
 	for _, o := range cfg.Outbounds {
 		switch o.Type {
 		case "selector", "urltest", "preferred":
-			g := &group{tag: o.Tag, typ: o.Type, members: append([]string(nil), o.Outbounds...), fallbacks: o.Fallbacks}
+			g := &group{tag: o.Tag, typ: o.Type, members: append([]string(nil), o.Outbounds...), standIns: o.StandIns}
 			if o.Default != "" && contains(g.members, o.Default) {
 				g.selected = o.Default
 			} else if len(g.members) > 0 {
@@ -245,11 +278,6 @@ func (e *Engine) build(cfg *rawConfig) {
 	e.nodes["direct"] = &node{tag: "direct", typ: "direct"}
 	for _, ep := range cfg.Endpoints {
 		e.nodes[ep.Tag] = &node{tag: ep.Tag, typ: ep.Type, down: unreachable(ep.Tag)}
-	}
-	for _, g := range e.groups {
-		if g.typ == "urltest" {
-			g.selected = ""
-		}
 	}
 }
 
@@ -617,8 +645,9 @@ func (e *Engine) advanceLocked() {
 		spawn = true
 	}
 	if spawn && len(e.conns) < 64 {
-		c := e.newConnLocked(now)
-		events = append(events, &agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_NEW, Id: c.c.Id, Connection: c.c})
+		if c := e.newConnLocked(now); c != nil {
+			events = append(events, &agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_NEW, Id: c.c.Id, Connection: c.c})
+		}
 	}
 
 	// Traffic: the rate is shared among the open connections by weight.
@@ -771,6 +800,31 @@ func (e *Engine) WatchConnections(ctx context.Context, _ time.Duration) (<-chan 
 		}
 	}()
 	return out, nil
+}
+
+// Open invents one connection to a destination of the world right now, given
+// by its host name or its address, and routes it like any other. It returns
+// nil when the rules refuse the connection, which then shows in the log only.
+// It exists so that tests and demonstrations can ask what the configuration
+// does with a particular destination without waiting for chance.
+func (e *Engine) Open(dest string) (*agentapi.Connection, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if err := e.requireRunning(); err != nil {
+		return nil, err
+	}
+	for _, t := range targets {
+		if t.host != dest && t.ip != dest {
+			continue
+		}
+		c := e.openLocked(e.opt.Now(), t, programs[e.rng.IntN(len(programs))])
+		if c == nil {
+			return nil, nil
+		}
+		e.emitLocked([]*agentapi.ConnectionEvent{{Type: agentapi.ConnectionEvent_TYPE_NEW, Id: c.c.Id, Connection: c.c}})
+		return c.c, nil
+	}
+	return nil, fmt.Errorf("%w: the world has no destination %q", engine.ErrNotFound, dest)
 }
 
 // CloseConnection closes one open connection.

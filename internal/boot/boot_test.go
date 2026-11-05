@@ -15,6 +15,7 @@ import (
 	"eggbox/internal/app"
 	"eggbox/internal/boot"
 	"eggbox/internal/library"
+	"eggbox/internal/routing"
 	"eggbox/internal/subscription"
 )
 
@@ -89,8 +90,22 @@ func TestDemoRunsEndToEnd(t *testing.T) {
 	if !rt.Library.Settings().OnboardingDone {
 		t.Fatal("the demonstration should skip the first-run welcome")
 	}
-	if len(rt.Library.Rules()) == 0 {
-		t.Fatal("no rules")
+	// Someone who has used the application for a while: exceptions of their own,
+	// an item of hand-written entries, and Aurora Cloud's plan on offer rather
+	// than taken (they chose things first, and a plan does not replace choices).
+	st := rt.Library.Routing()
+	if len(st.Exceptions) != 3 || st.ActiveID() != routing.BuiltinID {
+		t.Fatalf("%d exceptions, plan %q", len(st.Exceptions), st.ActiveID())
+	}
+	found := false
+	for _, r := range st.View().Rows {
+		found = found || r.Item.Name == "Intranet"
+	}
+	if !found {
+		t.Fatal("the hand-written item is missing")
+	}
+	if p := st.PlanByID(routing.SubPlanID(subs[0].ID)); p == nil || len(p.Items) != 6 {
+		t.Fatalf("Aurora's plan was not kept for later: %+v", p)
 	}
 	within(t, "the link", func() bool { return rt.Service.Snapshot().Link.Ready() })
 	if got := rt.Service.Snapshot().Phase; got != app.PhaseDisconnected {
@@ -126,6 +141,18 @@ func TestDemoRunsEndToEnd(t *testing.T) {
 		tr := rt.Service.Snapshot().Traffic
 		return tr.Available && tr.DownTotal > 0 && len(tr.History) > 1
 	})
+	// The built-in plan's rule sets came from the invented world, and every
+	// item that is on can use them.
+	plan := rt.Service.Snapshot().Plan
+	within(t, "the plan's rule data", func() bool {
+		plan = rt.Service.Snapshot().Plan
+		return plan.Ready && plan.Missing == 0
+	})
+	for _, r := range st.View().Rows {
+		if is := plan.Items[r.Item.ID]; r.Item.Enabled && is.State != app.ItemReady {
+			t.Errorf("%s is on and %v", r.Item.Name, is.State)
+		}
+	}
 
 	// Choosing a node reaches the core.
 	snap := rt.Service.Snapshot()
@@ -154,9 +181,19 @@ func TestDemoRunsEndToEnd(t *testing.T) {
 		return false
 	})
 
-	// The connection table fills while it is watched.
+	// The connection table fills while it is watched, and says why each
+	// connection went where it did, in the person's terms.
 	rt.Service.WatchConnections(true)
 	within(t, "connections", func() bool { return len(rt.Service.Snapshot().Conns) >= 3 })
+	within(t, "connections explained by the plan", func() bool {
+		items := map[string]bool{}
+		for _, c := range rt.Service.Snapshot().Conns {
+			if c.Why.Kind == app.WhyItem && c.Why.Name != "" {
+				items[c.Why.Name] = true
+			}
+		}
+		return len(items) >= 3
+	})
 	rt.Service.WatchConnections(false)
 
 	within(t, "log lines", func() bool { return len(rt.Service.Snapshot().Logs) > 5 })

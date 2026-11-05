@@ -159,7 +159,7 @@ func Start(ctx context.Context, cfg Config) (*Runtime, error) {
 	dial := cfg.Dial
 	secrets := cfg.Secrets
 	httpc := cfg.HTTPClient
-	var mirrors func(string) []ruledata.Mirror
+	var mirrors func(setting, prefix string) []ruledata.Mirror
 	var demoAgent atomic.Pointer[inproc.Agent]
 	var startDemoAgent func(context.Context) error
 

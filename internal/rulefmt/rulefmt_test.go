@@ -29,6 +29,9 @@ func coreMatch(t *testing.T, rules []option.HeadlessRule, q Query) bool {
 			t.Fatalf("core refused a rule: %v", err)
 		}
 		md := &adapter.InboundContext{Network: q.Network}
+		if q.ProcessPath != "" {
+			md.ProcessInfo = &adapter.ConnectionOwner{ProcessPath: q.ProcessPath}
+		}
 		if q.Domain != "" {
 			md.Destination = M.ParseSocksaddrHostPort(q.Domain, q.Port)
 			md.DestinationAddresses = q.Addrs
@@ -453,6 +456,50 @@ func TestMatcherUnknownAndEmpty(t *testing.T) {
 	}
 	if out, err := Compile(nil); out != nil || err != nil {
 		t.Errorf("an empty list compiles to nothing: %v %v", out, err)
+	}
+}
+
+// A real connection knows its program; the matcher then decides what a URL
+// leaves open, and must say what the core says.
+func TestMatcherDecidesProgramRulesWhenTheProgramIsKnown(t *testing.T) {
+	rules := []option.HeadlessRule{
+		def(option.DefaultHeadlessRule{ProcessName: []string{"curl"}}),
+		def(option.DefaultHeadlessRule{ProcessPath: []string{"/Applications/Tool.app/Contents/MacOS/Tool"}}),
+		def(option.DefaultHeadlessRule{ProcessPathRegex: []string{`^/opt/work/.*`}}),
+		def(option.DefaultHeadlessRule{ProcessName: []string{"slack"}, DomainSuffix: []string{"chat.example.net"}}),
+	}
+	m, err := NewMatcher(rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []Query{
+		{ProcessPath: "/usr/bin/curl"},
+		{ProcessPath: "/usr/bin/wget"},
+		{ProcessPath: "/Applications/Tool.app/Contents/MacOS/Tool"},
+		{ProcessPath: "/Applications/Other.app/Contents/MacOS/Tool"},
+		{ProcessPath: "/opt/work/bin/build"},
+		{ProcessPath: "/opt/elsewhere/build"},
+		{ProcessPath: "/usr/bin/slack", Domain: "x.chat.example.net"},
+		{ProcessPath: "/usr/bin/slack", Domain: "other.example.net"},
+		{ProcessPath: "/usr/bin/other", Domain: "x.chat.example.net"},
+	} {
+		q.Port, q.Network = 443, "tcp"
+		want := coreMatch(t, rules, q)
+		got := m.Match(q)
+		if got == Unknown || (got == Match) != want {
+			t.Errorf("%+v: matcher %v, core %v", q, got, want)
+		}
+	}
+	// A program known only by its file name still decides the rules about names.
+	if got := m.Match(Query{Process: "curl", Port: 443, Network: "tcp"}); got != Match {
+		t.Errorf("curl by name: %v", got)
+	}
+	if got := m.Match(Query{Process: "wget", Port: 443, Network: "tcp"}); got != NoMatch {
+		t.Errorf("wget by name: %v", got)
+	}
+	// Without a program the answer stays open.
+	if got := m.Match(Query{Domain: "x.chat.example.net", Port: 443, Network: "tcp"}); got != Unknown {
+		t.Errorf("no program: %v", got)
 	}
 }
 

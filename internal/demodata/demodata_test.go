@@ -8,7 +8,10 @@ import (
 	"time"
 
 	"eggbox/internal/demodata"
+	"eggbox/internal/planimport"
+	"eggbox/internal/routing"
 	"eggbox/internal/ruledata"
+	"eggbox/internal/ruleurl"
 	"eggbox/internal/subscription"
 )
 
@@ -52,20 +55,119 @@ func TestImportedNodesParse(t *testing.T) {
 	}
 }
 
-func TestRuleSetsDownloadAndValidate(t *testing.T) {
-	m, err := ruledata.New(ruledata.Options{Dir: t.TempDir(), Client: demodata.Client(nil), Mirrors: demodata.Mirrors("auto")})
+// Every file the built-in plan asks for can be downloaded from the invented
+// world and read, and says something.
+func TestBuiltinPlanRuleSetsDownloadAndValidate(t *testing.T) {
+	m, err := ruledata.New(ruledata.Options{Dir: t.TempDir(), Client: demodata.Client(nil), Mirrors: demodata.Mirrors("auto", "")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids := []string{"geosite-cn", "geoip-cn", "geosite-category-ads-all"}
-	for _, r := range m.Update(context.Background(), ids, ruledata.UpdateOptions{}) {
-		if r.Outcome != ruledata.Updated {
-			t.Errorf("%s: %v %v", r.ID, r.Outcome, r.Err)
+	var urls []string
+	for _, it := range routing.Builtin().Items {
+		for _, src := range it.Sources {
+			urls = append(urls, src.URL)
 		}
 	}
-	sets, missing := m.Load(ids...)
-	if len(missing) != 0 || len(sets) != 3 {
-		t.Fatalf("sets=%d missing=%v", len(sets), missing)
+	if len(urls) < 20 {
+		t.Fatalf("only %d sources", len(urls))
+	}
+	for _, r := range m.Update(context.Background(), urls, ruledata.UpdateOptions{}) {
+		if r.Outcome != ruledata.Updated {
+			t.Errorf("%s: %v %v", ruleurl.Display(r.URL), r.Outcome, r.Err)
+			continue
+		}
+		p, err := m.Parsed(r.URL)
+		if err != nil || len(p.Rules) == 0 || p.Stats.Domain+p.Stats.IP == 0 {
+			t.Errorf("%s: %v %+v", ruleurl.Display(r.URL), err, p)
+		}
+	}
+}
+
+// Aurora Cloud's profile carries a plan, and it is the plan the demonstration
+// describes: six items with the destinations the provider chose, and rule
+// sets the invented world serves.
+func TestAuroraBringsAPlan(t *testing.T) {
+	c := demodata.Client(func() time.Time { return now })
+	got, err := subscription.Fetch(context.Background(), demodata.AuroraLink, subscription.FetchOptions{Client: c})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := planimport.Import(got.Body, planimport.Options{SubID: "aurora", SubName: "Aurora Cloud"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := res.Plan
+	if len(plan.Items) != 6 {
+		var names []string
+		for _, it := range plan.Items {
+			names = append(names, it.Name)
+		}
+		t.Fatalf("%d items: %v", len(plan.Items), names)
+	}
+	dest := map[string]routing.DestKind{}
+	for _, it := range plan.Items {
+		dest[routing.NormName(it.Name)] = it.Dest.Kind
+	}
+	for name, want := range map[string]routing.DestKind{
+		"ai 服务": routing.DestNode, "telegram": routing.DestRegion, "流媒体": routing.DestFollow,
+		"游戏平台": routing.DestFollow, "国内网站": routing.DestDirect, "广告拦截": routing.DestReject,
+	} {
+		if dest[name] != want {
+			t.Errorf("%s goes %q, want %q", name, dest[name], want)
+		}
+	}
+	if plan.Fallback.Kind != routing.DestFollow {
+		t.Errorf("the fallback goes %q", plan.Fallback.Kind)
+	}
+
+	m, err := ruledata.New(ruledata.Options{Dir: t.TempDir(), Client: c, Mirrors: demodata.Mirrors("auto", "")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var urls []string
+	for _, it := range plan.Items {
+		for _, src := range it.Sources {
+			if src.Kind == routing.SourceURL {
+				urls = append(urls, src.URL)
+			}
+		}
+	}
+	if len(urls) != 8 {
+		t.Fatalf("%d rule set addresses: %v", len(urls), urls)
+	}
+	for _, r := range m.Update(context.Background(), urls, ruledata.UpdateOptions{}) {
+		if r.Outcome != ruledata.Updated {
+			t.Errorf("%s: %v %v", ruleurl.Display(r.URL), r.Outcome, r.Err)
+		}
+	}
+}
+
+// A file pasted from any of the well-known projects has something to
+// download, in the format its path says; what is not a rule file is not found.
+func TestPastedFilesFromWellKnownProjectsAreServed(t *testing.T) {
+	m, err := ruledata.New(ruledata.Options{Dir: t.TempDir(), Client: demodata.Client(nil), Mirrors: demodata.Mirrors("auto", "")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{
+		"https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Netflix/Netflix.list",
+		"https://github.com/SagerNet/sing-geosite/blob/rule-set/geosite-bilibili.srs",
+		"https://raw.githubusercontent.com/someone/rules/main/work.json",
+	} {
+		f, err := m.Fetch(context.Background(), raw)
+		if err != nil {
+			t.Errorf("%s: %v", raw, err)
+			continue
+		}
+		if f.Parsed == nil || len(f.Parsed.Rules) == 0 {
+			t.Errorf("%s: nothing in it: %+v", raw, f)
+		}
+	}
+	if _, err := m.Fetch(context.Background(), "https://raw.githubusercontent.com/someone/rules/main/readme.md"); err == nil {
+		t.Error("a page that is not a rule file was found")
+	}
+	if _, err := m.Fetch(context.Background(), "https://example.org/rules.list"); err == nil {
+		t.Error("a host outside the invented world answered")
 	}
 }
 

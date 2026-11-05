@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -14,32 +16,59 @@ import (
 	"eggbox/internal/agentapi"
 	"eggbox/internal/configgen"
 	"eggbox/internal/subscription"
+	"eggbox/internal/testsupport/srs"
 )
 
-// generated builds the configuration the application would send, from
-// invented nodes.
-func generated(t *testing.T, n int) engine.Prepared {
+// plan is a configuration like the application's, with nodes in three
+// regions and items whose rule sets are files, as the agent's policy would
+// leave them.
+func plan(t *testing.T, n int, mutate func(*configgen.Input)) engine.Prepared {
 	t.Helper()
-	var nodes []subscription.Node
+	var nodes []configgen.Node
 	for i := range n {
-		nodes = append(nodes, subscription.Node{
+		sub := subscription.Node{
 			Name: fmt.Sprintf("Demo %02d", i+1), Type: "shadowsocks",
 			Server: fmt.Sprintf("node%02d.example.net", i+1), Port: 8388,
 			Config: map[string]any{
 				"type": "shadowsocks", "server": fmt.Sprintf("node%02d.example.net", i+1), "server_port": 8388,
 				"method": "aes-128-gcm", "password": "demo-password",
 			},
-		})
+		}
+		nodes = append(nodes, configgen.Node{Node: sub, Region: []string{"HK", "JP", "US"}[i%3]})
 	}
-	prefs := configgen.DefaultPrefs()
-	prefs.BlockAds = false
-	prefs.Preset = configgen.PresetProxyAll
-	out, err := configgen.Generate(configgen.Input{Nodes: nodes, Prefs: prefs})
+	domains := func(id string, exit configgen.Exit, suffixes ...string) configgen.Item {
+		data := srs.DomainSuffixes(t, suffixes...)
+		return configgen.Item{ID: id, Name: "Item " + id, Exit: exit, Domain: data, DNS: data}
+	}
+	in := configgen.Input{
+		Nodes: nodes, Prefs: configgen.DefaultPrefs(), Main: configgen.Exit{Kind: configgen.ExitAuto},
+		Fallback: configgen.Exit{Kind: configgen.ExitMain},
+		Items: []configgen.Item{
+			domains("ads", configgen.Exit{Kind: configgen.ExitReject}, "ads-tracker.example"),
+			domains("ai", configgen.Exit{Kind: configgen.ExitMain}, "openai.com", "anthropic.com"),
+			domains("cn", configgen.Exit{Kind: configgen.ExitDirect}, "baidu.com", "bilibili.com", "weibo.com", "alicdn.com"),
+			{ID: "tg", Name: "Item tg", Exit: configgen.Exit{Kind: configgen.ExitMain}, IP: srs.CIDRs(t, "203.0.113.96/28")},
+		},
+	}
+	if mutate != nil {
+		mutate(&in)
+	}
+	out, err := configgen.Generate(in)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return engine.Prepared{Revision: 1, JSON: out.JSON, HasTun: true, TunTag: configgen.TagTun}
+	// The agent's policy points every "res:" reference into its resource directory.
+	dir := t.TempDir()
+	for _, r := range out.Resources {
+		if err := os.WriteFile(filepath.Join(dir, r.Name), r.Data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	raw := strings.ReplaceAll(string(out.JSON), `"res:`, `"`+dir+`/`)
+	return engine.Prepared{Revision: 1, JSON: []byte(raw), HasTun: true, TunTag: configgen.TagTun}
 }
+
+func generated(t *testing.T, n int) engine.Prepared { return plan(t, n, nil) }
 
 func start(t *testing.T, n int) (*demo.Engine, engine.Prepared) {
 	t.Helper()
@@ -92,7 +121,7 @@ func TestReadsTheGeneratedConfiguration(t *testing.T) {
 	if proxy == nil || auto == nil {
 		t.Fatalf("groups = %v", g.Groups)
 	}
-	if !proxy.Selectable || proxy.Type != "selector" || auto.Selectable || auto.Type != "urltest" {
+	if !proxy.Selectable || proxy.Type != "preferred" || auto.Selectable || auto.Type != "urltest" {
 		t.Fatalf("proxy=%+v auto=%+v", proxy, auto)
 	}
 	if proxy.Selected == "" || len(proxy.Items) < 6 {
@@ -404,4 +433,139 @@ func TestLogLinesAreOrderedAndNeverMentionRealHosts(t *testing.T) {
 			t.Errorf("line leaks a server name: %q", l)
 		}
 	}
+}
+
+// open invents connections to destinations of the world and returns them by
+// the destination asked for.
+func open(t *testing.T, e *demo.Engine, dests ...string) map[string]*agentapi.Connection {
+	t.Helper()
+	got := map[string]*agentapi.Connection{}
+	for _, d := range dests {
+		c, err := e.Open(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got[d] = c
+	}
+	return got
+}
+
+func TestConnectionsFollowTheRulesOfTheConfiguration(t *testing.T) {
+	e, _ := start(t, 6)
+	got := open(t, e, "api.openai.com", "www.baidu.com", "files.small-shop.example", "192.168.1.20", "203.0.113.101", "dns.alidns.com")
+	check := func(key, rule string, leafIs func(string) bool, last string) {
+		t.Helper()
+		c := got[key]
+		if c == nil {
+			t.Fatalf("%s: no connection", key)
+		}
+		if c.Rule != rule {
+			t.Errorf("%s: rule %q, want %q", key, c.Rule, rule)
+		}
+		if len(c.Chain) == 0 || c.Chain[len(c.Chain)-1] != last || c.Chain[0] != c.Outbound || !leafIs(c.Outbound) {
+			t.Errorf("%s: outbound %q through %v, want it to end at %s", key, c.Outbound, c.Chain, last)
+		}
+	}
+	node := func(s string) bool { return strings.HasPrefix(s, "Demo ") }
+	direct := func(s string) bool { return s == "direct" }
+	check("api.openai.com", "rule_set=d-ai => route(item-ai)", node, "item-ai")
+	check("www.baidu.com", "rule_set=d-cn => route(item-cn)", direct, "item-cn")
+	check("203.0.113.101", "rule_set=p-tg => route(item-tg)", node, "item-tg")
+	check("files.small-shop.example", "", node, "item-fallback") // nothing claimed it
+	check("192.168.1.20", "ip_is_private=true => route(direct)", direct, "direct")
+	check("dns.alidns.com", "protocol=dns => hijack-dns", direct, "direct")
+	if c := got["api.openai.com"]; len(c.Chain) < 3 {
+		t.Errorf("a connection through groups names every group: %v", c.Chain)
+	}
+	if _, err := e.Open("nowhere.example"); !errors.Is(err, engine.ErrNotFound) {
+		t.Errorf("a destination the world does not have: %v", err)
+	}
+}
+
+func TestRefusedConnectionsAreLoggedNotListed(t *testing.T) {
+	e := demo.New(demo.Options{Seed: 5, Tick: time.Hour})
+	var mu sync.Mutex
+	var lines []string
+	e.SetLogSink(func(_, msg string) {
+		mu.Lock()
+		lines = append(lines, msg)
+		mu.Unlock()
+	})
+	if err := e.Start(context.Background(), generated(t, 3)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = e.Stop(context.Background()) })
+	c, err := e.Open("pixel.ads-tracker.example")
+	if err != nil || c != nil {
+		t.Fatalf("a blocked destination gave %+v, %v", c, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	found := false
+	for _, l := range lines {
+		found = found || strings.Contains(l, "router: reject connection to pixel.ads-tracker.example")
+	}
+	if !found {
+		t.Errorf("the refusal is not in the log: %q", lines)
+	}
+	ch, _ := e.WatchConnections(t.Context(), time.Millisecond)
+	if reset := recv(t, ch, "reset"); len(reset.Events) != 0 {
+		t.Errorf("a refused connection is listed: %+v", reset.Events)
+	}
+}
+
+func TestSelectingAnItemsExitMovesItsNextConnections(t *testing.T) {
+	e, _ := start(t, 6)
+	if err := e.SelectOutbound("item-ai", "direct"); err != nil {
+		t.Fatal(err)
+	}
+	got := open(t, e, "api.openai.com", "203.0.113.101")
+	if c := got["api.openai.com"]; c.Outbound != "direct" || c.Chain[len(c.Chain)-1] != "item-ai" {
+		t.Fatalf("after choosing direct: %+v", c)
+	}
+	if c := got["203.0.113.101"]; c.Outbound == "direct" {
+		t.Fatalf("another item moved too: %+v", c)
+	}
+	if err := e.SelectOutbound("item-ai", "Demo 02"); err != nil {
+		t.Fatal(err)
+	}
+	if c := open(t, e, "api.openai.com")["api.openai.com"]; c.Outbound != "Demo 02" || c.Chain[0] != "Demo 02" {
+		t.Errorf("a node was chosen, the traffic went through %q (%v)", c.Outbound, c.Chain)
+	}
+	// And the global mode overrides every item.
+	if err := e.SetMode("Global"); err != nil {
+		t.Fatal(err)
+	}
+	if c := open(t, e, "www.baidu.com")["www.baidu.com"]; c.Rule != "clash_mode=Global => route(Proxy)" || c.Outbound == "direct" {
+		t.Errorf("global mode: %+v", c)
+	}
+}
+
+func TestCheckNeedsTheRuleSets(t *testing.T) {
+	p := generated(t, 3)
+	// A rule set that is gone, as when the resource directory was cleaned.
+	bad := engine.Prepared{JSON: []byte(strings.ReplaceAll(string(p.JSON), "/", "/gone-")), HasTun: true}
+	e := demo.New(demo.Options{})
+	if err := e.Check(context.Background(), bad); err == nil {
+		t.Fatal("a configuration whose rule sets are missing passed the check")
+	}
+	if err := e.Start(context.Background(), bad); err == nil || e.Running() {
+		t.Fatalf("it started: %v", err)
+	}
+	// A reference the policy did not resolve is a mistake worth saying out loud.
+	unresolved := engine.Prepared{JSON: []byte(strings.ReplaceAll(string(p.JSON), `"path": "`+filepath.Dir(firstPath(t, p.JSON))+"/", `"path": "res:`)), HasTun: true}
+	if err := e.Check(context.Background(), unresolved); err == nil || !strings.Contains(err.Error(), "res:") {
+		t.Fatalf("an unresolved reference: %v", err)
+	}
+}
+
+func firstPath(t *testing.T, raw []byte) string {
+	t.Helper()
+	const key = `"path": "`
+	i := strings.Index(string(raw), key)
+	if i < 0 {
+		t.Fatal("no path in the configuration")
+	}
+	rest := string(raw)[i+len(key):]
+	return rest[:strings.Index(rest, `"`)]
 }

@@ -1,7 +1,8 @@
 // Package demodata is the invented world of the demonstration mode: two
-// subscription providers and a handful of imported nodes that do not exist,
-// served from memory through an http.RoundTripper, plus the rule files the
-// presets ask for.
+// subscription providers (one of which brings a routing plan of its own) and a
+// handful of imported nodes that do not exist, served from memory through an
+// http.RoundTripper, plus the rule files the plans ask for and a few routing
+// choices of the person using the demonstration.
 //
 // Everything here is made up. Names, hosts (example.net, example.invalid),
 // identifiers and keys are placeholders; no real provider, server or account
@@ -15,11 +16,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
-	"eggbox/internal/configgen"
 	"eggbox/internal/library"
+	"eggbox/internal/routing"
 	"eggbox/internal/ruledata"
 )
 
@@ -112,6 +114,65 @@ func document(provider, domain string, specs []spec) []byte {
 	return raw
 }
 
+// auroraDocument is Aurora Cloud's profile: its nodes, the groups its own
+// routing plan sends traffic to, and the rules and rule sets of that plan, the
+// way providers publish them. The group names are invented; the plan has two
+// names the built-in plan has too (so a choice carries over when the person
+// switches), a game platform only it knows, and one group that blocks.
+func auroraDocument() []byte {
+	var outs []any
+	var names []string
+	for i, s := range aurora {
+		outs = append(outs, outbound("aurora", "aurora", i, s))
+		names = append(names, s.name)
+	}
+	group := func(tag string, members []string, def string) map[string]any {
+		return map[string]any{"type": "selector", "tag": tag, "outbounds": members, "default": def}
+	}
+	const pick, fastest = "节点选择", "自动选择"
+	outs = append(outs,
+		group(pick, append([]string{fastest}, names...), fastest),
+		map[string]any{"type": "urltest", "tag": fastest, "outbounds": names},
+		group("🤖 AI 服务", []string{pick, "Singapore 01", "US Los Angeles 01", "US San Jose 01"}, "US Los Angeles 01"),
+		map[string]any{"type": "urltest", "tag": "🇸🇬 新加坡", "outbounds": []string{"Singapore 01", "Singapore 02"}},
+		group("📲 Telegram", []string{pick, "🇸🇬 新加坡", "Singapore 01", "Singapore 02"}, "🇸🇬 新加坡"),
+		group("🎬 流媒体", []string{pick, "Hong Kong 01", "Taipei 01", "Tokyo 01"}, pick),
+		group("🎮 游戏平台", []string{pick, "direct"}, pick),
+		group("🏠 国内网站", []string{"direct", pick}, "direct"),
+		group("🛑 广告拦截", []string{"block", "direct"}, "block"),
+		group("🐟 漏网之鱼", []string{pick, "direct"}, pick),
+		map[string]any{"type": "direct", "tag": "direct"},
+		map[string]any{"type": "block", "tag": "block"},
+	)
+	remote := func(tag string) map[string]any {
+		return map[string]any{"type": "remote", "tag": tag, "format": "binary", "url": "https://" + RulesHost + "/aurora/" + tag + ".srs", "download_detour": "direct"}
+	}
+	rule := func(outbound string, sets ...string) map[string]any {
+		return map[string]any{"rule_set": sets, "outbound": outbound}
+	}
+	raw, _ := json.MarshalIndent(map[string]any{
+		"outbounds": outs,
+		"route": map[string]any{
+			"rule_set": []any{
+				remote("ads"), remote("ai"), remote("telegram-domain"), remote("telegram-ip"),
+				remote("streaming"), remote("games"), remote("cn-domain"), remote("cn-ip"),
+			},
+			"rules": []any{
+				map[string]any{"protocol": "dns", "action": "hijack-dns"},
+				map[string]any{"ip_is_private": true, "outbound": "direct"},
+				rule("🛑 广告拦截", "ads"),
+				rule("🤖 AI 服务", "ai"),
+				rule("📲 Telegram", "telegram-domain", "telegram-ip"),
+				rule("🎬 流媒体", "streaming"),
+				rule("🎮 游戏平台", "games"),
+				rule("🏠 国内网站", "cn-domain", "cn-ip"),
+			},
+			"final": "🐟 漏网之鱼",
+		},
+	}, "", "  ")
+	return raw
+}
+
 // NodesText is a list of nodes to paste into the import dialog, as one would
 // paste what a friend sent.
 func NodesText() string { return string(document("mine", "mine", mine)) }
@@ -127,19 +188,20 @@ func Providers() []Provider {
 	return []Provider{{"Aurora Cloud", AuroraLink}, {"Nimbus Net", NimbusLink}}
 }
 
-// Rules are custom rules that show what the rule list looks like.
-func Rules() []configgen.CustomRule {
-	return []configgen.CustomRule{
-		{Kind: "domain_suffix", Value: "intranet.example", Target: "direct"},
-		{Kind: "domain_keyword", Value: "ads-tracker", Target: "reject"},
-		{Kind: "process_name", Value: "Slack", Target: "Proxy"},
-	}
-}
-
-// Mirrors makes the rule data come from the invented world.
-func Mirrors(string) []ruledata.Mirror {
-	return []ruledata.Mirror{{Name: "demo", URL: func(repo, file string) string {
-		return "https://" + RulesHost + "/" + repo + "/" + file
+// Mirrors makes the rule data come from the invented world: files of the
+// projects the built-in plan names are served from the rules host under the
+// path they have at the project; any other address is its own, and only the
+// invented hosts answer for it.
+func Mirrors(_, _ string) []ruledata.Mirror {
+	return []ruledata.Mirror{{Name: "demo", URL: func(canonical string) string {
+		u, err := url.Parse(canonical)
+		if err != nil {
+			return ""
+		}
+		if u.Host == "raw.githubusercontent.com" {
+			return "https://" + RulesHost + u.EscapedPath()
+		}
+		return canonical
 	}}}
 }
 
@@ -176,7 +238,7 @@ func (rt roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		case "/aurora":
 			h.Set("Subscription-Userinfo", fmt.Sprintf("upload=6200000000; download=32400000000; total=200000000000; expire=%d", rt.now().Add(23*24*time.Hour).Unix()))
 			h.Set("Profile-Title", "Aurora Cloud")
-			return respond(http.StatusOK, h, document("aurora", "aurora", aurora))
+			return respond(http.StatusOK, h, auroraDocument())
 		case "/nimbus":
 			h.Set("Subscription-Userinfo", fmt.Sprintf("upload=20000000000; download=101000000000; total=150000000000; expire=%d", rt.now().Add(4*24*time.Hour).Unix()))
 			h.Set("Profile-Title", "Nimbus Net")
@@ -184,11 +246,12 @@ func (rt roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		return respond(http.StatusNotFound, nil, []byte("not found"))
 	case RulesHost:
-		// A rule set is a file of the binary format whose first bytes are
-		// "SRS"; the demonstration core never reads the rest.
-		body := append([]byte("SRS\x03"), bytes.Repeat([]byte("demo-rule-set-"), 64)...)
+		body, contentType, ok := ruleFile(req.URL.Path)
+		if !ok {
+			return respond(http.StatusNotFound, nil, []byte("not found"))
+		}
 		h := http.Header{}
-		h.Set("Content-Type", "application/octet-stream")
+		h.Set("Content-Type", contentType)
 		return respond(http.StatusOK, h, body)
 	}
 	return nil, fmt.Errorf("the demonstration has no network: %s is not reachable", req.URL.Host)
@@ -198,12 +261,39 @@ func (rt roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 type Seeder interface {
 	AddSubscription(ctx context.Context, name, link string, opts library.RemoteOptions) (library.Subscription, *library.RefreshResult, error)
 	ImportNodes(ctx context.Context, name, text string) (library.Subscription, error)
-	SaveRules(ctx context.Context, rules []configgen.CustomRule) error
+	EditRouting(ctx context.Context, fn func(*routing.State) error) error
 }
 
-// Seed fills a new library with the invented providers, some imported nodes
-// and a few rules, through the same operations the interface uses.
+// Seed fills a new library with the choices of someone who has used the
+// application for a while, through the same operations the interface uses: a
+// few exceptions, an item of hand-written entries, the invented providers and
+// some imported nodes. The exceptions come first, so the plan Aurora Cloud
+// brings is offered but not taken in place of the built-in one.
 func Seed(ctx context.Context, s Seeder) error {
+	if err := s.EditRouting(ctx, func(st *routing.State) error {
+		for _, x := range []struct {
+			e routing.Entry
+			d routing.Dest
+		}{
+			{routing.Entry{Kind: routing.EntryDomain, Value: "www.reddit.com"}, routing.ToRegion("JP")},
+			{routing.Entry{Kind: routing.EntryDomainSuffix, Value: "steampowered.com"}, routing.Direct()},
+			{routing.Entry{Kind: routing.EntryProcessName, Value: "Slack"}, routing.Follow()},
+		} {
+			if _, err := st.UpsertException(x.e, x.d); err != nil {
+				return err
+			}
+		}
+		_, err := st.AddItem(routing.Item{
+			Name: "Intranet", Dest: routing.Direct(), Enabled: true, Icon: "building",
+			Sources: []routing.Source{routing.InlineSource([]routing.Entry{
+				{Kind: routing.EntryDomainSuffix, Value: "intranet.example"},
+				{Kind: routing.EntryDomainSuffix, Value: "corp.example"},
+			})},
+		}, "b-cn")
+		return err
+	}); err != nil {
+		return fmt.Errorf("demonstration: routing: %w", err)
+	}
 	for _, p := range Providers() {
 		if _, _, err := s.AddSubscription(ctx, p.Name, p.Link, library.RemoteOptions{}); err != nil {
 			return fmt.Errorf("demonstration: add %s: %w", p.Name, err)
@@ -212,5 +302,5 @@ func Seed(ctx context.Context, s Seeder) error {
 	if _, err := s.ImportNodes(ctx, "My nodes", NodesText()); err != nil {
 		return fmt.Errorf("demonstration: import: %w", err)
 	}
-	return s.SaveRules(ctx, Rules())
+	return nil
 }

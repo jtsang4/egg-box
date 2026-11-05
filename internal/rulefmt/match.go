@@ -18,6 +18,10 @@ type Query struct {
 	Addrs   []netip.Addr // the destination's addresses, literal or resolved
 	Port    uint16       // 0 when unknown
 	Network string       // "tcp", "udp" or "" when unknown
+	// Process and ProcessPath are the program that made a real connection;
+	// a URL has none, and rules about programs are then Unknown.
+	Process     string
+	ProcessPath string
 }
 
 // Verdict is the answer of a match. Unknown is not a failure: the rule asks
@@ -88,6 +92,10 @@ type mrule struct {
 	ranges   [][2]uint16
 	hasPort  bool
 	network  []string
+	procName []string
+	procPath []string
+	procRe   []*regexp.Regexp
+	hasProc  bool
 	unknown  bool // conditions a URL cannot decide
 }
 
@@ -164,8 +172,17 @@ func newMRule(r option.HeadlessRule) (*mrule, error) {
 		}
 	}
 	mr.network = append(mr.network, d.Network...)
+	mr.procName = append(mr.procName, d.ProcessName...)
+	mr.procPath = append(mr.procPath, d.ProcessPath...)
+	for _, v := range d.ProcessPathRegex {
+		re, err := regexp.Compile(v)
+		if err != nil {
+			return nil, err
+		}
+		mr.procRe = append(mr.procRe, re)
+	}
+	mr.hasProc = len(mr.procName) > 0 || len(mr.procPath) > 0 || len(mr.procRe) > 0
 	mr.unknown = len(d.QueryType) > 0 || len(d.SourceIPCIDR) > 0 || len(d.SourcePort) > 0 || len(d.SourcePortRange) > 0 ||
-		len(d.ProcessName) > 0 || len(d.ProcessPath) > 0 || len(d.ProcessPathRegex) > 0 ||
 		len(d.PackageName) > 0 || len(d.PackageNameRegex) > 0 || len(d.NetworkType) > 0 ||
 		d.NetworkIsExpensive || d.NetworkIsConstrained || len(d.WIFISSID) > 0 || len(d.WIFIBSSID) > 0 ||
 		d.NetworkInterfaceAddress != nil || len(d.DefaultInterfaceAddress) > 0
@@ -288,10 +305,44 @@ func (r *mrule) evalDefault(q Query) Verdict {
 			}
 		}
 	}
+	if r.hasProc {
+		switch {
+		case q.Process == "" && q.ProcessPath == "":
+			unknown = true
+		case !r.matchProcess(q):
+			return NoMatch
+		}
+	}
 	if unknown {
 		return Unknown
 	}
 	return Match
+}
+
+// matchProcess is true when the program is one the rule names, by its file
+// name, its whole path or a pattern for the path. Rules that name programs in
+// more than one way match any of them, as the core's rule items do.
+func (r *mrule) matchProcess(q Query) bool {
+	name := q.Process
+	if name == "" {
+		name = q.ProcessPath[strings.LastIndexAny(q.ProcessPath, `/\`)+1:]
+	}
+	for _, v := range r.procName {
+		if v == name {
+			return true
+		}
+	}
+	for _, v := range r.procPath {
+		if v == q.ProcessPath {
+			return true
+		}
+	}
+	for _, re := range r.procRe {
+		if re.MatchString(q.ProcessPath) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *mrule) matchName(d string) bool {
