@@ -75,9 +75,13 @@ func (d *welcomeDialog) frame(a *App, c *ui.Context) dlgFrame {
 func (a *App) welcomeHero(c *ui.Context, step int) {
 	p := a.pl
 	h := ui.Column(c.Key("welcome-hero")).Height(212).Justify(ui.Center).AlignItems(ui.Center).Gap(18).Clip()
+	motion := !c.Preferences().ReduceMotion
 	h.Draw(func(pt *ui.Painter, r ui.Rect) {
-		pt.AnimationFrameRate(30)
-		t := float64(pt.Now().UnixMilli()) / 1000
+		t := 0.0
+		if motion {
+			pt.AnimationFrameRate(30)
+			t = float64(pt.Now().UnixMilli()) / 1000
+		}
 		cx, cy := r.X+r.W/2, r.Y+92
 		// The field: deep blue at the top, easing into the panel.
 		pt.FillGradient(r, ui.LinearGradient{

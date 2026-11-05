@@ -109,11 +109,13 @@ func TestShots(t *testing.T) {
 						s.setup(be, o)
 					}
 				}
-				h := newHarness(t, harnessOpt{dark: dark, w: w, h: hh, lang: s.lang, platform: s.platform, setup: setup})
+				h := newHarness(t, harnessOpt{dark: dark, w: w, h: hh, lang: s.lang, platform: s.platform, motion: true, setup: setup})
 				if s.run != nil {
 					s.run(h)
+					// Clicks advance beyond page/dialog transitions; draw their
+					// final state at the current clock time.
+					h.ui.Frame()
 				}
-				h.settle()
 				h.shot(name)
 			})
 		}

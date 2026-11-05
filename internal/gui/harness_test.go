@@ -28,6 +28,7 @@ type harnessOpt struct {
 	lang     string
 	platform string
 	scale    float32
+	motion   bool
 	setup    func(*fixtureBackend, *Options)
 	// panel shows the tray panel instead of the window.
 	panel bool
@@ -41,6 +42,11 @@ func newHarness(t *testing.T, o harnessOpt) *harness {
 	}
 	if o.h == 0 {
 		o.h = 760
+	}
+	// Interaction tests keep the full logical viewport and hit targets while
+	// rasterizing fewer pixels. Motion/screenshot fixtures retain native DPI.
+	if o.scale == 0 && !o.motion {
+		o.scale = 0.5
 	}
 	if o.lang == "" {
 		o.lang = "en"
@@ -76,7 +82,15 @@ func newHarness(t *testing.T, o harnessOpt) *harness {
 	if o.panel {
 		view, o.w, o.h = a.PanelView, PanelWidth, PanelHeight
 	}
-	tt := ui.NewTester(view, o.w, o.h)
+	// Configure the window before building its view. Each configuration change
+	// otherwise renders the whole application with an intermediate appearance.
+	ready := false
+	tt := ui.NewTester(func(c *ui.Context) {
+		if ready {
+			view(c)
+		}
+	}, o.w, o.h)
+	tt.SetPreferences(ui.Preferences{ReduceMotion: !o.motion, TextScale: 1})
 	if o.scale > 0 {
 		tt.SetScale(o.scale)
 	}
@@ -88,6 +102,7 @@ func newHarness(t *testing.T, o harnessOpt) *harness {
 	if !o.panel {
 		tt.SetTitleBar(bar)
 	}
+	ready = true
 	h := &harness{t: t, ui: tt, app: a, be: be}
 	h.settle()
 	return h

@@ -29,6 +29,9 @@ func emptyLibrary(be *fixtureBackend, _ *Options) {
 
 // TestPanelShots photographs the panel in each state and both appearances.
 func TestPanelShots(t *testing.T) {
+	if testing.Short() {
+		t.Skip("the full-resolution screenshot job covers the panel matrix")
+	}
 	cases := []struct {
 		name  string
 		setup func(*fixtureBackend, *Options)
@@ -45,8 +48,7 @@ func TestPanelShots(t *testing.T) {
 				name = "panel-" + c.name + "-dark"
 			}
 			t.Run(name, func(t *testing.T) {
-				h := panelHarness(t, dark, c.setup)
-				h.settle()
+				h := newHarness(t, harnessOpt{dark: dark, panel: true, motion: true, setup: c.setup})
 				h.shot(name)
 			})
 		}

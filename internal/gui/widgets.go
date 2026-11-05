@@ -512,9 +512,13 @@ func (a *App) settingRow(c *ui.Context, title, desc string, control func()) ui.E
 // spinner is an indeterminate progress arc.
 func (a *App) spinner(c *ui.Context, size float32, col ui.Color) ui.Element {
 	e := ui.Box(c).Size(size, size)
+	motion := !c.Preferences().ReduceMotion
 	return e.Draw(func(p *ui.Painter, r ui.Rect) {
-		p.AnimationFrame()
-		t := float64(p.Now().UnixMilli()%900) / 900
+		t := 0.0
+		if motion {
+			p.AnimationFrame()
+			t = float64(p.Now().UnixMilli()%900) / 900
+		}
 		cx, cy := r.X+r.W/2, r.Y+r.H/2
 		rad := r.W/2 - 1.6
 		w := size / 8
