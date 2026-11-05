@@ -442,8 +442,21 @@ func TestOperationsRunOneAtATimeInOrder(t *testing.T) {
 	}
 	release()
 	wg.Wait()
-	if len(order) != 3 || order[0] != "connect" {
-		t.Fatalf("order = %v (the connect must finish first)", order)
+	if len(order) != 3 {
+		t.Fatalf("finished = %v, want all three operations", order)
+	}
+	// What counts is the order the core saw them in; the order the callers
+	// noticed their result in depends on the scheduler.
+	var ran []string
+	for _, c := range h.eng.Calls() {
+		for _, kind := range []string{"start", "select", "mode"} {
+			if strings.HasPrefix(c, kind+" ") {
+				ran = append(ran, kind)
+			}
+		}
+	}
+	if got := strings.Join(ran, ","); got != "start,select,mode" {
+		t.Fatalf("the core saw %s; operations must run one at a time, in the order they were asked", got)
 	}
 }
 
