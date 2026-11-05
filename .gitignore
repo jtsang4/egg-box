@@ -21,6 +21,7 @@ mygo_windows_*.syso
 /artifacts/
 *.pkg
 *.dmg
+*.exe
 
 # Local state & editors
 .DS_Store
