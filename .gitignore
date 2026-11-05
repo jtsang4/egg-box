@@ -1,0 +1,36 @@
+# Go
+/bin/
+*.test
+*.out
+coverage.*
+
+# Frontend
+node_modules/
+/frontend/dist/
+/frontend/.vite/
+/frontend/test-results/
+/frontend/playwright-report/
+
+# MyGo
+/dist/
+/build/
+/.mygo/
+mygo_windows_*.syso
+
+# Native bridge
+/native/macos/ServiceBridge/.build/
+/native/macos/ServiceBridge/.swiftpm/
+
+# Packaging output
+/out/
+*.pkg
+*.dmg
+
+# Local state & editors
+.DS_Store
+.idea/
+.vscode/
+*.log
+.env
+.env.*
+!.env.example
