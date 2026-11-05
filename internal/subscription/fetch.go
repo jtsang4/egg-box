@@ -16,7 +16,7 @@ import (
 
 // DefaultUserAgent is what the fetcher announces. Providers choose the format
 // they return by User-Agent; sing-box's own is the one that yields sing-box JSON.
-const DefaultUserAgent = "sing-box/1.14.4 (sing-box-ui)"
+const DefaultUserAgent = "sing-box/1.14.4 (egg-box)"
 
 // MaxBody caps a subscription download.
 const MaxBody = 16 << 20

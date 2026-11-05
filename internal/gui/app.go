@@ -19,9 +19,9 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
-	"github.com/jtsang4/sing-box-ui/internal/library"
+	"eggbox/internal/app"
+	"eggbox/internal/configgen"
+	"eggbox/internal/library"
 )
 
 // Options configure an App.

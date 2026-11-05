@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/darwin/bridge"
+	"eggbox/internal/app"
+	"eggbox/internal/darwin/bridge"
 )
 
 // Control is the part of the bridge that registers the service.

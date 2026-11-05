@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/routecheck"
+	"eggbox/internal/agent/routecheck"
 )
 
 // These tests read the machine they run on and listen on a routing socket.

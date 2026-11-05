@@ -10,11 +10,11 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
-	"github.com/jtsang4/sing-box-ui/internal/library"
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/app"
+	"eggbox/internal/configgen"
+	"eggbox/internal/library"
+	"eggbox/internal/subscription"
 )
 
 // fixtureBackend is an in-memory Backend with invented data: it never talks
@@ -167,7 +167,7 @@ func (f *fixtureBackend) connectedSnapshot() *app.Snapshot {
 	status := &agentapi.Status{
 		Service: agentapi.ServiceState_SERVICE_STATE_READY, Connection: agentapi.ConnectionState_CONNECTION_STATE_CONNECTED,
 		Mode: "Rule", ConnectedSinceUnix: fixtureNow.Add(-(1*time.Hour + 42*time.Minute + 8*time.Second)).Unix(),
-		ActiveRevision: 7, StoredRevision: 7, IntentConnected: true, HasConfig: true, TunInterface: "SingBoxUI",
+		ActiveRevision: 7, StoredRevision: 7, IntentConnected: true, HasConfig: true, TunInterface: "EggBox",
 		CoreVersion: "1.14.4", AgentVersion: "0.1.0", AuthorizedUser: "demo",
 	}
 	notices := []app.Notice{
@@ -199,7 +199,7 @@ func fixtureLogs() []app.LogLine {
 	}
 	raw := []l{
 		{412 * time.Second, "info", "core", "sing-box 1.14.4 started"},
-		{411 * time.Second, "info", "tun", "SingBoxUI: mtu 1500, stack mixed, auto_route"},
+		{411 * time.Second, "info", "tun", "EggBox: mtu 1500, stack mixed, auto_route"},
 		{410 * time.Second, "info", "dns", "initialized, 2 servers, strategy prefer_ipv4"},
 		{402 * time.Second, "info", "router", "match rule[domain_suffix] => direct"},
 		{371 * time.Second, "info", "outbound/vless[Tokyo 01]", "outbound connection to api.openai.com:443"},
@@ -513,5 +513,5 @@ func (f *fixtureBackend) UpdateRuleData(ctx context.Context, force bool) error {
 }
 func (f *fixtureBackend) ExportDiagnostics(ctx context.Context) (string, []byte, error) {
 	f.record("diagnostics")
-	return "sing-box-ui-diagnostics.json", []byte(`{"ok":true}`), f.fail()
+	return "egg-box-diagnostics.json", []byte(`{"ok":true}`), f.fail()
 }

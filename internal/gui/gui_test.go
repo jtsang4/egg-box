@@ -10,9 +10,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/agentclient"
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/agentclient"
+	"eggbox/internal/subscription"
 )
 
 // enter presses Return, the way a person submits a focused field.
@@ -221,7 +221,7 @@ func TestSettingsPersistChoices(t *testing.T) {
 	h.click("Keep running in the tray")
 	h.click("Refresh subscriptions automatically")
 	h.click("Apply new nodes while connected")
-	h.click("Open Sing-Box UI at login")
+	h.click("Open EggBox at login")
 	h.settle()
 	after := h.be.Settings()
 	if after.Notifications == before.Notifications || after.CloseToTray == before.CloseToTray ||
@@ -392,7 +392,7 @@ func TestExportDiagnostics(t *testing.T) {
 	h.settle()
 	h.click("Export report")
 	h.settle()
-	if !h.be.took("diagnostics") || !h.be.took("save-file sing-box-ui-diagnostics.json") {
+	if !h.be.took("diagnostics") || !h.be.took("save-file egg-box-diagnostics.json") {
 		t.Fatalf("calls: %v", h.be.called())
 	}
 }
@@ -447,7 +447,7 @@ func TestConnectionsFilterAndClose(t *testing.T) {
 
 func TestIntroductionIsShownOnce(t *testing.T) {
 	h := newHarness(t, harnessOpt{setup: introduction})
-	h.mustHave("Welcome to Sing-Box UI")
+	h.mustHave("Welcome to EggBox")
 	h.click("Continue")
 	h.mustHave("Allow the network service", "Authorize service")
 	h.click("Not now")
@@ -460,7 +460,7 @@ func TestIntroductionIsShownOnce(t *testing.T) {
 	}
 	// A second window of the same settings does not repeat it.
 	h2 := newHarness(t, harnessOpt{setup: func(be *fixtureBackend, o *Options) { be.set.OnboardingDone = true }})
-	h2.mustNotHave("Welcome to Sing-Box UI")
+	h2.mustNotHave("Welcome to EggBox")
 }
 
 // A key that leaked to the screen is a missing translation.

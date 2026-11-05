@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/server"
-	"github.com/jtsang4/sing-box-ui/internal/darwin/bridge"
+	"eggbox/internal/agent/server"
+	"eggbox/internal/darwin/bridge"
 )
 
 // ListenXPC makes the agent reachable over the XPC channel of the service

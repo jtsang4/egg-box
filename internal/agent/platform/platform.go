@@ -11,8 +11,8 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/ledger"
-	"github.com/jtsang4/sing-box-ui/internal/agent/routecheck"
+	"eggbox/internal/agent/ledger"
+	"eggbox/internal/agent/routecheck"
 )
 
 // EventKind classifies what the OS reported.

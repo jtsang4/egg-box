@@ -9,7 +9,7 @@ import (
 const (
 	owner = "S-1-5-21-1004336348-1177238915-682003330-1001"
 	other = "S-1-5-21-1004336348-1177238915-682003330-1002"
-	gui   = `C:\Program Files\Sing-Box UI\Sing-Box UI.exe`
+	gui   = `C:\Program Files\EggBox\EggBox.exe`
 )
 
 func TestPipeSDDL(t *testing.T) {
@@ -40,7 +40,7 @@ func TestPeerPolicy(t *testing.T) {
 		return nil
 	}
 	p := PeerPolicy{OwnerSID: owner, Images: []string{gui}}
-	ps := PeerPolicy{OwnerSID: owner, Images: []string{gui, `C:\Program Files\Sing-Box UI\Unsigned.exe`}, RequireSigned: true, Signed: signed}
+	ps := PeerPolicy{OwnerSID: owner, Images: []string{gui, `C:\Program Files\EggBox\Unsigned.exe`}, RequireSigned: true, Signed: signed}
 
 	cases := []struct {
 		name   string
@@ -49,14 +49,14 @@ func TestPeerPolicy(t *testing.T) {
 		ok     bool
 	}{
 		{"the application of the owner", p, PeerFacts{PID: 4242, SID: owner, Image: gui}, true},
-		{"spelled differently", p, PeerFacts{SID: strings.ToLower(owner), Image: `c:/program files/sing-box ui/SING-BOX UI.EXE`}, true},
-		{"long path prefix", p, PeerFacts{SID: owner, Image: `\\?\C:\Program Files\Sing-Box UI\Sing-Box UI.exe`}, true},
+		{"spelled differently", p, PeerFacts{SID: strings.ToLower(owner), Image: `c:/program files/eggbox/EGGBOX.EXE`}, true},
+		{"long path prefix", p, PeerFacts{SID: owner, Image: `\\?\C:\Program Files\EggBox\EggBox.exe`}, true},
 		{"another user", p, PeerFacts{SID: other, Image: gui}, false},
 		{"the owner's other program", p, PeerFacts{SID: owner, Image: `C:\Users\me\Downloads\evil.exe`}, false},
-		{"a look-alike directory", p, PeerFacts{SID: owner, Image: `C:\Program Files\Sing-Box UI\..\Sing-Box UI Evil\Sing-Box UI.exe`}, false},
+		{"a look-alike directory", p, PeerFacts{SID: owner, Image: `C:\Program Files\EggBox\..\EggBox Evil\EggBox.exe`}, false},
 		{"no image known", p, PeerFacts{SID: owner}, false},
 		{"signed requirement met", ps, PeerFacts{SID: owner, Image: gui}, true},
-		{"signed requirement not met", ps, PeerFacts{SID: owner, Image: `C:\Program Files\Sing-Box UI\Unsigned.exe`}, false},
+		{"signed requirement not met", ps, PeerFacts{SID: owner, Image: `C:\Program Files\EggBox\Unsigned.exe`}, false},
 		{"no owner configured", PeerPolicy{Images: []string{gui}}, PeerFacts{SID: owner, Image: gui}, false},
 		{"signature required but cannot be checked", PeerPolicy{OwnerSID: owner, Images: []string{gui}, RequireSigned: true}, PeerFacts{SID: owner, Image: gui}, false},
 	}

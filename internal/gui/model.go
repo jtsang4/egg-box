@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
-	"github.com/jtsang4/sing-box-ui/internal/library"
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/app"
+	"eggbox/internal/configgen"
+	"eggbox/internal/library"
+	"eggbox/internal/subscription"
 )
 
 // settingsT is the application's preferences.

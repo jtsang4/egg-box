@@ -23,10 +23,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine"
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine/singbox"
-	"github.com/jtsang4/sing-box-ui/internal/agent/policy"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agent/engine"
+	"eggbox/internal/agent/engine/singbox"
+	"eggbox/internal/agent/policy"
+	"eggbox/internal/agentapi"
 )
 
 // ---------------------------------------------------------------- fixtures

@@ -25,8 +25,8 @@ import (
 	"github.com/sagernet/sing/service"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agent/engine"
+	"eggbox/internal/agentapi"
 )
 
 const (

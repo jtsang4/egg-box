@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/agentclient"
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
-	"github.com/jtsang4/sing-box-ui/internal/library"
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/agentclient"
+	"eggbox/internal/configgen"
+	"eggbox/internal/library"
+	"eggbox/internal/subscription"
 )
 
 // ApplyReport says what an apply did.
@@ -114,7 +114,7 @@ func (s *Service) prepare(ctx context.Context) (*prepared, error) {
 }
 
 func bundleOf(out *configgen.Output) *agentapi.ConfigBundle {
-	b := &agentapi.ConfigBundle{ConfigJson: out.JSON, ProfileId: "default", ProfileName: "Sing-Box UI"}
+	b := &agentapi.ConfigBundle{ConfigJson: out.JSON, ProfileId: "default", ProfileName: "EggBox"}
 	for _, r := range out.Resources {
 		sum := sha256.Sum256(r.Data)
 		b.Resources = append(b.Resources, &agentapi.Resource{Name: r.Name, Data: r.Data, Sha256: hex.EncodeToString(sum[:])})

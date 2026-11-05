@@ -9,11 +9,11 @@
 //   * "service ready" and "proxy connected" are separate states.
 syntax = "proto3";
 
-package singboxui.agent.v1;
+package eggbox.agent.v1;
 
 import "google/protobuf/empty.proto";
 
-option go_package = "github.com/jtsang4/sing-box-ui/internal/agentapi;agentapi";
+option go_package = "eggbox/internal/agentapi;agentapi";
 
 service Agent {
   // Handshake reports versions and the identity the agent verified for the

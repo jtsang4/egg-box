@@ -1,5 +1,5 @@
 // Package version carries the build identity. Release builds set the variables
-// with -ldflags "-X github.com/jtsang4/sing-box-ui/internal/version.Version=1.2.3".
+// with -ldflags "-X eggbox/internal/version.Version=1.2.3".
 package version
 
 // Version is the application and agent version. The GUI and the agent of one

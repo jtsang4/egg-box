@@ -1,4 +1,4 @@
-//go:build sbui_dev && (darwin || linux)
+//go:build eggbox_dev && (darwin || linux)
 
 package main
 
@@ -13,17 +13,17 @@ import (
 
 	"github.com/egoist/mygo"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/transport"
-	"github.com/jtsang4/sing-box-ui/internal/boot"
-	"github.com/jtsang4/sing-box-ui/internal/library"
+	"eggbox/internal/agent/transport"
+	"eggbox/internal/boot"
+	"eggbox/internal/library"
 )
 
-// devOptions are the flags of development builds (the sbui_dev tag), which
+// devOptions are the flags of development builds (the eggbox_dev tag), which
 // release builds do not have:
 //
 //	--dev-socket PATH   use the development agent (agentd dev) listening there,
 //	                    which replaces the TUN with a loopback proxy
-//	--dev-data DIR      where the library lives (default ~/.sbui-dev/gui)
+//	--dev-data DIR      where the library lives (default ~/.eggbox-dev/gui)
 //	--capture DIR       take screenshots of every page, in both appearances,
 //	                    write them to DIR and quit
 //	--capture-warmup S  with --connect, seconds to let the charts fill first
@@ -66,7 +66,7 @@ func (o devOptions) config(cfg *boot.Config) error {
 		if err != nil {
 			return err
 		}
-		dir = filepath.Join(home, ".sbui-dev", "gui")
+		dir = filepath.Join(home, ".eggbox-dev", "gui")
 	}
 	dir, err := filepath.Abs(dir)
 	if err != nil {

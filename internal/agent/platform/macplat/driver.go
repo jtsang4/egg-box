@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/ledger"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform"
-	"github.com/jtsang4/sing-box-ui/internal/agent/routecheck"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
-	"github.com/jtsang4/sing-box-ui/internal/macsys"
+	"eggbox/internal/agent/ledger"
+	"eggbox/internal/agent/platform"
+	"eggbox/internal/agent/routecheck"
+	"eggbox/internal/brand"
+	"eggbox/internal/macsys"
 )
 
 // DefaultResolverKey is where the agent keeps its temporary resolver in the

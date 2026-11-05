@@ -1,6 +1,6 @@
 package singbox
 
-import "github.com/jtsang4/sing-box-ui/internal/agent/policy"
+import "eggbox/internal/agent/policy"
 
 // PolicyOptions returns the policy options that match what this build of the
 // core can actually run, so a configuration is never accepted for a protocol

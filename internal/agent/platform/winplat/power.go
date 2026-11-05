@@ -1,6 +1,6 @@
 package winplat
 
-import "github.com/jtsang4/sing-box-ui/internal/agent/platform"
+import "eggbox/internal/agent/platform"
 
 // The power notifications Windows sends a service (PBT_* values).
 const (

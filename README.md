@@ -1,4 +1,6 @@
-# Sing-Box UI
+# EggBox
+
+<img src="resources/icon.png" width="96" alt="EggBox logo">
 
 A desktop client for [sing-box](https://github.com/SagerNet/sing-box) on macOS and Windows, with the conveniences people
 know from Clash, Shadowrocket and Surge: subscriptions that refresh themselves, a node list with latency tests, rule and
@@ -67,9 +69,9 @@ The demonstration runs the whole interface against an invented world in the same
 nothing is installed, nothing is kept.
 
 ```sh
-go run ./cmd/sing-box-ui --demo            # a populated, connected app
-go run ./cmd/sing-box-ui --demo --fresh    # the first-run walkthrough
-go run ./cmd/sing-box-ui --help
+go run ./cmd/egg-box --demo            # a populated, connected app
+go run ./cmd/egg-box --demo --fresh    # the first-run walkthrough
+go run ./cmd/egg-box --help
 ```
 
 ## Develop
@@ -79,15 +81,15 @@ when `internal/agentapi/agent.proto` changes (`scripts/gen-proto.sh`).
 
 **Nothing in the development or test workflow changes the host network.** Tests use an in-memory simulated platform
 driver and loopback-only upstreams. The real platform drivers refuse to run unless the process is the installed
-service. A development build (build tag `sbui_dev`) adds `agentd dev`, which runs the same agent on a Unix socket you
+service. A development build (build tag `eggbox_dev`) adds `agentd dev`, which runs the same agent on a Unix socket you
 own, against the simulated operating system, with a loopback `mixed` proxy where the TUN would be:
 
 ```sh
 TAGS=with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_clash_api,badlinkname
-go build -tags "sbui_dev,$TAGS" -o /tmp/agentd ./cmd/agentd
-go build -tags sbui_dev -o /tmp/sing-box-ui ./cmd/sing-box-ui
-/tmp/agentd dev --socket /tmp/sbui-dev/agent.sock --data-dir /tmp/sbui-dev/agent &
-/tmp/sing-box-ui --dev-socket /tmp/sbui-dev/agent.sock --dev-data /tmp/sbui-dev/gui
+go build -tags "eggbox_dev,$TAGS" -o /tmp/agentd ./cmd/agentd
+go build -tags eggbox_dev -o /tmp/egg-box ./cmd/egg-box
+/tmp/agentd dev --socket /tmp/eggbox-dev/agent.sock --data-dir /tmp/eggbox-dev/agent &
+/tmp/egg-box --dev-socket /tmp/eggbox-dev/agent.sock --dev-data /tmp/eggbox-dev/gui
 ```
 
 The socket's directory is created private to you (the agent refuses a directory others can enter), `agentd dev`
@@ -99,7 +101,7 @@ refuses to run as root, and release binaries do not contain the development tran
 go vet ./... && go tool mygo vet
 go test -race -short ./...                                        # the quick suite
 go test ./...                                                     # everything, including screenshots
-go test -tags "sbui_dev,$TAGS" ./internal/agent/engine/... ./internal/agent/e2e/... ./internal/configgen/...
+go test -tags "eggbox_dev,$TAGS" ./internal/agent/engine/... ./internal/agent/e2e/... ./internal/configgen/...
                                                                   # with the real sing-box core
 ```
 
@@ -108,15 +110,15 @@ and `govulncheck` (on every change and weekly): the service runs as root, so a d
 the code reaches is a failure.
 
 The interface is tested without a window (`ui.NewTester`), including screenshots rendered in memory (`ui.Render`), so a
-change can be reviewed without opening anything: `SBUI_SHOTS=/some/dir go test ./internal/gui -run TestShots`.
+change can be reviewed without opening anything: `EGGBOX_SHOTS=/some/dir go test ./internal/gui -run TestShots`.
 
 One end-to-end test runs the whole product path (service, agent, real sing-box core) against a **real subscription**,
 inside the sandbox, and checks every node can carry traffic. It is skipped unless you provide a link, and it prints
 only counts, protocol names and failure classes, never the link or any node detail:
 
 ```sh
-SBUI_TEST_SUBSCRIPTION_URL='…'   # or SBUI_TEST_SUBSCRIPTION_FILE=/path/to/a/file/holding/the/link
-go test -tags "sbui_dev,$TAGS" -run RealSubscription -v ./internal/agent/e2e
+EGGBOX_TEST_SUBSCRIPTION_URL='…'   # or EGGBOX_TEST_SUBSCRIPTION_FILE=/path/to/a/file/holding/the/link
+go test -tags "eggbox_dev,$TAGS" -run RealSubscription -v ./internal/agent/e2e
 ```
 
 Keep such links out of the repository: not in code, fixtures, docs, scripts or commit messages. Fixtures and demo data
@@ -124,20 +126,20 @@ are invented (`example.net`, documentation IP ranges).
 
 ### Build the installers
 
-Both scripts check that `SBUI_VERSION` (default: the version in `mygo.json`) agrees with `mygo.json`, stamp the version
+Both scripts check that `EGGBOX_VERSION` (default: the version in `mygo.json`) agrees with `mygo.json`, stamp the version
 into every binary, and leave their output in `build/` (git-ignored).
 
 ```sh
-# macOS (on a Mac): universal Sing-Box UI.app and SingBoxUI-<version>.pkg
+# macOS (on a Mac): universal EggBox.app and EggBox-<version>.pkg
 packaging/macos/build.sh [--arch universal|arm64|x86_64] [--no-pkg]
-#   SBUI_SIGN_IDENTITY / SBUI_INSTALLER_IDENTITY: Developer ID identities. The default is an ad hoc signature, which
+#   EGGBOX_SIGN_IDENTITY / EGGBOX_INSTALLER_IDENTITY: Developer ID identities. The default is an ad hoc signature, which
 #   is enough to build and inspect the package; whether macOS accepts the service of an ad-hoc app is not verified
 
-# Windows (from any machine with NSIS; makensis): SingBoxUI-Setup-<version>-<arch>.exe
+# Windows (from any machine with NSIS; makensis): EggBox-Setup-<version>-<arch>.exe
 packaging/windows/build.sh --arch amd64|arm64
 ```
 
-The macOS package installs `Sing-Box UI.app` into `/Applications`; the app bundles `agentd`, `ServiceBridge.dylib`, the
+The macOS package installs `EggBox.app` into `/Applications`; the app bundles `agentd`, `ServiceBridge.dylib`, the
 LaunchDaemon plist and the licenses of everything inside (`THIRD-PARTY-NOTICES.txt`, which Settings → About opens), and
 asks the person to approve the service in System Settings the first time. To remove everything, use Settings → Network
 service → Remove the service, or `sudo packaging/macos/uninstall.sh [--keep-data]`.
@@ -155,7 +157,7 @@ fit to hand to anybody.
 | Path | Purpose |
 | --- | --- |
 | `cmd/agentd` | privileged agent: Windows Service / macOS LaunchDaemon, and `agentd dev` in development builds |
-| `cmd/sing-box-ui` | the application: window, menu bar / tray, platform glue |
+| `cmd/egg-box` | the application: window, menu bar / tray, platform glue |
 | `internal/agent` | agent core: controller (state machine), policy, ledger, store, engine (sing-box adapter), platform drivers, server and transports |
 | `internal/agentapi` | the GUI ⇄ agent contract (protobuf + gRPC) and the protocol version |
 | `internal/agentclient` | the GUI's client of that contract |
@@ -189,9 +191,6 @@ tested; that is not a substitute for running it.
 
 ## Licensing
 
-The program embeds [sing-box](https://github.com/SagerNet/sing-box), which is GPL-3.0-or-later with one added condition:
-no derivative work may use its name or imply association with it without prior consent. Two things follow before
-binaries are handed to anybody: the combined program has to be distributed under terms compatible with the GPL (this
-repository has no license file yet; choosing one is the owner's decision), and the product name has to be settled with
-the sing-box authors, since "Sing-Box UI" contains theirs. The name and the identifiers made from it (`me.jtsang.singboxui`,
-`SingBoxUI`) are used in `internal/brand`, `mygo.json`, `packaging/`, the interface texts and the service protocol.
+EggBox embeds [sing-box](https://github.com/SagerNet/sing-box), which is GPL-3.0-or-later with an added condition
+restricting use of its name or implied association without prior consent. EggBox is an independent product.
+The combined program must be distributed under GPL-compatible terms; this repository has no license file yet.

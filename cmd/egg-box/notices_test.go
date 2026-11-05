@@ -20,8 +20,8 @@ func TestNoticesAreFoundWhereEachInstallerPutsThem(t *testing.T) {
 	root := t.TempDir()
 
 	// macOS: the program is in Contents/MacOS, the notices in Contents/Resources.
-	contents := filepath.Join(root, "Sing-Box UI.app", "Contents")
-	macExe := filepath.Join(contents, "MacOS", "sing-box-ui")
+	contents := filepath.Join(root, "EggBox.app", "Contents")
+	macExe := filepath.Join(contents, "MacOS", "egg-box")
 	put(t, macExe)
 	if got := noticesFor(macExe, "darwin"); got != "" {
 		t.Fatalf("found %q in a bundle that has none", got)
@@ -32,8 +32,8 @@ func TestNoticesAreFoundWhereEachInstallerPutsThem(t *testing.T) {
 	}
 
 	// Windows: next to the program.
-	dir := filepath.Join(root, "Program Files", "SingBoxUI")
-	winExe := filepath.Join(dir, "Sing-Box UI.exe")
+	dir := filepath.Join(root, "Program Files", "EggBox")
+	winExe := filepath.Join(dir, "EggBox.exe")
 	put(t, winExe)
 	if got := noticesFor(winExe, "windows"); got != "" {
 		t.Fatalf("found %q in an installation that has none", got)
@@ -51,7 +51,7 @@ func TestNoticesAreFoundWhereEachInstallerPutsThem(t *testing.T) {
 
 func TestADirectoryIsNotTheNotices(t *testing.T) {
 	dir := t.TempDir()
-	exe := filepath.Join(dir, "Sing-Box UI.exe")
+	exe := filepath.Join(dir, "EggBox.exe")
 	put(t, exe)
 	if err := os.Mkdir(filepath.Join(dir, noticesFile), 0o755); err != nil {
 		t.Fatal(err)

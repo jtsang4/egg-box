@@ -7,10 +7,10 @@ name: release
 # anybody (Gatekeeper, and the approval of the macOS service, expect a
 # Developer ID signature).
 #
-#   SBUI_SIGN_IDENTITY       Developer ID Application identity (macOS)
-#   SBUI_INSTALLER_IDENTITY  Developer ID Installer identity (macOS)
-#   SBUI_CERTIFICATE         base64 of the .p12 holding both
-#   SBUI_CERTIFICATE_PASSWORD
+#   EGGBOX_SIGN_IDENTITY       Developer ID Application identity (macOS)
+#   EGGBOX_INSTALLER_IDENTITY  Developer ID Installer identity (macOS)
+#   EGGBOX_CERTIFICATE         base64 of the .p12 holding both
+#   EGGBOX_CERTIFICATE_PASSWORD
 
 on:
   push:
@@ -25,10 +25,10 @@ jobs:
     env:
       # Here, because a step cannot ask whether a secret exists, only whether
       # an environment variable is not empty.
-      SBUI_CERTIFICATE: ${{ secrets.SBUI_CERTIFICATE }}
-      SBUI_CERTIFICATE_PASSWORD: ${{ secrets.SBUI_CERTIFICATE_PASSWORD }}
-      SBUI_SIGN_IDENTITY: ${{ secrets.SBUI_SIGN_IDENTITY }}
-      SBUI_INSTALLER_IDENTITY: ${{ secrets.SBUI_INSTALLER_IDENTITY }}
+      EGGBOX_CERTIFICATE: ${{ secrets.EGGBOX_CERTIFICATE }}
+      EGGBOX_CERTIFICATE_PASSWORD: ${{ secrets.EGGBOX_CERTIFICATE_PASSWORD }}
+      EGGBOX_SIGN_IDENTITY: ${{ secrets.EGGBOX_SIGN_IDENTITY }}
+      EGGBOX_INSTALLER_IDENTITY: ${{ secrets.EGGBOX_INSTALLER_IDENTITY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -36,24 +36,24 @@ jobs:
           go-version-file: go.mod
 
       - name: Import the signing certificate
-        if: env.SBUI_CERTIFICATE != ''
+        if: env.EGGBOX_CERTIFICATE != ''
         run: |
-          keychain="$RUNNER_TEMP/sbui.keychain-db"
+          keychain="$RUNNER_TEMP/eggbox.keychain-db"
           password="$(uuidgen)"
-          echo "$SBUI_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          echo "$EGGBOX_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
           security create-keychain -p "$password" "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$password" "$keychain"
-          security import "$RUNNER_TEMP/certificate.p12" -P "$SBUI_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$EGGBOX_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
           security list-keychains -d user -s "$keychain" login.keychain-db
           rm -f "$RUNNER_TEMP/certificate.p12"
 
       - name: Build
         run: |
-          export SBUI_VERSION="${GITHUB_REF_NAME#v}"
-          [ -n "$SBUI_SIGN_IDENTITY" ] || unset SBUI_SIGN_IDENTITY
-          [ -n "$SBUI_INSTALLER_IDENTITY" ] || unset SBUI_INSTALLER_IDENTITY
+          export EGGBOX_VERSION="${GITHUB_REF_NAME#v}"
+          [ -n "$EGGBOX_SIGN_IDENTITY" ] || unset EGGBOX_SIGN_IDENTITY
+          [ -n "$EGGBOX_INSTALLER_IDENTITY" ] || unset EGGBOX_INSTALLER_IDENTITY
           packaging/macos/build.sh --arch universal
 
       - uses: actions/upload-artifact@v4
@@ -76,7 +76,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq nsis
       - name: Build
         run: |
-          export SBUI_VERSION="${GITHUB_REF_NAME#v}"
+          export EGGBOX_VERSION="${GITHUB_REF_NAME#v}"
           packaging/windows/build.sh --arch "${{ matrix.arch }}"
       - uses: actions/upload-artifact@v4
         with:

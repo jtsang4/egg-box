@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agentapi"
 )
 
 // Sources identify where a line came from.

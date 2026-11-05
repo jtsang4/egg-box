@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
+	"eggbox/internal/configgen"
 )
 
 // schedule refreshes subscriptions and rule data when they are due.

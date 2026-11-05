@@ -12,10 +12,10 @@ import (
 // the agent can refuse a peer that speaks another version of the contract
 // before it acts on anything it might misread. Handshake is the one method
 // allowed through: it is how a client learns what the agent speaks.
-const ProtocolMetadataKey = "sbui-protocol"
+const ProtocolMetadataKey = "eggbox-protocol"
 
 // HandshakeMethod is the full gRPC method name of Handshake.
-const HandshakeMethod = "/singboxui.agent.v1.Agent/Handshake"
+const HandshakeMethod = "/eggbox.agent.v1.Agent/Handshake"
 
 // WithProtocol returns client interceptors that stamp every call with version.
 func WithProtocol(version uint32) []grpc.DialOption {

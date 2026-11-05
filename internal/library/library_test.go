@@ -7,14 +7,15 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
-	"github.com/jtsang4/sing-box-ui/internal/library"
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/configgen"
+	"eggbox/internal/library"
+	"eggbox/internal/subscription"
 )
 
 // linkList renders share links of invented servers, one per name.
@@ -110,7 +111,7 @@ func TestAddRemoteKeepsTheLinkOutOfFiles(t *testing.T) {
 		if strings.Contains(string(data), "9f3a7c1d5e8b4a60") {
 			t.Errorf("%s contains the subscription link", path)
 		}
-		if info.Mode().Perm() != 0o600 {
+		if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 			t.Errorf("%s has mode %v, want 0600", path, info.Mode().Perm())
 		}
 		return nil
@@ -501,7 +502,7 @@ func TestSecretStores(t *testing.T) {
 	if v, err := file.Get("k"); err != nil || v != "v" {
 		t.Fatalf("%q, %v", v, err)
 	}
-	if info, err := os.Stat(filepath.Join(dir, "sub", "secrets.json")); err != nil || info.Mode().Perm() != 0o600 {
+	if info, err := os.Stat(filepath.Join(dir, "sub", "secrets.json")); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 		t.Errorf("%v, %v", info, err)
 	}
 	_ = file.Delete("k")

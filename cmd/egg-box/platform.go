@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentclient"
-	"github.com/jtsang4/sing-box-ui/internal/boot"
+	"eggbox/internal/agentclient"
+	"eggbox/internal/boot"
 )
 
 // platformServices is what differs between operating systems when the

@@ -3,7 +3,7 @@
 // DNS and the connection lifecycle, so closing the GUI keeps the connection.
 //
 // In release builds it only runs as the installed service. Development builds
-// (tag sbui_dev) add `agentd dev`, which runs the same agent against a
+// (tag eggbox_dev) add `agentd dev`, which runs the same agent against a
 // simulated operating system on a Unix socket and cannot change the host's
 // network.
 package main

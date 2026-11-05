@@ -3,8 +3,8 @@ package app
 import (
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/agentclient"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/agentclient"
 )
 
 // Phase is where the connection stands, for the interface.

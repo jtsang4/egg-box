@@ -10,7 +10,7 @@ import (
 	"github.com/sagernet/sing-box/adapter/service"
 	"github.com/sagernet/sing-box/option"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/policy"
+	"eggbox/internal/agent/policy"
 )
 
 // These tests are the guard rail for upgrading sing-box: the privileged core

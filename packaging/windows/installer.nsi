@@ -1,4 +1,4 @@
-; The installer of Sing-Box UI for Windows.
+; The installer of EggBox for Windows.
 ;
 ; It installs for the whole computer, not for one person, because the network
 ; service it sets up runs as the system: both programs go under Program Files,
@@ -34,13 +34,13 @@ SetCompressor /SOLID lzma
   !error "pass -DNOTICES=path of the third-party notices"
 !endif
 !ifndef OUTFILE
-  !define OUTFILE "SingBoxUI-Setup-${VERSION}-${ARCH}.exe"
+  !define OUTFILE "EggBox-Setup-${VERSION}-${ARCH}.exe"
 !endif
 
-!define NAME      "Sing-Box UI"
-!define SLUG      "SingBoxUI"
-!define SERVICE   "SingBoxUIAgent"
-!define GUI_EXE   "Sing-Box UI.exe"       ; the service looks for this exact name next to itself
+!define NAME      "EggBox"
+!define SLUG      "EggBox"
+!define SERVICE   "EggBoxAgent"
+!define GUI_EXE   "EggBox.exe"       ; the service looks for this exact name next to itself
 !define AGENT_EXE "agentd.exe"
 !define NOTICES_FILE "THIRD-PARTY-NOTICES.txt"   ; the application's Settings looks for this name next to itself
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${SLUG}"
@@ -63,7 +63,7 @@ VIAddVersionKey "ProductName" "${NAME}"
 VIAddVersionKey "FileDescription" "${NAME} installer"
 VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
-VIAddVersionKey "LegalCopyright" "(c) 2026 jtsang"
+VIAddVersionKey "LegalCopyright" "(c) 2026 EggBox contributors"
 
 !define MUI_ABORTWARNING
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${GUI_EXE}"
@@ -148,7 +148,7 @@ Section "Install"
   WriteRegStr HKLM "Software\${SLUG}" "InstallDir" "$INSTDIR"
   WriteRegStr HKLM "${UNINSTKEY}" "DisplayName" "${NAME}"
   WriteRegStr HKLM "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKLM "${UNINSTKEY}" "Publisher" "jtsang"
+  WriteRegStr HKLM "${UNINSTKEY}" "Publisher" "EggBox contributors"
   WriteRegStr HKLM "${UNINSTKEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKLM "${UNINSTKEY}" "DisplayIcon" "$INSTDIR\${GUI_EXE}"
   WriteRegStr HKLM "${UNINSTKEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'

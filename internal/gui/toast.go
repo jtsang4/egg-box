@@ -6,7 +6,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
+	"eggbox/internal/app"
 )
 
 // toast is a transient message at the corner of the window.

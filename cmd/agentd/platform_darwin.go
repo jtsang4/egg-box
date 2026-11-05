@@ -11,10 +11,10 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/ledger"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform/macplat"
-	"github.com/jtsang4/sing-box-ui/internal/darwin/bridge"
-	"github.com/jtsang4/sing-box-ui/internal/macsys"
+	"eggbox/internal/agent/ledger"
+	"eggbox/internal/agent/platform/macplat"
+	"eggbox/internal/darwin/bridge"
+	"eggbox/internal/macsys"
 )
 
 const platformUsage = `  daemon       run as the launchd service; the system starts it this way (root)

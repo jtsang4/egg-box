@@ -29,7 +29,7 @@ func string(_ p: UnsafePointer<CChar>?) -> String? {
 
 /// The queue everything asynchronous runs on, so callbacks into Go never run
 /// concurrently with each other.
-let bridgeQueue = DispatchQueue(label: "me.jtsang.singboxui.bridge")
+let bridgeQueue = DispatchQueue(label: "org.eggbox.app.bridge")
 
 /// The result codes of the calls that can fail.
 enum Code {

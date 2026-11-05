@@ -1,4 +1,4 @@
-//go:build sbui_dev && (darwin || linux)
+//go:build eggbox_dev && (darwin || linux)
 
 package e2e
 
@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/transport"
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/boot"
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
-	"github.com/jtsang4/sing-box-ui/internal/library"
-	"github.com/jtsang4/sing-box-ui/internal/testsupport/realsub"
+	"eggbox/internal/agent/transport"
+	"eggbox/internal/app"
+	"eggbox/internal/boot"
+	"eggbox/internal/configgen"
+	"eggbox/internal/library"
+	"eggbox/internal/testsupport/realsub"
 )
 
 // probeURL answers 204 to anyone, from anywhere; reaching it through a node
@@ -41,8 +41,8 @@ type probed struct {
 // goes to that loopback port. Nothing the subscription holds is printed: the
 // log has counts, protocol names and failure classes.
 //
-//	SBUI_TEST_SUBSCRIPTION_FILE=~/.sbui-dev/subscription.url \
-//	  go test -tags "sbui_dev,with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_clash_api,badlinkname" \
+//	EGGBOX_TEST_SUBSCRIPTION_FILE=~/.eggbox-dev/subscription.url \
+//	  go test -tags "eggbox_dev,with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_clash_api,badlinkname" \
 //	  -run RealSubscription -v ./internal/agent/e2e
 func TestRealSubscriptionEveryNodeWorksInTheSandbox(t *testing.T) {
 	link := realsub.URL(t)

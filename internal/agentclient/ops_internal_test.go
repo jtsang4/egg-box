@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agentapi"
 )
 
 // scripted answers Connect from a script, recording the request ids it saw.

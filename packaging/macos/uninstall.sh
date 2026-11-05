@@ -1,5 +1,5 @@
 #!/bin/bash
-# Removes Sing-Box UI from this Mac, with its service, and puts the network back
+# Removes EggBox from this Mac, with its service, and puts the network back
 # the way it was.
 #
 #   sudo packaging/macos/uninstall.sh [--keep-data]
@@ -12,11 +12,11 @@
 # there (or removed from inside the application, before this script is run).
 set -u
 
-label=me.jtsang.singboxui.agent
-app="/Applications/Sing-Box UI.app"
-data="/Library/Application Support/SingBoxUI"
+label=org.eggbox.app.agent
+app="/Applications/EggBox.app"
+data="/Library/Application Support/EggBox"
 log="/var/log/$label.log"
-package=me.jtsang.singboxui.pkg
+package=org.eggbox.app.pkg
 
 keep_data=0
 case "${1:-}" in
@@ -44,5 +44,5 @@ rm -rf "$app"
 rm -f "$log"
 /usr/sbin/pkgutil --forget "$package" >/dev/null 2>&1
 
-echo "Sing-Box UI was removed."
+echo "EggBox was removed."
 echo "If it is still listed in System Settings > General > Login Items & Extensions, switch it off there."

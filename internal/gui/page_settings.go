@@ -7,9 +7,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/app"
+	"eggbox/internal/configgen"
 )
 
 // settingsState holds the text being edited in the network section, which is
@@ -575,7 +575,7 @@ func strOr(s, fallback string) string {
 func (a *App) aboutSection(c *ui.Context) {
 	p := a.pl
 	a.section(c, "life-buoy", a.t("settings.about"), a.t("settings.about.desc"), func() {
-		a.kvText(c, a.t("settings.about.app"), "Sing-Box UI "+strOr(a.opt.Version, "dev"))
+		a.kvText(c, a.t("settings.about.app"), "EggBox "+strOr(a.opt.Version, "dev"))
 		a.rowDivider(c)
 		a.kvText(c, a.t("settings.about.platform"), a.platformName())
 		a.rowDivider(c)

@@ -165,8 +165,8 @@ private let registry = Registry()
 /// Starts listening. With a service name the listener is the agent's Mach
 /// service (the system must have registered that name for this program);
 /// without one it is anonymous. The result is a handle, or a negative code.
-@_cdecl("sbui_xpc_serve")
-public func sbui_xpc_serve(
+@_cdecl("eggbox_xpc_serve")
+public func eggbox_xpc_serve(
     _ service: UnsafePointer<CChar>?, _ requirement: UnsafePointer<CChar>?,
     _ onConnection: ConnectionCallback,
     _ err: UnsafeMutablePointer<CChar>?, _ cap: Int32
@@ -191,21 +191,21 @@ public func sbui_xpc_serve(
 
 /// Makes an endpoint for an anonymous listener, so a client in the same
 /// process can reach it. The result is a handle, or a negative code.
-@_cdecl("sbui_xpc_endpoint")
-public func sbui_xpc_endpoint(_ listener: Int64) -> Int64 {
+@_cdecl("eggbox_xpc_endpoint")
+public func eggbox_xpc_endpoint(_ listener: Int64) -> Int64 {
     guard let l = registry.listener(listener) else { return Int64(Code.failed) }
     return registry.addEndpoint(xpc_endpoint_create(l.connection))
 }
 
 /// Stops a listener.
-@_cdecl("sbui_xpc_stop")
-public func sbui_xpc_stop(_ handle: Int64) {
+@_cdecl("eggbox_xpc_stop")
+public func eggbox_xpc_stop(_ handle: Int64) {
     registry.remove(handle)?.stop()
 }
 
 /// Forgets an endpoint.
-@_cdecl("sbui_xpc_release_endpoint")
-public func sbui_xpc_release_endpoint(_ handle: Int64) {
+@_cdecl("eggbox_xpc_release_endpoint")
+public func eggbox_xpc_release_endpoint(_ handle: Int64) {
     registry.removeEndpoint(handle)
 }
 
@@ -213,8 +213,8 @@ public func sbui_xpc_release_endpoint(_ handle: Int64) {
 /// descriptor (zero or more), or a negative code: -2 when the service is not
 /// there (not registered, not allowed yet, or not running and unable to
 /// start), -3 on timeout.
-@_cdecl("sbui_xpc_connect")
-public func sbui_xpc_connect(
+@_cdecl("eggbox_xpc_connect")
+public func eggbox_xpc_connect(
     _ service: UnsafePointer<CChar>, _ requirement: UnsafePointer<CChar>?, _ timeoutMs: Int32,
     _ err: UnsafeMutablePointer<CChar>?, _ cap: Int32
 ) -> Int32 {
@@ -225,8 +225,8 @@ public func sbui_xpc_connect(
 }
 
 /// Asks an anonymous listener, by its endpoint, for a connection.
-@_cdecl("sbui_xpc_connect_endpoint")
-public func sbui_xpc_connect_endpoint(
+@_cdecl("eggbox_xpc_connect_endpoint")
+public func eggbox_xpc_connect_endpoint(
     _ endpoint: Int64, _ requirement: UnsafePointer<CChar>?, _ timeoutMs: Int32,
     _ err: UnsafeMutablePointer<CChar>?, _ cap: Int32
 ) -> Int32 {

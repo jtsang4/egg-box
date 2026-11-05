@@ -19,9 +19,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/testkit"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/agentclient"
+	"eggbox/internal/agent/testkit"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/agentclient"
 )
 
 const minimalConfig = `{
@@ -57,7 +57,7 @@ func waitStatus(t *testing.T, c *agentclient.Client, what string, pred func(*age
 
 func TestHandshakeDescribesTheAgentAndTheCaller(t *testing.T) {
 	a := testkit.Start(t, testkit.Options{})
-	a.SetPeer("uid=501 exe=/Applications/Sing-Box UI.app")
+	a.SetPeer("uid=501 exe=/Applications/EggBox.app")
 	c := a.Client(t)
 	link := c.Link()
 	if link.State != agentclient.LinkReady || link.Hello == nil {
@@ -70,7 +70,7 @@ func TestHandshakeDescribesTheAgentAndTheCaller(t *testing.T) {
 	if h.Platform != runtime.GOOS || h.Arch != runtime.GOARCH || h.InstanceId == "" || h.AgentPid == 0 || h.AgentStartedUnix == 0 {
 		t.Fatalf("hello = %v", h)
 	}
-	if h.Peer != "uid=501 exe=/Applications/Sing-Box UI.app" {
+	if h.Peer != "uid=501 exe=/Applications/EggBox.app" {
 		t.Fatalf("the agent must report the identity it verified, got %q", h.Peer)
 	}
 }

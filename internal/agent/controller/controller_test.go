@@ -2,18 +2,20 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/netip"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform"
-	"github.com/jtsang4/sing-box-ui/internal/agent/routecheck"
-	"github.com/jtsang4/sing-box-ui/internal/agent/store"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agent/engine"
+	"eggbox/internal/agent/platform"
+	"eggbox/internal/agent/routecheck"
+	"eggbox/internal/agent/store"
+	"eggbox/internal/agentapi"
 )
 
 func TestStartsReadyAndIdle(t *testing.T) {
@@ -204,10 +206,18 @@ func TestResourcesAreStoredAndReferenced(t *testing.T) {
 		t.Fatalf("apply: %+v", res)
 	}
 	h.mustConnect()
-	json := h.coreJSON()
+	raw := h.coreJSON()
 	rev, _ := h.st.Current()
-	if !strings.Contains(json, rev.ResourceDir()) || strings.Contains(json, "res:cn.srs") {
-		t.Fatalf("the rule-set path must point into the revision's protected directory:\n%s", json)
+	var config struct {
+		Route struct {
+			RuleSet []struct{ Path string } `json:"rule_set"`
+		}
+	}
+	if err := json.Unmarshal([]byte(raw), &config); err != nil {
+		t.Fatal(err)
+	}
+	if len(config.Route.RuleSet) != 1 || config.Route.RuleSet[0].Path != filepath.Join(rev.ResourceDir(), "cn.srs") {
+		t.Fatalf("the rule-set path must point into the revision's protected directory:\n%s", raw)
 	}
 }
 

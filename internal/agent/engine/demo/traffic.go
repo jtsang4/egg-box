@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agentapi"
 )
 
 // A destination the invented connections go to. Hostnames are well-known

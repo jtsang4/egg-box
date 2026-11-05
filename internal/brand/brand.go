@@ -6,33 +6,33 @@ package brand
 
 const (
 	// DisplayName is the product name shown to people.
-	DisplayName = "Sing-Box UI"
+	DisplayName = "EggBox"
 
 	// AppID is the reverse-DNS application identifier (bundle id on macOS).
-	AppID = "me.jtsang.singboxui"
+	AppID = "org.eggbox.app"
 
 	// AgentLabel is the LaunchDaemon label on macOS. It doubles as the Mach
 	// service name the XPC listener registers under.
-	AgentLabel = "me.jtsang.singboxui.agent"
+	AgentLabel = "org.eggbox.app.agent"
 
 	// AgentBinary is the file name of the privileged agent executable.
 	AgentBinary = "agentd"
 
 	// WindowsServiceName is the Service Control Manager name of the agent.
-	WindowsServiceName = "SingBoxUIAgent"
+	WindowsServiceName = "EggBoxAgent"
 
 	// WindowsServiceDisplayName is what services.msc shows.
-	WindowsServiceDisplayName = "Sing-Box UI Agent"
+	WindowsServiceDisplayName = "EggBox Agent"
 
 	// WindowsServiceDescription explains the service to administrators.
-	WindowsServiceDescription = "Runs the Sing-Box UI network core with the privileges needed to manage a TUN adapter, routes and DNS."
+	WindowsServiceDescription = "Runs the EggBox network core with the privileges needed to manage a TUN adapter, routes and DNS."
 
 	// WindowsPipePath is the named pipe the GUI connects to.
 	WindowsPipePath = `\\.\pipe\` + AgentLabel
 
 	// TunInterfaceName is the Wintun adapter name on Windows. macOS interface
 	// names are assigned by the kernel (utunN) and must never be assumed.
-	TunInterfaceName = "SingBoxUI"
+	TunInterfaceName = "EggBox"
 
 	// ProtocolVersion is bumped whenever the GUI<->agent contract changes in a
 	// way an older peer cannot understand. The handshake rejects mismatches.
@@ -43,8 +43,8 @@ const (
 const (
 	// DataDirName is the folder under ProgramData (Windows) or
 	// /Library/Application Support (macOS) owned by the agent.
-	DataDirName = "SingBoxUI"
+	DataDirName = "EggBox"
 
 	// UserDirName is the folder under the per-user config directory used by the GUI.
-	UserDirName = "SingBoxUI"
+	UserDirName = "EggBox"
 )

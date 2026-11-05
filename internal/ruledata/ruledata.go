@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/fsutil"
+	"eggbox/internal/fsutil"
 )
 
 // MaxSize bounds one rule set; the largest published ones are a few MiB.
@@ -314,7 +314,7 @@ func (m *Manager) fetch(ctx context.Context, rawURL, etag string) (data []byte, 
 	if err != nil {
 		return nil, "", false, err
 	}
-	req.Header.Set("User-Agent", "sing-box-ui")
+	req.Header.Set("User-Agent", "egg-box")
 	if etag != "" {
 		req.Header.Set("If-None-Match", etag)
 	}

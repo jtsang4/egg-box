@@ -6,7 +6,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
+	"eggbox/internal/app"
+	"eggbox/internal/brand"
+	"eggbox/internal/brandart"
 )
 
 // navItem is one destination of the sidebar.
@@ -255,18 +257,15 @@ func (a *App) brand(c *ui.Context) {
 	ui.Row(c).Gap(11).Padding(2, 4).AlignItems(ui.Center).Children(func() {
 		a.logo(c, 38)
 		ui.Column(c).Gap(1).Children(func() {
-			a.txt(c, "Sing-Box", 15.5, 700, p.Text).LetterSpacing(-0.2).SingleLine()
-			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				a.txt(c, "UI", 11.5, 700, p.BlueText).LetterSpacing(1.2).SingleLine()
-				if a.opt.Demo {
-					a.chip(c, a.t("brand.demo"), toneWarn, "")
-				}
-			})
+			a.txt(c, brand.DisplayName, 17, 700, p.Text).LetterSpacing(-0.2).SingleLine()
+			if a.opt.Demo {
+				a.chip(c, a.t("brand.demo"), toneWarn, "")
+			}
 		})
 	})
 }
 
-// logo is the brand mark: an isometric box on a blue tile.
+// logo is the EggBox mark on a blue tile.
 func (a *App) logo(c *ui.Context, size float32) ui.Element {
 	p := a.pl
 	return ui.Box(c).Size(size, size).Radius(size*0.3).Center().
@@ -278,8 +277,7 @@ func (a *App) logo(c *ui.Context, size float32) ui.Element {
 		})
 }
 
-// logoMark is a cube seen from a corner, with a pulse at its heart.
-var logoMark = mustSVG(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8 20.2 7.4v9.2L12 21.2 3.8 16.6V7.4L12 2.8Z"/><path d="M3.9 7.5 12 12l8.1-4.5"/><path d="M12 12v9"/></svg>`)
+var logoMark = mustSVG(brandart.MarkSVG())
 
 // miniStatus is the connection summary at the foot of the sidebar.
 func (a *App) miniStatus(c *ui.Context) {

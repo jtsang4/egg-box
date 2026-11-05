@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine"
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine/singbox"
-	"github.com/jtsang4/sing-box-ui/internal/agent/policy"
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
-	"github.com/jtsang4/sing-box-ui/internal/testsupport/srs"
+	"eggbox/internal/agent/engine"
+	"eggbox/internal/agent/engine/singbox"
+	"eggbox/internal/agent/policy"
+	"eggbox/internal/configgen"
+	"eggbox/internal/subscription"
+	"eggbox/internal/testsupport/srs"
 )
 
 const uuid = "00000000-0000-4000-8000-000000000001"

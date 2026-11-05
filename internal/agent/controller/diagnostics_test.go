@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agentapi"
 )
 
 const diagConfigJSON = `{
@@ -27,19 +27,19 @@ func TestDiagnosticsReportIsUsefulAndRedacted(t *testing.T) {
 	h.mustApply(diagConfigJSON, 0)
 	h.mustConnect()
 	h.eng.Log("info", "dial tcp 203.0.113.9:443 via hk1.example.com failed for b8f8c3f4-1111-4222-8333-abcdefabcdef")
-	h.eng.Log("warn", "token=abcdef0123456789 rejected, home /Users/jtsang/Library")
+	h.eng.Log("warn", "token=abcdef0123456789 rejected, home /Users/alex/Library")
 	settle()
 
 	rep, err := h.c.GetDiagnostics(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(rep.SuggestedFilename, "sing-box-ui-diagnostics-") || !strings.HasSuffix(rep.SuggestedFilename, ".json") || rep.GeneratedUnixMs == 0 {
+	if !strings.HasPrefix(rep.SuggestedFilename, "egg-box-diagnostics-") || !strings.HasSuffix(rep.SuggestedFilename, ".json") || rep.GeneratedUnixMs == 0 {
 		t.Fatalf("report = %q at %d", rep.SuggestedFilename, rep.GeneratedUnixMs)
 	}
 	body := string(rep.Json)
 
-	for _, secret := range []string{"203.0.113.9", "hk1.example.com", "b8f8c3f4", "hunter2", "abcdef0123456789", "/Users/jtsang", "223.5.5.5"} {
+	for _, secret := range []string{"203.0.113.9", "hk1.example.com", "b8f8c3f4", "hunter2", "abcdef0123456789", "/Users/alex", "223.5.5.5"} {
 		if strings.Contains(body, secret) {
 			t.Errorf("%q leaked into the report:\n%s", secret, body)
 		}

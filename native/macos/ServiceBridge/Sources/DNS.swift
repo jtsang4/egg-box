@@ -13,10 +13,10 @@
 import Foundation
 import SystemConfiguration
 
-private let tokenKey = "SingBoxUIToken"
+private let tokenKey = "EggBoxToken"
 
 private func openStore() -> SCDynamicStore? {
-    SCDynamicStoreCreate(nil, "me.jtsang.singboxui" as CFString, nil, nil)
+    SCDynamicStoreCreate(nil, "org.eggbox.app" as CFString, nil, nil)
 }
 
 private func describe(_ fallback: String) -> String {
@@ -27,8 +27,8 @@ private func describe(_ fallback: String) -> String {
 
 /// Puts the resolver entry up: the system asks `servers` (comma separated
 /// addresses) for every domain. Needs to run as root.
-@_cdecl("sbui_dns_set")
-public func sbui_dns_set(
+@_cdecl("eggbox_dns_set")
+public func eggbox_dns_set(
     _ key: UnsafePointer<CChar>, _ servers: UnsafePointer<CChar>, _ token: UnsafePointer<CChar>,
     _ err: UnsafeMutablePointer<CChar>?, _ cap: Int32
 ) -> Int32 {
@@ -55,8 +55,8 @@ public func sbui_dns_set(
 /// Reads the token of the entry under the key into `out`. The result is its
 /// length, 0 for an entry that carries no token of ours, and -1 when there is
 /// no entry.
-@_cdecl("sbui_dns_token")
-public func sbui_dns_token(_ key: UnsafePointer<CChar>, _ out: UnsafeMutablePointer<CChar>?, _ cap: Int32) -> Int32 {
+@_cdecl("eggbox_dns_token")
+public func eggbox_dns_token(_ key: UnsafePointer<CChar>, _ out: UnsafeMutablePointer<CChar>?, _ cap: Int32) -> Int32 {
     guard let store = openStore(),
           let value = SCDynamicStoreCopyValue(store, String(cString: key) as CFString) as? [String: Any] else { return -1 }
     let token = (value[tokenKey] as? String) ?? ""
@@ -65,8 +65,8 @@ public func sbui_dns_token(_ key: UnsafePointer<CChar>, _ out: UnsafeMutablePoin
 }
 
 /// Takes the entry down. There being none is not a failure.
-@_cdecl("sbui_dns_remove")
-public func sbui_dns_remove(_ key: UnsafePointer<CChar>, _ err: UnsafeMutablePointer<CChar>?, _ cap: Int32) -> Int32 {
+@_cdecl("eggbox_dns_remove")
+public func eggbox_dns_remove(_ key: UnsafePointer<CChar>, _ err: UnsafeMutablePointer<CChar>?, _ cap: Int32) -> Int32 {
     let out = ErrorOut(buffer: err, capacity: cap)
     guard let store = openStore() else {
         out.set(describe("cannot open the system configuration"))

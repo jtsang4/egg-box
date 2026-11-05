@@ -16,8 +16,8 @@ public typealias PowerCallback = @convention(c) (Int32) -> Void
 
 /// The user id of the person at the screen, or -1 when the login window is
 /// showing.
-@_cdecl("sbui_console_user")
-public func sbui_console_user() -> Int64 {
+@_cdecl("eggbox_console_user")
+public func eggbox_console_user() -> Int64 {
     var uid: uid_t = 0
     var gid: gid_t = 0
     guard let name = SCDynamicStoreCopyConsoleUser(nil, &uid, &gid) as String?, name != "loginwindow" else { return -1 }
@@ -56,17 +56,17 @@ private let watchers = Watchers()
 
 /// Starts calling back when the person at the screen changes. The result is a
 /// handle, or a negative code.
-@_cdecl("sbui_watch_console")
-public func sbui_watch_console(_ callback: ConsoleCallback) -> Int64 {
+@_cdecl("eggbox_watch_console")
+public func eggbox_watch_console(_ callback: ConsoleCallback) -> Int64 {
     let watcher = ConsoleWatcher(callback)
     var context = SCDynamicStoreContext(
         version: 0, info: Unmanaged.passUnretained(watcher).toOpaque(), retain: nil, release: nil, copyDescription: nil)
     let changed: SCDynamicStoreCallBack = { _, _, info in
         guard let info else { return }
         let w = Unmanaged<ConsoleWatcher>.fromOpaque(info).takeUnretainedValue()
-        w.callback(Int32(truncatingIfNeeded: sbui_console_user()))
+        w.callback(Int32(truncatingIfNeeded: eggbox_console_user()))
     }
-    guard let store = SCDynamicStoreCreate(nil, "me.jtsang.singboxui.watch" as CFString, changed, &context),
+    guard let store = SCDynamicStoreCreate(nil, "org.eggbox.app.watch" as CFString, changed, &context),
           SCDynamicStoreSetNotificationKeys(store, ["State:/Users/ConsoleUser"] as CFArray, nil),
           SCDynamicStoreSetDispatchQueue(store, bridgeQueue) else { return Int64(Code.failed) }
     watcher.store = store
@@ -80,8 +80,8 @@ private let systemHasPoweredOn: UInt32 = 0xe000_0300
 
 /// Starts calling back on sleep and wake. The result is a handle, or a
 /// negative code.
-@_cdecl("sbui_watch_power")
-public func sbui_watch_power(_ callback: PowerCallback) -> Int64 {
+@_cdecl("eggbox_watch_power")
+public func eggbox_watch_power(_ callback: PowerCallback) -> Int64 {
     let watcher = PowerWatcher(callback)
     let interest: IOServiceInterestCallback = { refcon, _, message, argument in
         guard let refcon else { return }
@@ -106,8 +106,8 @@ public func sbui_watch_power(_ callback: PowerCallback) -> Int64 {
 }
 
 /// Stops a watcher of either kind.
-@_cdecl("sbui_watch_stop")
-public func sbui_watch_stop(_ handle: Int64) {
+@_cdecl("eggbox_watch_stop")
+public func eggbox_watch_stop(_ handle: Int64) {
     let (console, power) = watchers.take(handle)
     if let console, let store = console.store {
         SCDynamicStoreSetDispatchQueue(store, nil)

@@ -6,21 +6,57 @@ package brandart
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"math"
+	"strings"
 )
 
-// The mark is a cube seen from a corner, drawn on a 24×24 grid like the logo
-// in the interface (internal/gui/shell.go).
+// The mark is an egg nestled in an open box, on a 24×24 grid.
 type pt struct{ x, y float64 }
 
 var (
-	hexagon = []pt{{12, 2.8}, {20.2, 7.4}, {20.2, 16.6}, {12, 21.2}, {3.8, 16.6}, {3.8, 7.4}}
-	// Inner edges: the two upper ones meet at the centre, the lower one drops.
-	edges = [][2]pt{{{3.9, 7.5}, {12, 12}}, {{12, 12}, {20.1, 7.5}}, {{12, 12}, {12, 21}}}
+	box   = []pt{{3.7, 11.8}, {12, 15.8}, {20.3, 11.8}, {20.3, 18}, {12, 22}, {3.7, 18}}
+	egg   = eggCurve()
+	edges = [][2]pt{{{12, 15.8}, {12, 22}}}
+	paths = [][]pt{egg, append(append([]pt{}, box...), box[0]), {{3.7, 11.8}, {6.5, 10.4}}, {{17.5, 10.4}, {20.3, 11.8}}}
 )
+
+func eggCurve() []pt {
+	var points []pt
+	for _, c := range [][4]pt{
+		{{8.4, 14.1}, {4.2, 10.6}, {8.1, 2.2}, {12, 2.2}},
+		{{12, 2.2}, {15.9, 2.2}, {19.8, 10.6}, {15.6, 14.1}},
+	} {
+		for i := range 17 {
+			t := float64(i) / 16
+			u := 1 - t
+			points = append(points, pt{
+				x: u*u*u*c[0].x + 3*u*u*t*c[1].x + 3*u*t*t*c[2].x + t*t*t*c[3].x,
+				y: u*u*u*c[0].y + 3*u*u*t*c[1].y + 3*u*t*t*c[2].y + t*t*t*c[3].y,
+			})
+		}
+	}
+	return points
+}
+
+// MarkSVG uses the same geometry as the application and tray icons.
+func MarkSVG() string {
+	var s strings.Builder
+	s.WriteString(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">`)
+	all := append(append([][]pt{}, paths...), []pt{edges[0][0], edges[0][1]})
+	for _, path := range all {
+		s.WriteString(`<polyline points="`)
+		for _, p := range path {
+			fmt.Fprintf(&s, "%.3f,%.3f ", p.x, p.y)
+		}
+		s.WriteString(`"/>`)
+	}
+	s.WriteString(`</svg>`)
+	return s.String()
+}
 
 func dot(a, b pt) float64 { return a.x*b.x + a.y*b.y }
 
@@ -28,7 +64,11 @@ func dot(a, b pt) float64 { return a.x*b.x + a.y*b.y }
 func segDist(p, a, b pt) float64 {
 	ab := pt{b.x - a.x, b.y - a.y}
 	ap := pt{p.x - a.x, p.y - a.y}
-	t := math.Max(0, math.Min(1, dot(ap, ab)/dot(ab, ab)))
+	length := dot(ab, ab)
+	if length == 0 {
+		return math.Hypot(ap.x, ap.y)
+	}
+	t := math.Max(0, math.Min(1, dot(ap, ab)/length))
 	d := pt{ap.x - ab.x*t, ap.y - ab.y*t}
 	return math.Hypot(d.x, d.y)
 }
@@ -36,8 +76,10 @@ func segDist(p, a, b pt) float64 {
 // outlineDist is the distance to the strokes of the mark.
 func outlineDist(p pt, withEdges bool) float64 {
 	d := math.Inf(1)
-	for i := range hexagon {
-		d = math.Min(d, segDist(p, hexagon[i], hexagon[(i+1)%len(hexagon)]))
+	for _, path := range paths {
+		for i := 1; i < len(path); i++ {
+			d = math.Min(d, segDist(p, path[i-1], path[i]))
+		}
 	}
 	if withEdges {
 		for _, e := range edges {
@@ -59,10 +101,10 @@ func inPolygon(p pt, poly []pt) bool {
 	return in
 }
 
-// The faces of the cube: light falls on the top one.
+// Light catches the shell and the left side of the box.
 var (
-	topFace  = []pt{{12, 2.8}, {20.2, 7.4}, {12, 12}, {3.8, 7.4}}
-	leftFace = []pt{{3.8, 7.4}, {12, 12}, {12, 21.2}, {3.8, 16.6}}
+	topFace  = egg
+	leftFace = []pt{{3.7, 11.8}, {12, 15.8}, {12, 22}, {3.7, 18}}
 )
 
 func clamp01(v float64) float64 { return math.Max(0, math.Min(1, v)) }
@@ -194,9 +236,7 @@ const (
 	TrayWhite
 )
 
-// TrayIcon draws the mark for the tray. When on is set the cube is filled,
-// with its edges cut out, to say that the proxy is running; off, it is an
-// outline.
+// TrayIcon fills the egg and box when connected and outlines them when idle.
 func TrayIcon(size int, style TrayStyle, on bool) *image.NRGBA {
 	ink := [3]float64{0, 0, 0}
 	switch style {
@@ -216,7 +256,7 @@ func TrayIcon(size int, style TrayStyle, on bool) *image.NRGBA {
 		var a float64
 		if on {
 			fill := 0.0
-			if inPolygon(m, hexagon) {
+			if inPolygon(m, box) || inPolygon(m, egg) {
 				fill = 1
 			}
 			// The inner edges cut a groove into the fill.

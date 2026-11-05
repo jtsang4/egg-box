@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/netwatch"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agent/netwatch"
+	"eggbox/internal/agent/platform"
+	"eggbox/internal/agentapi"
 )
 
 // watchEngineExit reacts to a core that died without being asked to.

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/server"
+	"eggbox/internal/agent/server"
 )
 
 // UIDPolicy decides which user may control the agent on macOS, once the

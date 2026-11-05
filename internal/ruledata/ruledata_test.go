@@ -6,13 +6,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/ruledata"
-	"github.com/jtsang4/sing-box-ui/internal/testsupport/srs"
+	"eggbox/internal/ruledata"
+	"eggbox/internal/testsupport/srs"
 )
 
 // mirrorOf serves files under /<repo>/<file> and counts the requests.
@@ -67,7 +68,7 @@ func TestUpdateStoresAndLoads(t *testing.T) {
 	if len(missing) != 1 || missing[0] != "geosite-missing" {
 		t.Errorf("missing = %v", missing)
 	}
-	if info, err := os.Stat(filepath.Join(dir, "geosite-cn.srs")); err != nil || info.Mode().Perm() != 0o600 {
+	if info, err := os.Stat(filepath.Join(dir, "geosite-cn.srs")); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 		t.Errorf("stored file: %v, %v", info, err)
 	}
 

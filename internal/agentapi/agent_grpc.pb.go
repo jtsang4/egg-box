@@ -30,27 +30,27 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Agent_Handshake_FullMethodName           = "/singboxui.agent.v1.Agent/Handshake"
-	Agent_GetStatus_FullMethodName           = "/singboxui.agent.v1.Agent/GetStatus"
-	Agent_WatchStatus_FullMethodName         = "/singboxui.agent.v1.Agent/WatchStatus"
-	Agent_GetSettings_FullMethodName         = "/singboxui.agent.v1.Agent/GetSettings"
-	Agent_UpdateSettings_FullMethodName      = "/singboxui.agent.v1.Agent/UpdateSettings"
-	Agent_ValidateConfig_FullMethodName      = "/singboxui.agent.v1.Agent/ValidateConfig"
-	Agent_ApplyConfig_FullMethodName         = "/singboxui.agent.v1.Agent/ApplyConfig"
-	Agent_Connect_FullMethodName             = "/singboxui.agent.v1.Agent/Connect"
-	Agent_Disconnect_FullMethodName          = "/singboxui.agent.v1.Agent/Disconnect"
-	Agent_SelectOutbound_FullMethodName      = "/singboxui.agent.v1.Agent/SelectOutbound"
-	Agent_URLTest_FullMethodName             = "/singboxui.agent.v1.Agent/URLTest"
-	Agent_SetMode_FullMethodName             = "/singboxui.agent.v1.Agent/SetMode"
-	Agent_CloseConnection_FullMethodName     = "/singboxui.agent.v1.Agent/CloseConnection"
-	Agent_CloseAllConnections_FullMethodName = "/singboxui.agent.v1.Agent/CloseAllConnections"
-	Agent_WatchGroups_FullMethodName         = "/singboxui.agent.v1.Agent/WatchGroups"
-	Agent_WatchTraffic_FullMethodName        = "/singboxui.agent.v1.Agent/WatchTraffic"
-	Agent_WatchConnections_FullMethodName    = "/singboxui.agent.v1.Agent/WatchConnections"
-	Agent_WatchLogs_FullMethodName           = "/singboxui.agent.v1.Agent/WatchLogs"
-	Agent_GetDiagnostics_FullMethodName      = "/singboxui.agent.v1.Agent/GetDiagnostics"
-	Agent_RetryCleanup_FullMethodName        = "/singboxui.agent.v1.Agent/RetryCleanup"
-	Agent_PrepareUpgrade_FullMethodName      = "/singboxui.agent.v1.Agent/PrepareUpgrade"
+	Agent_Handshake_FullMethodName           = "/eggbox.agent.v1.Agent/Handshake"
+	Agent_GetStatus_FullMethodName           = "/eggbox.agent.v1.Agent/GetStatus"
+	Agent_WatchStatus_FullMethodName         = "/eggbox.agent.v1.Agent/WatchStatus"
+	Agent_GetSettings_FullMethodName         = "/eggbox.agent.v1.Agent/GetSettings"
+	Agent_UpdateSettings_FullMethodName      = "/eggbox.agent.v1.Agent/UpdateSettings"
+	Agent_ValidateConfig_FullMethodName      = "/eggbox.agent.v1.Agent/ValidateConfig"
+	Agent_ApplyConfig_FullMethodName         = "/eggbox.agent.v1.Agent/ApplyConfig"
+	Agent_Connect_FullMethodName             = "/eggbox.agent.v1.Agent/Connect"
+	Agent_Disconnect_FullMethodName          = "/eggbox.agent.v1.Agent/Disconnect"
+	Agent_SelectOutbound_FullMethodName      = "/eggbox.agent.v1.Agent/SelectOutbound"
+	Agent_URLTest_FullMethodName             = "/eggbox.agent.v1.Agent/URLTest"
+	Agent_SetMode_FullMethodName             = "/eggbox.agent.v1.Agent/SetMode"
+	Agent_CloseConnection_FullMethodName     = "/eggbox.agent.v1.Agent/CloseConnection"
+	Agent_CloseAllConnections_FullMethodName = "/eggbox.agent.v1.Agent/CloseAllConnections"
+	Agent_WatchGroups_FullMethodName         = "/eggbox.agent.v1.Agent/WatchGroups"
+	Agent_WatchTraffic_FullMethodName        = "/eggbox.agent.v1.Agent/WatchTraffic"
+	Agent_WatchConnections_FullMethodName    = "/eggbox.agent.v1.Agent/WatchConnections"
+	Agent_WatchLogs_FullMethodName           = "/eggbox.agent.v1.Agent/WatchLogs"
+	Agent_GetDiagnostics_FullMethodName      = "/eggbox.agent.v1.Agent/GetDiagnostics"
+	Agent_RetryCleanup_FullMethodName        = "/eggbox.agent.v1.Agent/RetryCleanup"
+	Agent_PrepareUpgrade_FullMethodName      = "/eggbox.agent.v1.Agent/PrepareUpgrade"
 )
 
 // AgentClient is the client API for Agent service.
@@ -833,7 +833,7 @@ func _Agent_PrepareUpgrade_Handler(srv interface{}, ctx context.Context, dec fun
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Agent_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "singboxui.agent.v1.Agent",
+	ServiceName: "eggbox.agent.v1.Agent",
 	HandlerType: (*AgentServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

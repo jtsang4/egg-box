@@ -5,7 +5,7 @@ import (
 
 	"github.com/egoist/mygo"
 
-	"github.com/jtsang4/sing-box-ui/internal/library"
+	"eggbox/internal/library"
 )
 
 // keychain keeps the subscription links in the system's credential store:

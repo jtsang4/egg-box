@@ -11,8 +11,8 @@
 # name: it runs as "agentd", whatever folder it came from.)
 #
 # Nothing here fails the installation: with no service, there is nothing to do.
-label=me.jtsang.singboxui.agent
-data="/Library/Application Support/SingBoxUI/agent"
+label=org.eggbox.app.agent
+data="/Library/Application Support/EggBox/agent"
 
 running() {
   /bin/launchctl print "system/$label" 2>/dev/null | /usr/bin/grep -Eq '^[[:space:]]*pid = [0-9]+'

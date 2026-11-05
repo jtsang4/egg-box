@@ -1,14 +1,14 @@
 {
-  "name": "Sing-Box UI",
-  "slug": "sing-box-ui",
-  "identifier": "me.jtsang.singboxui",
+  "name": "EggBox",
+  "slug": "egg-box",
+  "identifier": "org.eggbox.app",
   "version": "0.1.0",
-  "copyright": "© 2026 jtsang",
-  "publisher": "jtsang",
+  "copyright": "© 2026 EggBox contributors",
+  "publisher": "EggBox contributors",
   "icon": "resources/icon.png",
-  "main": "./cmd/sing-box-ui",
+  "main": "./cmd/egg-box",
   "out": "build",
   "macos": { "minimumSystemVersion": "13.0" },
-  "windows": { "displayName": "Sing-Box UI", "installDirName": "SingBoxUI" },
+  "windows": { "displayName": "EggBox", "installDirName": "EggBox" },
   "linux": { "webview": false, "comment": "A native client for sing-box" }
 }

@@ -12,8 +12,8 @@ import Security
 /// Writes the team identifier this program was signed under into out and
 /// returns its length, or -1 when there is none (unsigned or ad hoc signed
 /// programs have no team).
-@_cdecl("sbui_self_team")
-public func sbui_self_team(_ out: UnsafeMutablePointer<CChar>?, _ capacity: Int32) -> Int32 {
+@_cdecl("eggbox_self_team")
+public func eggbox_self_team(_ out: UnsafeMutablePointer<CChar>?, _ capacity: Int32) -> Int32 {
     guard let out, capacity > 1 else { return -1 }
     var code: SecCode?
     guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return -1 }
@@ -34,8 +34,8 @@ public func sbui_self_team(_ out: UnsafeMutablePointer<CChar>?, _ capacity: Int3
 /// Writes the account name of a user id into out and returns its length, or -1
 /// when there is no such user. The system's directory is only reachable
 /// through the C library; a Go program without cgo cannot ask it.
-@_cdecl("sbui_user_name")
-public func sbui_user_name(_ uid: UInt32, _ out: UnsafeMutablePointer<CChar>?, _ capacity: Int32) -> Int32 {
+@_cdecl("eggbox_user_name")
+public func eggbox_user_name(_ uid: UInt32, _ out: UnsafeMutablePointer<CChar>?, _ capacity: Int32) -> Int32 {
     guard let out, capacity > 1 else { return -1 }
     var scratch = [CChar](repeating: 0, count: 4096)
     // The record points into the scratch buffer, so everything is read inside

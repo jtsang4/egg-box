@@ -6,7 +6,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/library"
+	"eggbox/internal/library"
 )
 
 // subscriptionsPage manages where the nodes come from.

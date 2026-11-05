@@ -11,7 +11,7 @@ import (
 func me() uint32 { return uint32(os.Getuid()) }
 
 func TestEnsureProtectedDirCreatesAndAccepts(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "SingBoxUI", "agent")
+	dir := filepath.Join(t.TempDir(), "EggBox", "agent")
 	if err := EnsureProtectedDir(dir, me()); err != nil {
 		t.Fatal(err)
 	}

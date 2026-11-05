@@ -11,7 +11,7 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 
-	"github.com/jtsang4/sing-box-ui/internal/brand"
+	"eggbox/internal/brand"
 )
 
 // ServiceArgs are the arguments the system starts the service executable with.

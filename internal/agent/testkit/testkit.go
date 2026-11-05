@@ -15,15 +15,15 @@ import (
 
 	"google.golang.org/grpc/test/bufconn"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/controller"
-	"github.com/jtsang4/sing-box-ui/internal/agent/daemon"
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine"
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine/fake"
-	"github.com/jtsang4/sing-box-ui/internal/agent/netwatch"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform/sim"
-	"github.com/jtsang4/sing-box-ui/internal/agent/policy"
-	"github.com/jtsang4/sing-box-ui/internal/agent/server"
-	"github.com/jtsang4/sing-box-ui/internal/agentclient"
+	"eggbox/internal/agent/controller"
+	"eggbox/internal/agent/daemon"
+	"eggbox/internal/agent/engine"
+	"eggbox/internal/agent/engine/fake"
+	"eggbox/internal/agent/netwatch"
+	"eggbox/internal/agent/platform/sim"
+	"eggbox/internal/agent/policy"
+	"eggbox/internal/agent/server"
+	"eggbox/internal/agentclient"
 )
 
 // Agent is a running in-memory agent.

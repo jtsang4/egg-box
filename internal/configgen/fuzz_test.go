@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine/singbox"
-	"github.com/jtsang4/sing-box-ui/internal/agent/policy"
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/agent/engine/singbox"
+	"eggbox/internal/agent/policy"
+	"eggbox/internal/configgen"
+	"eggbox/internal/subscription"
 )
 
 // FuzzProviderContent follows what a provider sends all the way to the agent:

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agentapi"
 )
 
 // follow keeps a stream from the core alive across restarts of the core. While

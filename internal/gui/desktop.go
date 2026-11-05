@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
+	"eggbox/internal/app"
+	"eggbox/internal/brand"
 )
 
 // This file is what the desktop shell (the tray icon, its menu, the system

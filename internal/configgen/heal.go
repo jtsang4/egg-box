@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/subscription"
 )
 
 // PathIssue is a problem the agent reported at a JSON path of the configuration.

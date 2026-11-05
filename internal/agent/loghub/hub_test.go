@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agentapi"
 )
 
 func TestRingKeepsNewestLines(t *testing.T) {

@@ -403,9 +403,9 @@ func TestTunIsOwnedByTheAgent(t *testing.T) {
 
 func TestTunInterfaceNameComesFromThePlan(t *testing.T) {
 	env := testEnv
-	env.Tun.InterfaceName = "SingBoxUI"
+	env.Tun.InterfaceName = "EggBox"
 	_, out := normalize(t, prod(), tunConfig, env)
-	if get(out, "inbounds").([]any)[0].(map[string]any)["interface_name"] != "SingBoxUI" {
+	if get(out, "inbounds").([]any)[0].(map[string]any)["interface_name"] != "EggBox" {
 		t.Fatal("interface_name should follow the plan")
 	}
 }

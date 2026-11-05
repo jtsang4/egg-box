@@ -1,4 +1,4 @@
-// Package macsys holds what the macOS installation of Sing-Box UI needs that
+// Package macsys holds what the macOS installation of EggBox needs that
 // both the privileged agent and the application share: who the one authorized
 // user is, how the code signing requirements that guard the channel are
 // written, and how the agent notices that user leaving the screen.
@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/jtsang4/sing-box-ui/internal/brand"
+	"eggbox/internal/brand"
 )
 
 // DataDir is where the agent keeps its state: a folder only root can change,

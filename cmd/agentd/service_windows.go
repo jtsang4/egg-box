@@ -14,16 +14,16 @@ import (
 
 	"golang.org/x/sys/windows/svc"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/daemon"
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine/singbox"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform/winplat"
-	"github.com/jtsang4/sing-box-ui/internal/agent/policy"
-	"github.com/jtsang4/sing-box-ui/internal/agent/server"
-	"github.com/jtsang4/sing-box-ui/internal/agent/transport"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
-	"github.com/jtsang4/sing-box-ui/internal/version"
-	"github.com/jtsang4/sing-box-ui/internal/winsys"
+	"eggbox/internal/agent/daemon"
+	"eggbox/internal/agent/engine/singbox"
+	"eggbox/internal/agent/platform"
+	"eggbox/internal/agent/platform/winplat"
+	"eggbox/internal/agent/policy"
+	"eggbox/internal/agent/server"
+	"eggbox/internal/agent/transport"
+	"eggbox/internal/brand"
+	"eggbox/internal/version"
+	"eggbox/internal/winsys"
 )
 
 // Exit codes the service reports to the service manager.

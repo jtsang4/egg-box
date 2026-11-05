@@ -7,10 +7,10 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
-	"github.com/jtsang4/sing-box-ui/internal/library"
+	"eggbox/internal/app"
+	"eggbox/internal/brand"
+	"eggbox/internal/configgen"
+	"eggbox/internal/library"
 )
 
 // The panel is the small window that opens from the tray icon: the

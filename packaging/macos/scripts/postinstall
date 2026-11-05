@@ -11,8 +11,8 @@
 # does, when the application asks for it.
 #
 # Nothing here fails the installation.
-label=me.jtsang.singboxui.agent
-data="/Library/Application Support/SingBoxUI/agent"
+label=org.eggbox.app.agent
+data="/Library/Application Support/EggBox/agent"
 
 running() {
   /bin/launchctl print "system/$label" 2>/dev/null | /usr/bin/grep -Eq '^[[:space:]]*pid = [0-9]+'

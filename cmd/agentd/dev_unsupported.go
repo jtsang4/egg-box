@@ -1,4 +1,4 @@
-//go:build sbui_dev && !(darwin || linux)
+//go:build eggbox_dev && !(darwin || linux)
 
 package main
 
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jtsang4/sing-box-ui/internal/version"
+	"eggbox/internal/version"
 )
 
 // run of a development build on an operating system the development agent

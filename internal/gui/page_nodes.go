@@ -8,7 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
+	"eggbox/internal/configgen"
 )
 
 // nodesState is what the node page remembers: the search, the order and the

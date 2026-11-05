@@ -8,8 +8,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/library"
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/library"
+	"eggbox/internal/subscription"
 )
 
 // subIntervals are the refresh intervals the dialog offers, in hours; 0 is

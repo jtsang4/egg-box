@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
+	"eggbox/internal/app"
 )
 
 // Languages are the interface languages, in the order the settings list them.

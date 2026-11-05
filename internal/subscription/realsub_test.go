@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/testsupport/realsub"
+	"eggbox/internal/testsupport/realsub"
 )
 
 func TestRealSubscription(t *testing.T) {

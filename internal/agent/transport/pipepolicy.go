@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/server"
+	"eggbox/internal/agent/server"
 )
 
 // The rules of the Windows named pipe, kept free of any Windows call so they

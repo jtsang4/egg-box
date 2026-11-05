@@ -1,4 +1,4 @@
-// Sing-Box UI is the desktop application: a window, a tray icon and a panel
+// EggBox is the desktop application: a window, a tray icon and a panel
 // that drive a privileged background service which owns the network (TUN,
 // routes, DNS). Everything the user sees is native MyGo UI written in Go.
 package main
@@ -9,9 +9,9 @@ import (
 
 	"github.com/egoist/mygo"
 
-	"github.com/jtsang4/sing-box-ui/internal/boot"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
-	"github.com/jtsang4/sing-box-ui/internal/version"
+	"eggbox/internal/boot"
+	"eggbox/internal/brand"
+	"eggbox/internal/version"
 )
 
 func main() {

@@ -25,8 +25,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/brand"
 )
 
 // Dialer opens a raw connection to the agent. Each platform provides one.

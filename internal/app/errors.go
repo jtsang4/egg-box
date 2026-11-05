@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/agentclient"
-	"github.com/jtsang4/sing-box-ui/internal/library"
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/agentclient"
+	"eggbox/internal/library"
+	"eggbox/internal/subscription"
 )
 
 // ErrAuthorizationDeclined means the person said no to the system's prompt

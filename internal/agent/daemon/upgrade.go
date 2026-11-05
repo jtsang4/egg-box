@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/store"
+	"eggbox/internal/agent/store"
 )
 
 // UpgradeMarker is the name of a file an installer leaves in the agent's data

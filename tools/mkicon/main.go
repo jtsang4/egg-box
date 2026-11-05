@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jtsang4/sing-box-ui/internal/brandart"
+	"eggbox/internal/brandart"
 )
 
 func main() {

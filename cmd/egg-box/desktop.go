@@ -13,12 +13,12 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/boot"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
-	"github.com/jtsang4/sing-box-ui/internal/gui"
-	"github.com/jtsang4/sing-box-ui/internal/library"
-	"github.com/jtsang4/sing-box-ui/internal/version"
+	"eggbox/internal/app"
+	"eggbox/internal/boot"
+	"eggbox/internal/brand"
+	"eggbox/internal/gui"
+	"eggbox/internal/library"
+	"eggbox/internal/version"
 )
 
 // desktop is the application as the operating system sees it: the main

@@ -11,11 +11,11 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/routecheck"
-	"github.com/jtsang4/sing-box-ui/internal/agent/store"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
-	"github.com/jtsang4/sing-box-ui/internal/redact"
+	"eggbox/internal/agent/routecheck"
+	"eggbox/internal/agent/store"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/brand"
+	"eggbox/internal/redact"
 )
 
 const (
@@ -179,7 +179,7 @@ func (c *Controller) GetDiagnostics(ctx context.Context) (*agentapi.DiagnosticsR
 	}
 	c.logAgent("info", "diagnostics report generated")
 	return &agentapi.DiagnosticsReport{
-		SuggestedFilename: "sing-box-ui-diagnostics-" + now.Format("20060102-150405") + ".json",
+		SuggestedFilename: "egg-box-diagnostics-" + now.Format("20060102-150405") + ".json",
 		Json:              out,
 		GeneratedUnixMs:   now.UnixMilli(),
 	}, nil

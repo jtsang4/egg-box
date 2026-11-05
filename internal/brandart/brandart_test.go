@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jtsang4/sing-box-ui/internal/brandart"
+	"eggbox/internal/brandart"
 )
 
 func alphaAt(img *image.NRGBA, x, y int) uint8 { return img.NRGBAAt(x, y).A }
@@ -93,11 +93,11 @@ func TestPNGRoundTrips(t *testing.T) {
 	}
 }
 
-// With SBUI_SHOTS set, a sheet of the icons is written there for a human to look at.
+// With EGGBOX_SHOTS set, a sheet of the icons is written there for a human to look at.
 func TestPreview(t *testing.T) {
-	dir := os.Getenv("SBUI_SHOTS")
+	dir := os.Getenv("EGGBOX_SHOTS")
 	if dir == "" {
-		t.Skip("set SBUI_SHOTS to write a preview")
+		t.Skip("set EGGBOX_SHOTS to write a preview")
 	}
 	sheet := image.NewNRGBA(image.Rect(0, 0, 4*140, 2*140))
 	draw.Draw(sheet, image.Rect(0, 0, 4*140, 140), image.NewUniform(color.NRGBA{0xF2, 0xF2, 0xF4, 255}), image.Point{}, draw.Src)

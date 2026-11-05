@@ -5,7 +5,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
+	"eggbox/internal/app"
 )
 
 func panelHarness(t *testing.T, dark bool, setup func(*fixtureBackend, *Options)) *harness {
@@ -119,11 +119,11 @@ func TestPanelMode(t *testing.T) {
 // TestPanelFooter: the window opens and the application quits from the panel.
 func TestPanelFooter(t *testing.T) {
 	h := panelHarness(t, true, nil)
-	h.click("Open Sing-Box UI")
+	h.click("Open EggBox")
 	if !h.be.took("show-window") || !h.be.took("close-panel") {
 		t.Fatalf("opening the window: %v", h.be.called())
 	}
-	h.click("Quit Sing-Box UI")
+	h.click("Quit EggBox")
 	if !h.be.took("quit") {
 		t.Fatalf("quitting: %v", h.be.called())
 	}

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/darwin/bridge"
+	"eggbox/internal/app"
+	"eggbox/internal/darwin/bridge"
 )
 
 // fake is a system that moves through the states it is told to.

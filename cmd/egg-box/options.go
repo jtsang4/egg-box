@@ -106,14 +106,14 @@ func parseArgs(args []string) (options, error) {
 }
 
 func fatal(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "sing-box-ui: "+format+"\n", args...)
+	fmt.Fprintf(os.Stderr, "egg-box: "+format+"\n", args...)
 	os.Exit(1)
 }
 
 // usage is what --help prints. Nothing in it is needed to run the application.
-const usage = `Sing-Box UI
+const usage = `EggBox
 
-Usage: sing-box-ui [flags]
+Usage: egg-box [flags]
 
 The application starts from the Dock, the Start menu or at login and needs no
 flags. These are for trying it out.

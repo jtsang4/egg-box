@@ -25,7 +25,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/store"
+	"eggbox/internal/agent/store"
 )
 
 // Severity of an Issue.

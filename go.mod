@@ -1,4 +1,4 @@
-module github.com/jtsang4/sing-box-ui
+module eggbox
 
 go 1.27.3
 

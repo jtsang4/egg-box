@@ -676,20 +676,20 @@ type Status struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// seq grows by one with every published change.
 	Seq        uint64          `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"`
-	Service    ServiceState    `protobuf:"varint,2,opt,name=service,proto3,enum=singboxui.agent.v1.ServiceState" json:"service,omitempty"`
-	Connection ConnectionState `protobuf:"varint,3,opt,name=connection,proto3,enum=singboxui.agent.v1.ConnectionState" json:"connection,omitempty"`
+	Service    ServiceState    `protobuf:"varint,2,opt,name=service,proto3,enum=eggbox.agent.v1.ServiceState" json:"service,omitempty"`
+	Connection ConnectionState `protobuf:"varint,3,opt,name=connection,proto3,enum=eggbox.agent.v1.ConnectionState" json:"connection,omitempty"`
 	// active_revision is the configuration revision the running core uses (0 when none).
 	ActiveRevision uint64 `protobuf:"varint,4,opt,name=active_revision,json=activeRevision,proto3" json:"active_revision,omitempty"`
 	// stored_revision is the newest accepted revision.
 	StoredRevision uint64 `protobuf:"varint,5,opt,name=stored_revision,json=storedRevision,proto3" json:"stored_revision,omitempty"`
 	// intent_connected is what the user asked for, independent of the current state.
 	IntentConnected    bool         `protobuf:"varint,6,opt,name=intent_connected,json=intentConnected,proto3" json:"intent_connected,omitempty"`
-	LastErrorCode      ErrorCode    `protobuf:"varint,7,opt,name=last_error_code,json=lastErrorCode,proto3,enum=singboxui.agent.v1.ErrorCode" json:"last_error_code,omitempty"`
+	LastErrorCode      ErrorCode    `protobuf:"varint,7,opt,name=last_error_code,json=lastErrorCode,proto3,enum=eggbox.agent.v1.ErrorCode" json:"last_error_code,omitempty"`
 	LastError          string       `protobuf:"bytes,8,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
 	ConnectedSinceUnix int64        `protobuf:"varint,9,opt,name=connected_since_unix,json=connectedSinceUnix,proto3" json:"connected_since_unix,omitempty"`
-	Cleanup            CleanupState `protobuf:"varint,10,opt,name=cleanup,proto3,enum=singboxui.agent.v1.CleanupState" json:"cleanup,omitempty"`
+	Cleanup            CleanupState `protobuf:"varint,10,opt,name=cleanup,proto3,enum=eggbox.agent.v1.CleanupState" json:"cleanup,omitempty"`
 	CleanupDetail      string       `protobuf:"bytes,11,opt,name=cleanup_detail,json=cleanupDetail,proto3" json:"cleanup_detail,omitempty"`
-	Network            NetworkState `protobuf:"varint,12,opt,name=network,proto3,enum=singboxui.agent.v1.NetworkState" json:"network,omitempty"`
+	Network            NetworkState `protobuf:"varint,12,opt,name=network,proto3,enum=eggbox.agent.v1.NetworkState" json:"network,omitempty"`
 	Mode               string       `protobuf:"bytes,13,opt,name=mode,proto3" json:"mode,omitempty"`
 	TunInterface       string       `protobuf:"bytes,14,opt,name=tun_interface,json=tunInterface,proto3" json:"tun_interface,omitempty"`
 	Warnings           []string     `protobuf:"bytes,15,rep,name=warnings,proto3" json:"warnings,omitempty"`
@@ -1173,7 +1173,7 @@ func (x *ConfigBundle) GetProfileName() string {
 
 type Issue struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Severity      Issue_Severity         `protobuf:"varint,1,opt,name=severity,proto3,enum=singboxui.agent.v1.Issue_Severity" json:"severity,omitempty"`
+	Severity      Issue_Severity         `protobuf:"varint,1,opt,name=severity,proto3,enum=eggbox.agent.v1.Issue_Severity" json:"severity,omitempty"`
 	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"` // JSON path inside the configuration
 	Code          string                 `protobuf:"bytes,3,opt,name=code,proto3" json:"code,omitempty"` // stable machine readable reason, e.g. "outbound_type_not_allowed"
 	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
@@ -1342,7 +1342,7 @@ type ApplyConfigRequest struct {
 	// fails with REVISION_CONFLICT. Use 0 for "no configuration stored yet".
 	ExpectedRevision uint64        `protobuf:"varint,2,opt,name=expected_revision,json=expectedRevision,proto3" json:"expected_revision,omitempty"`
 	Bundle           *ConfigBundle `protobuf:"bytes,3,opt,name=bundle,proto3" json:"bundle,omitempty"`
-	Mode             ApplyMode     `protobuf:"varint,4,opt,name=mode,proto3,enum=singboxui.agent.v1.ApplyMode" json:"mode,omitempty"`
+	Mode             ApplyMode     `protobuf:"varint,4,opt,name=mode,proto3,enum=eggbox.agent.v1.ApplyMode" json:"mode,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -1409,7 +1409,7 @@ type OperationResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	Ok            bool                   `protobuf:"varint,2,opt,name=ok,proto3" json:"ok,omitempty"`
-	ErrorCode     ErrorCode              `protobuf:"varint,3,opt,name=error_code,json=errorCode,proto3,enum=singboxui.agent.v1.ErrorCode" json:"error_code,omitempty"`
+	ErrorCode     ErrorCode              `protobuf:"varint,3,opt,name=error_code,json=errorCode,proto3,enum=eggbox.agent.v1.ErrorCode" json:"error_code,omitempty"`
 	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
 	Issues        []*Issue               `protobuf:"bytes,5,rep,name=issues,proto3" json:"issues,omitempty"`
 	Revision      uint64                 `protobuf:"varint,6,opt,name=revision,proto3" json:"revision,omitempty"`                       // stored revision after the operation
@@ -2542,7 +2542,7 @@ func (x *Connection) GetProcess() *ProcessInfo {
 
 type ConnectionEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          ConnectionEvent_Type   `protobuf:"varint,1,opt,name=type,proto3,enum=singboxui.agent.v1.ConnectionEvent_Type" json:"type,omitempty"`
+	Type          ConnectionEvent_Type   `protobuf:"varint,1,opt,name=type,proto3,enum=eggbox.agent.v1.ConnectionEvent_Type" json:"type,omitempty"`
 	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
 	Connection    *Connection            `protobuf:"bytes,3,opt,name=connection,proto3" json:"connection,omitempty"`                       // set for NEW and CLOSED
 	UplinkDelta   int64                  `protobuf:"varint,4,opt,name=uplink_delta,json=uplinkDelta,proto3" json:"uplink_delta,omitempty"` // set for UPDATE
@@ -2985,7 +2985,7 @@ var File_agent_proto protoreflect.FileDescriptor
 
 const file_agent_proto_rawDesc = "" +
 	"\n" +
-	"\vagent.proto\x12\x12singboxui.agent.v1\x1a\x1bgoogle/protobuf/empty.proto\"d\n" +
+	"\vagent.proto\x12\x0feggbox.agent.v1\x1a\x1bgoogle/protobuf/empty.proto\"d\n" +
 	"\x10HandshakeRequest\x12)\n" +
 	"\x10protocol_version\x18\x01 \x01(\rR\x0fprotocolVersion\x12%\n" +
 	"\x0eclient_version\x18\x02 \x01(\tR\rclientVersion\"\xe9\x02\n" +
@@ -3002,24 +3002,24 @@ const file_agent_proto_rawDesc = "" +
 	"\x04peer\x18\t \x01(\tR\x04peer\x12\x16\n" +
 	"\x06driver\x18\n" +
 	" \x01(\tR\x06driver\x12\x19\n" +
-	"\bdev_mode\x18\v \x01(\bR\adevMode\"\xa9\a\n" +
+	"\bdev_mode\x18\v \x01(\bR\adevMode\"\x9a\a\n" +
 	"\x06Status\x12\x10\n" +
-	"\x03seq\x18\x01 \x01(\x04R\x03seq\x12:\n" +
-	"\aservice\x18\x02 \x01(\x0e2 .singboxui.agent.v1.ServiceStateR\aservice\x12C\n" +
+	"\x03seq\x18\x01 \x01(\x04R\x03seq\x127\n" +
+	"\aservice\x18\x02 \x01(\x0e2\x1d.eggbox.agent.v1.ServiceStateR\aservice\x12@\n" +
 	"\n" +
-	"connection\x18\x03 \x01(\x0e2#.singboxui.agent.v1.ConnectionStateR\n" +
+	"connection\x18\x03 \x01(\x0e2 .eggbox.agent.v1.ConnectionStateR\n" +
 	"connection\x12'\n" +
 	"\x0factive_revision\x18\x04 \x01(\x04R\x0eactiveRevision\x12'\n" +
 	"\x0fstored_revision\x18\x05 \x01(\x04R\x0estoredRevision\x12)\n" +
-	"\x10intent_connected\x18\x06 \x01(\bR\x0fintentConnected\x12E\n" +
-	"\x0flast_error_code\x18\a \x01(\x0e2\x1d.singboxui.agent.v1.ErrorCodeR\rlastErrorCode\x12\x1d\n" +
+	"\x10intent_connected\x18\x06 \x01(\bR\x0fintentConnected\x12B\n" +
+	"\x0flast_error_code\x18\a \x01(\x0e2\x1a.eggbox.agent.v1.ErrorCodeR\rlastErrorCode\x12\x1d\n" +
 	"\n" +
 	"last_error\x18\b \x01(\tR\tlastError\x120\n" +
-	"\x14connected_since_unix\x18\t \x01(\x03R\x12connectedSinceUnix\x12:\n" +
+	"\x14connected_since_unix\x18\t \x01(\x03R\x12connectedSinceUnix\x127\n" +
 	"\acleanup\x18\n" +
-	" \x01(\x0e2 .singboxui.agent.v1.CleanupStateR\acleanup\x12%\n" +
-	"\x0ecleanup_detail\x18\v \x01(\tR\rcleanupDetail\x12:\n" +
-	"\anetwork\x18\f \x01(\x0e2 .singboxui.agent.v1.NetworkStateR\anetwork\x12\x12\n" +
+	" \x01(\x0e2\x1d.eggbox.agent.v1.CleanupStateR\acleanup\x12%\n" +
+	"\x0ecleanup_detail\x18\v \x01(\tR\rcleanupDetail\x127\n" +
+	"\anetwork\x18\f \x01(\x0e2\x1d.eggbox.agent.v1.NetworkStateR\anetwork\x12\x12\n" +
 	"\x04mode\x18\r \x01(\tR\x04mode\x12#\n" +
 	"\rtun_interface\x18\x0e \x01(\tR\ftunInterface\x12\x1a\n" +
 	"\bwarnings\x18\x0f \x03(\tR\bwarnings\x12!\n" +
@@ -3051,50 +3051,50 @@ const file_agent_proto_rawDesc = "" +
 	"\bResource\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04data\x18\x02 \x01(\fR\x04data\x12\x16\n" +
-	"\x06sha256\x18\x03 \x01(\tR\x06sha256\"\xad\x01\n" +
+	"\x06sha256\x18\x03 \x01(\tR\x06sha256\"\xaa\x01\n" +
 	"\fConfigBundle\x12\x1f\n" +
 	"\vconfig_json\x18\x01 \x01(\fR\n" +
-	"configJson\x12:\n" +
-	"\tresources\x18\x02 \x03(\v2\x1c.singboxui.agent.v1.ResourceR\tresources\x12\x1d\n" +
+	"configJson\x127\n" +
+	"\tresources\x18\x02 \x03(\v2\x19.eggbox.agent.v1.ResourceR\tresources\x12\x1d\n" +
 	"\n" +
 	"profile_id\x18\x03 \x01(\tR\tprofileId\x12!\n" +
-	"\fprofile_name\x18\x04 \x01(\tR\vprofileName\"\xd9\x01\n" +
-	"\x05Issue\x12>\n" +
-	"\bseverity\x18\x01 \x01(\x0e2\".singboxui.agent.v1.Issue.SeverityR\bseverity\x12\x12\n" +
+	"\fprofile_name\x18\x04 \x01(\tR\vprofileName\"\xd6\x01\n" +
+	"\x05Issue\x12;\n" +
+	"\bseverity\x18\x01 \x01(\x0e2\x1f.eggbox.agent.v1.Issue.SeverityR\bseverity\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x12\n" +
 	"\x04code\x18\x03 \x01(\tR\x04code\x12\x18\n" +
 	"\amessage\x18\x04 \x01(\tR\amessage\"N\n" +
 	"\bSeverity\x12\x18\n" +
 	"\x14SEVERITY_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eSEVERITY_ERROR\x10\x01\x12\x14\n" +
-	"\x10SEVERITY_WARNING\x10\x02\"Q\n" +
-	"\x15ValidateConfigRequest\x128\n" +
-	"\x06bundle\x18\x01 \x01(\v2 .singboxui.agent.v1.ConfigBundleR\x06bundle\"a\n" +
+	"\x10SEVERITY_WARNING\x10\x02\"N\n" +
+	"\x15ValidateConfigRequest\x125\n" +
+	"\x06bundle\x18\x01 \x01(\v2\x1d.eggbox.agent.v1.ConfigBundleR\x06bundle\"^\n" +
 	"\x16ValidateConfigResponse\x12\x14\n" +
-	"\x05valid\x18\x01 \x01(\bR\x05valid\x121\n" +
-	"\x06issues\x18\x02 \x03(\v2\x19.singboxui.agent.v1.IssueR\x06issues\"\xcd\x01\n" +
+	"\x05valid\x18\x01 \x01(\bR\x05valid\x12.\n" +
+	"\x06issues\x18\x02 \x03(\v2\x16.eggbox.agent.v1.IssueR\x06issues\"\xc7\x01\n" +
 	"\x12ApplyConfigRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12+\n" +
-	"\x11expected_revision\x18\x02 \x01(\x04R\x10expectedRevision\x128\n" +
-	"\x06bundle\x18\x03 \x01(\v2 .singboxui.agent.v1.ConfigBundleR\x06bundle\x121\n" +
-	"\x04mode\x18\x04 \x01(\x0e2\x1d.singboxui.agent.v1.ApplyModeR\x04mode\"\xcb\x03\n" +
+	"\x11expected_revision\x18\x02 \x01(\x04R\x10expectedRevision\x125\n" +
+	"\x06bundle\x18\x03 \x01(\v2\x1d.eggbox.agent.v1.ConfigBundleR\x06bundle\x12.\n" +
+	"\x04mode\x18\x04 \x01(\x0e2\x1a.eggbox.agent.v1.ApplyModeR\x04mode\"\xc2\x03\n" +
 	"\x0fOperationResult\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x0e\n" +
-	"\x02ok\x18\x02 \x01(\bR\x02ok\x12<\n" +
+	"\x02ok\x18\x02 \x01(\bR\x02ok\x129\n" +
 	"\n" +
-	"error_code\x18\x03 \x01(\x0e2\x1d.singboxui.agent.v1.ErrorCodeR\terrorCode\x12\x18\n" +
-	"\amessage\x18\x04 \x01(\tR\amessage\x121\n" +
-	"\x06issues\x18\x05 \x03(\v2\x19.singboxui.agent.v1.IssueR\x06issues\x12\x1a\n" +
+	"error_code\x18\x03 \x01(\x0e2\x1a.eggbox.agent.v1.ErrorCodeR\terrorCode\x12\x18\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\x12.\n" +
+	"\x06issues\x18\x05 \x03(\v2\x16.eggbox.agent.v1.IssueR\x06issues\x12\x1a\n" +
 	"\brevision\x18\x06 \x01(\x04R\brevision\x12\x1d\n" +
 	"\n" +
 	"status_seq\x18\a \x01(\x04R\tstatusSeq\x12\x1a\n" +
 	"\breplayed\x18\b \x01(\bR\breplayed\x12\x1f\n" +
 	"\vrolled_back\x18\t \x01(\bR\n" +
-	"rolledBack\x12J\n" +
+	"rolledBack\x12G\n" +
 	"\adetails\x18\n" +
-	" \x03(\v20.singboxui.agent.v1.OperationResult.DetailsEntryR\adetails\x1a:\n" +
+	" \x03(\v2-.eggbox.agent.v1.OperationResult.DetailsEntryR\adetails\x1a:\n" +
 	"\fDetailsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x92\x01\n" +
@@ -3137,17 +3137,17 @@ const file_agent_proto_rawDesc = "" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x19\n" +
 	"\bdelay_ms\x18\x03 \x01(\x05R\adelayMs\x12\x1f\n" +
 	"\vtested_unix\x18\x04 \x01(\x03R\n" +
-	"testedUnix\"\x9e\x01\n" +
+	"testedUnix\"\x9b\x01\n" +
 	"\x05Group\x12\x10\n" +
 	"\x03tag\x18\x01 \x01(\tR\x03tag\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x1e\n" +
 	"\n" +
 	"selectable\x18\x03 \x01(\bR\n" +
 	"selectable\x12\x1a\n" +
-	"\bselected\x18\x04 \x01(\tR\bselected\x123\n" +
-	"\x05items\x18\x05 \x03(\v2\x1d.singboxui.agent.v1.GroupItemR\x05items\";\n" +
-	"\x06Groups\x121\n" +
-	"\x06groups\x18\x01 \x03(\v2\x19.singboxui.agent.v1.GroupR\x06groups\"6\n" +
+	"\bselected\x18\x04 \x01(\tR\bselected\x120\n" +
+	"\x05items\x18\x05 \x03(\v2\x1a.eggbox.agent.v1.GroupItemR\x05items\"8\n" +
+	"\x06Groups\x12.\n" +
+	"\x06groups\x18\x01 \x03(\v2\x16.eggbox.agent.v1.GroupR\x06groups\"6\n" +
 	"\x13WatchTrafficRequest\x12\x1f\n" +
 	"\vinterval_ms\x18\x01 \x01(\rR\n" +
 	"intervalMs\"\xb8\x02\n" +
@@ -3168,7 +3168,7 @@ const file_agent_proto_rawDesc = "" +
 	"\vProcessInfo\x12\x10\n" +
 	"\x03pid\x18\x01 \x01(\rR\x03pid\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x12\n" +
-	"\x04user\x18\x03 \x01(\tR\x04user\"\xfc\x03\n" +
+	"\x04user\x18\x03 \x01(\tR\x04user\"\xf9\x03\n" +
 	"\n" +
 	"Connection\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
@@ -3186,13 +3186,13 @@ const file_agent_proto_rawDesc = "" +
 	"\x0fcreated_unix_ms\x18\f \x01(\x03R\rcreatedUnixMs\x12$\n" +
 	"\x0eclosed_unix_ms\x18\r \x01(\x03R\fclosedUnixMs\x12!\n" +
 	"\fuplink_total\x18\x0e \x01(\x03R\vuplinkTotal\x12%\n" +
-	"\x0edownlink_total\x18\x0f \x01(\x03R\rdownlinkTotal\x129\n" +
-	"\aprocess\x18\x10 \x01(\v2\x1f.singboxui.agent.v1.ProcessInfoR\aprocess\"\xb7\x02\n" +
-	"\x0fConnectionEvent\x12<\n" +
-	"\x04type\x18\x01 \x01(\x0e2(.singboxui.agent.v1.ConnectionEvent.TypeR\x04type\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\x12>\n" +
+	"\x0edownlink_total\x18\x0f \x01(\x03R\rdownlinkTotal\x126\n" +
+	"\aprocess\x18\x10 \x01(\v2\x1c.eggbox.agent.v1.ProcessInfoR\aprocess\"\xb1\x02\n" +
+	"\x0fConnectionEvent\x129\n" +
+	"\x04type\x18\x01 \x01(\x0e2%.eggbox.agent.v1.ConnectionEvent.TypeR\x04type\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\x12;\n" +
 	"\n" +
-	"connection\x18\x03 \x01(\v2\x1e.singboxui.agent.v1.ConnectionR\n" +
+	"connection\x18\x03 \x01(\v2\x1b.eggbox.agent.v1.ConnectionR\n" +
 	"connection\x12!\n" +
 	"\fuplink_delta\x18\x04 \x01(\x03R\vuplinkDelta\x12%\n" +
 	"\x0edownlink_delta\x18\x05 \x01(\x03R\rdownlinkDelta\"L\n" +
@@ -3203,9 +3203,9 @@ const file_agent_proto_rawDesc = "" +
 	"\vTYPE_CLOSED\x10\x03\":\n" +
 	"\x17WatchConnectionsRequest\x12\x1f\n" +
 	"\vinterval_ms\x18\x01 \x01(\rR\n" +
-	"intervalMs\"e\n" +
-	"\x10ConnectionEvents\x12;\n" +
-	"\x06events\x18\x01 \x03(\v2#.singboxui.agent.v1.ConnectionEventR\x06events\x12\x14\n" +
+	"intervalMs\"b\n" +
+	"\x10ConnectionEvents\x128\n" +
+	"\x06events\x18\x01 \x03(\v2 .eggbox.agent.v1.ConnectionEventR\x06events\x12\x14\n" +
 	"\x05reset\x18\x02 \x01(\bR\x05reset\"t\n" +
 	"\bLogEntry\x12 \n" +
 	"\ftime_unix_ms\x18\x01 \x01(\x03R\n" +
@@ -3215,9 +3215,9 @@ const file_agent_proto_rawDesc = "" +
 	"\amessage\x18\x04 \x01(\tR\amessage\"C\n" +
 	"\x10WatchLogsRequest\x12\x12\n" +
 	"\x04tail\x18\x01 \x01(\rR\x04tail\x12\x1b\n" +
-	"\tmin_level\x18\x02 \x01(\tR\bminLevel\"X\n" +
-	"\bLogBatch\x126\n" +
-	"\aentries\x18\x01 \x03(\v2\x1c.singboxui.agent.v1.LogEntryR\aentries\x12\x14\n" +
+	"\tmin_level\x18\x02 \x01(\tR\bminLevel\"U\n" +
+	"\bLogBatch\x123\n" +
+	"\aentries\x18\x01 \x03(\v2\x19.eggbox.agent.v1.LogEntryR\aentries\x12\x14\n" +
 	"\x05reset\x18\x02 \x01(\bR\x05reset\"\x17\n" +
 	"\x15GetDiagnosticsRequest\"\x82\x01\n" +
 	"\x11DiagnosticsReport\x12-\n" +
@@ -3270,30 +3270,30 @@ const file_agent_proto_rawDesc = "" +
 	"\tApplyMode\x12\x1a\n" +
 	"\x16APPLY_MODE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fAPPLY_MODE_AUTO\x10\x01\x12\x19\n" +
-	"\x15APPLY_MODE_STORE_ONLY\x10\x022\xd1\x0e\n" +
-	"\x05Agent\x12X\n" +
-	"\tHandshake\x12$.singboxui.agent.v1.HandshakeRequest\x1a%.singboxui.agent.v1.HandshakeResponse\x12?\n" +
-	"\tGetStatus\x12\x16.google.protobuf.Empty\x1a\x1a.singboxui.agent.v1.Status\x12C\n" +
-	"\vWatchStatus\x12\x16.google.protobuf.Empty\x1a\x1a.singboxui.agent.v1.Status0\x01\x12C\n" +
-	"\vGetSettings\x12\x16.google.protobuf.Empty\x1a\x1c.singboxui.agent.v1.Settings\x12Y\n" +
-	"\x0eUpdateSettings\x12).singboxui.agent.v1.UpdateSettingsRequest\x1a\x1c.singboxui.agent.v1.Settings\x12g\n" +
-	"\x0eValidateConfig\x12).singboxui.agent.v1.ValidateConfigRequest\x1a*.singboxui.agent.v1.ValidateConfigResponse\x12Z\n" +
-	"\vApplyConfig\x12&.singboxui.agent.v1.ApplyConfigRequest\x1a#.singboxui.agent.v1.OperationResult\x12R\n" +
-	"\aConnect\x12\".singboxui.agent.v1.ConnectRequest\x1a#.singboxui.agent.v1.OperationResult\x12X\n" +
+	"\x15APPLY_MODE_STORE_ONLY\x10\x022\xdf\r\n" +
+	"\x05Agent\x12R\n" +
+	"\tHandshake\x12!.eggbox.agent.v1.HandshakeRequest\x1a\".eggbox.agent.v1.HandshakeResponse\x12<\n" +
+	"\tGetStatus\x12\x16.google.protobuf.Empty\x1a\x17.eggbox.agent.v1.Status\x12@\n" +
+	"\vWatchStatus\x12\x16.google.protobuf.Empty\x1a\x17.eggbox.agent.v1.Status0\x01\x12@\n" +
+	"\vGetSettings\x12\x16.google.protobuf.Empty\x1a\x19.eggbox.agent.v1.Settings\x12S\n" +
+	"\x0eUpdateSettings\x12&.eggbox.agent.v1.UpdateSettingsRequest\x1a\x19.eggbox.agent.v1.Settings\x12a\n" +
+	"\x0eValidateConfig\x12&.eggbox.agent.v1.ValidateConfigRequest\x1a'.eggbox.agent.v1.ValidateConfigResponse\x12T\n" +
+	"\vApplyConfig\x12#.eggbox.agent.v1.ApplyConfigRequest\x1a .eggbox.agent.v1.OperationResult\x12L\n" +
+	"\aConnect\x12\x1f.eggbox.agent.v1.ConnectRequest\x1a .eggbox.agent.v1.OperationResult\x12R\n" +
 	"\n" +
-	"Disconnect\x12%.singboxui.agent.v1.DisconnectRequest\x1a#.singboxui.agent.v1.OperationResult\x12`\n" +
-	"\x0eSelectOutbound\x12).singboxui.agent.v1.SelectOutboundRequest\x1a#.singboxui.agent.v1.OperationResult\x12R\n" +
-	"\aURLTest\x12\".singboxui.agent.v1.URLTestRequest\x1a#.singboxui.agent.v1.OperationResult\x12R\n" +
-	"\aSetMode\x12\".singboxui.agent.v1.SetModeRequest\x1a#.singboxui.agent.v1.OperationResult\x12b\n" +
-	"\x0fCloseConnection\x12*.singboxui.agent.v1.CloseConnectionRequest\x1a#.singboxui.agent.v1.OperationResult\x12j\n" +
-	"\x13CloseAllConnections\x12..singboxui.agent.v1.CloseAllConnectionsRequest\x1a#.singboxui.agent.v1.OperationResult\x12C\n" +
-	"\vWatchGroups\x12\x16.google.protobuf.Empty\x1a\x1a.singboxui.agent.v1.Groups0\x01\x12V\n" +
-	"\fWatchTraffic\x12'.singboxui.agent.v1.WatchTrafficRequest\x1a\x1b.singboxui.agent.v1.Traffic0\x01\x12g\n" +
-	"\x10WatchConnections\x12+.singboxui.agent.v1.WatchConnectionsRequest\x1a$.singboxui.agent.v1.ConnectionEvents0\x01\x12Q\n" +
-	"\tWatchLogs\x12$.singboxui.agent.v1.WatchLogsRequest\x1a\x1c.singboxui.agent.v1.LogBatch0\x01\x12b\n" +
-	"\x0eGetDiagnostics\x12).singboxui.agent.v1.GetDiagnosticsRequest\x1a%.singboxui.agent.v1.DiagnosticsReport\x12\\\n" +
-	"\fRetryCleanup\x12'.singboxui.agent.v1.RetryCleanupRequest\x1a#.singboxui.agent.v1.OperationResult\x12`\n" +
-	"\x0ePrepareUpgrade\x12).singboxui.agent.v1.PrepareUpgradeRequest\x1a#.singboxui.agent.v1.OperationResultB;Z9github.com/jtsang4/sing-box-ui/internal/agentapi;agentapib\x06proto3"
+	"Disconnect\x12\".eggbox.agent.v1.DisconnectRequest\x1a .eggbox.agent.v1.OperationResult\x12Z\n" +
+	"\x0eSelectOutbound\x12&.eggbox.agent.v1.SelectOutboundRequest\x1a .eggbox.agent.v1.OperationResult\x12L\n" +
+	"\aURLTest\x12\x1f.eggbox.agent.v1.URLTestRequest\x1a .eggbox.agent.v1.OperationResult\x12L\n" +
+	"\aSetMode\x12\x1f.eggbox.agent.v1.SetModeRequest\x1a .eggbox.agent.v1.OperationResult\x12\\\n" +
+	"\x0fCloseConnection\x12'.eggbox.agent.v1.CloseConnectionRequest\x1a .eggbox.agent.v1.OperationResult\x12d\n" +
+	"\x13CloseAllConnections\x12+.eggbox.agent.v1.CloseAllConnectionsRequest\x1a .eggbox.agent.v1.OperationResult\x12@\n" +
+	"\vWatchGroups\x12\x16.google.protobuf.Empty\x1a\x17.eggbox.agent.v1.Groups0\x01\x12P\n" +
+	"\fWatchTraffic\x12$.eggbox.agent.v1.WatchTrafficRequest\x1a\x18.eggbox.agent.v1.Traffic0\x01\x12a\n" +
+	"\x10WatchConnections\x12(.eggbox.agent.v1.WatchConnectionsRequest\x1a!.eggbox.agent.v1.ConnectionEvents0\x01\x12K\n" +
+	"\tWatchLogs\x12!.eggbox.agent.v1.WatchLogsRequest\x1a\x19.eggbox.agent.v1.LogBatch0\x01\x12\\\n" +
+	"\x0eGetDiagnostics\x12&.eggbox.agent.v1.GetDiagnosticsRequest\x1a\".eggbox.agent.v1.DiagnosticsReport\x12V\n" +
+	"\fRetryCleanup\x12$.eggbox.agent.v1.RetryCleanupRequest\x1a .eggbox.agent.v1.OperationResult\x12Z\n" +
+	"\x0ePrepareUpgrade\x12&.eggbox.agent.v1.PrepareUpgradeRequest\x1a .eggbox.agent.v1.OperationResultB#Z!eggbox/internal/agentapi;agentapib\x06proto3"
 
 var (
 	file_agent_proto_rawDescOnce sync.Once
@@ -3310,117 +3310,117 @@ func file_agent_proto_rawDescGZIP() []byte {
 var file_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
 var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
 var file_agent_proto_goTypes = []any{
-	(ServiceState)(0),                  // 0: singboxui.agent.v1.ServiceState
-	(ConnectionState)(0),               // 1: singboxui.agent.v1.ConnectionState
-	(CleanupState)(0),                  // 2: singboxui.agent.v1.CleanupState
-	(NetworkState)(0),                  // 3: singboxui.agent.v1.NetworkState
-	(ErrorCode)(0),                     // 4: singboxui.agent.v1.ErrorCode
-	(ApplyMode)(0),                     // 5: singboxui.agent.v1.ApplyMode
-	(Issue_Severity)(0),                // 6: singboxui.agent.v1.Issue.Severity
-	(ConnectionEvent_Type)(0),          // 7: singboxui.agent.v1.ConnectionEvent.Type
-	(*HandshakeRequest)(nil),           // 8: singboxui.agent.v1.HandshakeRequest
-	(*HandshakeResponse)(nil),          // 9: singboxui.agent.v1.HandshakeResponse
-	(*Status)(nil),                     // 10: singboxui.agent.v1.Status
-	(*Settings)(nil),                   // 11: singboxui.agent.v1.Settings
-	(*UpdateSettingsRequest)(nil),      // 12: singboxui.agent.v1.UpdateSettingsRequest
-	(*Resource)(nil),                   // 13: singboxui.agent.v1.Resource
-	(*ConfigBundle)(nil),               // 14: singboxui.agent.v1.ConfigBundle
-	(*Issue)(nil),                      // 15: singboxui.agent.v1.Issue
-	(*ValidateConfigRequest)(nil),      // 16: singboxui.agent.v1.ValidateConfigRequest
-	(*ValidateConfigResponse)(nil),     // 17: singboxui.agent.v1.ValidateConfigResponse
-	(*ApplyConfigRequest)(nil),         // 18: singboxui.agent.v1.ApplyConfigRequest
-	(*OperationResult)(nil),            // 19: singboxui.agent.v1.OperationResult
-	(*ConnectRequest)(nil),             // 20: singboxui.agent.v1.ConnectRequest
-	(*DisconnectRequest)(nil),          // 21: singboxui.agent.v1.DisconnectRequest
-	(*SelectOutboundRequest)(nil),      // 22: singboxui.agent.v1.SelectOutboundRequest
-	(*URLTestRequest)(nil),             // 23: singboxui.agent.v1.URLTestRequest
-	(*SetModeRequest)(nil),             // 24: singboxui.agent.v1.SetModeRequest
-	(*CloseConnectionRequest)(nil),     // 25: singboxui.agent.v1.CloseConnectionRequest
-	(*CloseAllConnectionsRequest)(nil), // 26: singboxui.agent.v1.CloseAllConnectionsRequest
-	(*RetryCleanupRequest)(nil),        // 27: singboxui.agent.v1.RetryCleanupRequest
-	(*PrepareUpgradeRequest)(nil),      // 28: singboxui.agent.v1.PrepareUpgradeRequest
-	(*GroupItem)(nil),                  // 29: singboxui.agent.v1.GroupItem
-	(*Group)(nil),                      // 30: singboxui.agent.v1.Group
-	(*Groups)(nil),                     // 31: singboxui.agent.v1.Groups
-	(*WatchTrafficRequest)(nil),        // 32: singboxui.agent.v1.WatchTrafficRequest
-	(*Traffic)(nil),                    // 33: singboxui.agent.v1.Traffic
-	(*ProcessInfo)(nil),                // 34: singboxui.agent.v1.ProcessInfo
-	(*Connection)(nil),                 // 35: singboxui.agent.v1.Connection
-	(*ConnectionEvent)(nil),            // 36: singboxui.agent.v1.ConnectionEvent
-	(*WatchConnectionsRequest)(nil),    // 37: singboxui.agent.v1.WatchConnectionsRequest
-	(*ConnectionEvents)(nil),           // 38: singboxui.agent.v1.ConnectionEvents
-	(*LogEntry)(nil),                   // 39: singboxui.agent.v1.LogEntry
-	(*WatchLogsRequest)(nil),           // 40: singboxui.agent.v1.WatchLogsRequest
-	(*LogBatch)(nil),                   // 41: singboxui.agent.v1.LogBatch
-	(*GetDiagnosticsRequest)(nil),      // 42: singboxui.agent.v1.GetDiagnosticsRequest
-	(*DiagnosticsReport)(nil),          // 43: singboxui.agent.v1.DiagnosticsReport
-	nil,                                // 44: singboxui.agent.v1.OperationResult.DetailsEntry
+	(ServiceState)(0),                  // 0: eggbox.agent.v1.ServiceState
+	(ConnectionState)(0),               // 1: eggbox.agent.v1.ConnectionState
+	(CleanupState)(0),                  // 2: eggbox.agent.v1.CleanupState
+	(NetworkState)(0),                  // 3: eggbox.agent.v1.NetworkState
+	(ErrorCode)(0),                     // 4: eggbox.agent.v1.ErrorCode
+	(ApplyMode)(0),                     // 5: eggbox.agent.v1.ApplyMode
+	(Issue_Severity)(0),                // 6: eggbox.agent.v1.Issue.Severity
+	(ConnectionEvent_Type)(0),          // 7: eggbox.agent.v1.ConnectionEvent.Type
+	(*HandshakeRequest)(nil),           // 8: eggbox.agent.v1.HandshakeRequest
+	(*HandshakeResponse)(nil),          // 9: eggbox.agent.v1.HandshakeResponse
+	(*Status)(nil),                     // 10: eggbox.agent.v1.Status
+	(*Settings)(nil),                   // 11: eggbox.agent.v1.Settings
+	(*UpdateSettingsRequest)(nil),      // 12: eggbox.agent.v1.UpdateSettingsRequest
+	(*Resource)(nil),                   // 13: eggbox.agent.v1.Resource
+	(*ConfigBundle)(nil),               // 14: eggbox.agent.v1.ConfigBundle
+	(*Issue)(nil),                      // 15: eggbox.agent.v1.Issue
+	(*ValidateConfigRequest)(nil),      // 16: eggbox.agent.v1.ValidateConfigRequest
+	(*ValidateConfigResponse)(nil),     // 17: eggbox.agent.v1.ValidateConfigResponse
+	(*ApplyConfigRequest)(nil),         // 18: eggbox.agent.v1.ApplyConfigRequest
+	(*OperationResult)(nil),            // 19: eggbox.agent.v1.OperationResult
+	(*ConnectRequest)(nil),             // 20: eggbox.agent.v1.ConnectRequest
+	(*DisconnectRequest)(nil),          // 21: eggbox.agent.v1.DisconnectRequest
+	(*SelectOutboundRequest)(nil),      // 22: eggbox.agent.v1.SelectOutboundRequest
+	(*URLTestRequest)(nil),             // 23: eggbox.agent.v1.URLTestRequest
+	(*SetModeRequest)(nil),             // 24: eggbox.agent.v1.SetModeRequest
+	(*CloseConnectionRequest)(nil),     // 25: eggbox.agent.v1.CloseConnectionRequest
+	(*CloseAllConnectionsRequest)(nil), // 26: eggbox.agent.v1.CloseAllConnectionsRequest
+	(*RetryCleanupRequest)(nil),        // 27: eggbox.agent.v1.RetryCleanupRequest
+	(*PrepareUpgradeRequest)(nil),      // 28: eggbox.agent.v1.PrepareUpgradeRequest
+	(*GroupItem)(nil),                  // 29: eggbox.agent.v1.GroupItem
+	(*Group)(nil),                      // 30: eggbox.agent.v1.Group
+	(*Groups)(nil),                     // 31: eggbox.agent.v1.Groups
+	(*WatchTrafficRequest)(nil),        // 32: eggbox.agent.v1.WatchTrafficRequest
+	(*Traffic)(nil),                    // 33: eggbox.agent.v1.Traffic
+	(*ProcessInfo)(nil),                // 34: eggbox.agent.v1.ProcessInfo
+	(*Connection)(nil),                 // 35: eggbox.agent.v1.Connection
+	(*ConnectionEvent)(nil),            // 36: eggbox.agent.v1.ConnectionEvent
+	(*WatchConnectionsRequest)(nil),    // 37: eggbox.agent.v1.WatchConnectionsRequest
+	(*ConnectionEvents)(nil),           // 38: eggbox.agent.v1.ConnectionEvents
+	(*LogEntry)(nil),                   // 39: eggbox.agent.v1.LogEntry
+	(*WatchLogsRequest)(nil),           // 40: eggbox.agent.v1.WatchLogsRequest
+	(*LogBatch)(nil),                   // 41: eggbox.agent.v1.LogBatch
+	(*GetDiagnosticsRequest)(nil),      // 42: eggbox.agent.v1.GetDiagnosticsRequest
+	(*DiagnosticsReport)(nil),          // 43: eggbox.agent.v1.DiagnosticsReport
+	nil,                                // 44: eggbox.agent.v1.OperationResult.DetailsEntry
 	(*emptypb.Empty)(nil),              // 45: google.protobuf.Empty
 }
 var file_agent_proto_depIdxs = []int32{
-	0,  // 0: singboxui.agent.v1.Status.service:type_name -> singboxui.agent.v1.ServiceState
-	1,  // 1: singboxui.agent.v1.Status.connection:type_name -> singboxui.agent.v1.ConnectionState
-	4,  // 2: singboxui.agent.v1.Status.last_error_code:type_name -> singboxui.agent.v1.ErrorCode
-	2,  // 3: singboxui.agent.v1.Status.cleanup:type_name -> singboxui.agent.v1.CleanupState
-	3,  // 4: singboxui.agent.v1.Status.network:type_name -> singboxui.agent.v1.NetworkState
-	13, // 5: singboxui.agent.v1.ConfigBundle.resources:type_name -> singboxui.agent.v1.Resource
-	6,  // 6: singboxui.agent.v1.Issue.severity:type_name -> singboxui.agent.v1.Issue.Severity
-	14, // 7: singboxui.agent.v1.ValidateConfigRequest.bundle:type_name -> singboxui.agent.v1.ConfigBundle
-	15, // 8: singboxui.agent.v1.ValidateConfigResponse.issues:type_name -> singboxui.agent.v1.Issue
-	14, // 9: singboxui.agent.v1.ApplyConfigRequest.bundle:type_name -> singboxui.agent.v1.ConfigBundle
-	5,  // 10: singboxui.agent.v1.ApplyConfigRequest.mode:type_name -> singboxui.agent.v1.ApplyMode
-	4,  // 11: singboxui.agent.v1.OperationResult.error_code:type_name -> singboxui.agent.v1.ErrorCode
-	15, // 12: singboxui.agent.v1.OperationResult.issues:type_name -> singboxui.agent.v1.Issue
-	44, // 13: singboxui.agent.v1.OperationResult.details:type_name -> singboxui.agent.v1.OperationResult.DetailsEntry
-	29, // 14: singboxui.agent.v1.Group.items:type_name -> singboxui.agent.v1.GroupItem
-	30, // 15: singboxui.agent.v1.Groups.groups:type_name -> singboxui.agent.v1.Group
-	34, // 16: singboxui.agent.v1.Connection.process:type_name -> singboxui.agent.v1.ProcessInfo
-	7,  // 17: singboxui.agent.v1.ConnectionEvent.type:type_name -> singboxui.agent.v1.ConnectionEvent.Type
-	35, // 18: singboxui.agent.v1.ConnectionEvent.connection:type_name -> singboxui.agent.v1.Connection
-	36, // 19: singboxui.agent.v1.ConnectionEvents.events:type_name -> singboxui.agent.v1.ConnectionEvent
-	39, // 20: singboxui.agent.v1.LogBatch.entries:type_name -> singboxui.agent.v1.LogEntry
-	8,  // 21: singboxui.agent.v1.Agent.Handshake:input_type -> singboxui.agent.v1.HandshakeRequest
-	45, // 22: singboxui.agent.v1.Agent.GetStatus:input_type -> google.protobuf.Empty
-	45, // 23: singboxui.agent.v1.Agent.WatchStatus:input_type -> google.protobuf.Empty
-	45, // 24: singboxui.agent.v1.Agent.GetSettings:input_type -> google.protobuf.Empty
-	12, // 25: singboxui.agent.v1.Agent.UpdateSettings:input_type -> singboxui.agent.v1.UpdateSettingsRequest
-	16, // 26: singboxui.agent.v1.Agent.ValidateConfig:input_type -> singboxui.agent.v1.ValidateConfigRequest
-	18, // 27: singboxui.agent.v1.Agent.ApplyConfig:input_type -> singboxui.agent.v1.ApplyConfigRequest
-	20, // 28: singboxui.agent.v1.Agent.Connect:input_type -> singboxui.agent.v1.ConnectRequest
-	21, // 29: singboxui.agent.v1.Agent.Disconnect:input_type -> singboxui.agent.v1.DisconnectRequest
-	22, // 30: singboxui.agent.v1.Agent.SelectOutbound:input_type -> singboxui.agent.v1.SelectOutboundRequest
-	23, // 31: singboxui.agent.v1.Agent.URLTest:input_type -> singboxui.agent.v1.URLTestRequest
-	24, // 32: singboxui.agent.v1.Agent.SetMode:input_type -> singboxui.agent.v1.SetModeRequest
-	25, // 33: singboxui.agent.v1.Agent.CloseConnection:input_type -> singboxui.agent.v1.CloseConnectionRequest
-	26, // 34: singboxui.agent.v1.Agent.CloseAllConnections:input_type -> singboxui.agent.v1.CloseAllConnectionsRequest
-	45, // 35: singboxui.agent.v1.Agent.WatchGroups:input_type -> google.protobuf.Empty
-	32, // 36: singboxui.agent.v1.Agent.WatchTraffic:input_type -> singboxui.agent.v1.WatchTrafficRequest
-	37, // 37: singboxui.agent.v1.Agent.WatchConnections:input_type -> singboxui.agent.v1.WatchConnectionsRequest
-	40, // 38: singboxui.agent.v1.Agent.WatchLogs:input_type -> singboxui.agent.v1.WatchLogsRequest
-	42, // 39: singboxui.agent.v1.Agent.GetDiagnostics:input_type -> singboxui.agent.v1.GetDiagnosticsRequest
-	27, // 40: singboxui.agent.v1.Agent.RetryCleanup:input_type -> singboxui.agent.v1.RetryCleanupRequest
-	28, // 41: singboxui.agent.v1.Agent.PrepareUpgrade:input_type -> singboxui.agent.v1.PrepareUpgradeRequest
-	9,  // 42: singboxui.agent.v1.Agent.Handshake:output_type -> singboxui.agent.v1.HandshakeResponse
-	10, // 43: singboxui.agent.v1.Agent.GetStatus:output_type -> singboxui.agent.v1.Status
-	10, // 44: singboxui.agent.v1.Agent.WatchStatus:output_type -> singboxui.agent.v1.Status
-	11, // 45: singboxui.agent.v1.Agent.GetSettings:output_type -> singboxui.agent.v1.Settings
-	11, // 46: singboxui.agent.v1.Agent.UpdateSettings:output_type -> singboxui.agent.v1.Settings
-	17, // 47: singboxui.agent.v1.Agent.ValidateConfig:output_type -> singboxui.agent.v1.ValidateConfigResponse
-	19, // 48: singboxui.agent.v1.Agent.ApplyConfig:output_type -> singboxui.agent.v1.OperationResult
-	19, // 49: singboxui.agent.v1.Agent.Connect:output_type -> singboxui.agent.v1.OperationResult
-	19, // 50: singboxui.agent.v1.Agent.Disconnect:output_type -> singboxui.agent.v1.OperationResult
-	19, // 51: singboxui.agent.v1.Agent.SelectOutbound:output_type -> singboxui.agent.v1.OperationResult
-	19, // 52: singboxui.agent.v1.Agent.URLTest:output_type -> singboxui.agent.v1.OperationResult
-	19, // 53: singboxui.agent.v1.Agent.SetMode:output_type -> singboxui.agent.v1.OperationResult
-	19, // 54: singboxui.agent.v1.Agent.CloseConnection:output_type -> singboxui.agent.v1.OperationResult
-	19, // 55: singboxui.agent.v1.Agent.CloseAllConnections:output_type -> singboxui.agent.v1.OperationResult
-	31, // 56: singboxui.agent.v1.Agent.WatchGroups:output_type -> singboxui.agent.v1.Groups
-	33, // 57: singboxui.agent.v1.Agent.WatchTraffic:output_type -> singboxui.agent.v1.Traffic
-	38, // 58: singboxui.agent.v1.Agent.WatchConnections:output_type -> singboxui.agent.v1.ConnectionEvents
-	41, // 59: singboxui.agent.v1.Agent.WatchLogs:output_type -> singboxui.agent.v1.LogBatch
-	43, // 60: singboxui.agent.v1.Agent.GetDiagnostics:output_type -> singboxui.agent.v1.DiagnosticsReport
-	19, // 61: singboxui.agent.v1.Agent.RetryCleanup:output_type -> singboxui.agent.v1.OperationResult
-	19, // 62: singboxui.agent.v1.Agent.PrepareUpgrade:output_type -> singboxui.agent.v1.OperationResult
+	0,  // 0: eggbox.agent.v1.Status.service:type_name -> eggbox.agent.v1.ServiceState
+	1,  // 1: eggbox.agent.v1.Status.connection:type_name -> eggbox.agent.v1.ConnectionState
+	4,  // 2: eggbox.agent.v1.Status.last_error_code:type_name -> eggbox.agent.v1.ErrorCode
+	2,  // 3: eggbox.agent.v1.Status.cleanup:type_name -> eggbox.agent.v1.CleanupState
+	3,  // 4: eggbox.agent.v1.Status.network:type_name -> eggbox.agent.v1.NetworkState
+	13, // 5: eggbox.agent.v1.ConfigBundle.resources:type_name -> eggbox.agent.v1.Resource
+	6,  // 6: eggbox.agent.v1.Issue.severity:type_name -> eggbox.agent.v1.Issue.Severity
+	14, // 7: eggbox.agent.v1.ValidateConfigRequest.bundle:type_name -> eggbox.agent.v1.ConfigBundle
+	15, // 8: eggbox.agent.v1.ValidateConfigResponse.issues:type_name -> eggbox.agent.v1.Issue
+	14, // 9: eggbox.agent.v1.ApplyConfigRequest.bundle:type_name -> eggbox.agent.v1.ConfigBundle
+	5,  // 10: eggbox.agent.v1.ApplyConfigRequest.mode:type_name -> eggbox.agent.v1.ApplyMode
+	4,  // 11: eggbox.agent.v1.OperationResult.error_code:type_name -> eggbox.agent.v1.ErrorCode
+	15, // 12: eggbox.agent.v1.OperationResult.issues:type_name -> eggbox.agent.v1.Issue
+	44, // 13: eggbox.agent.v1.OperationResult.details:type_name -> eggbox.agent.v1.OperationResult.DetailsEntry
+	29, // 14: eggbox.agent.v1.Group.items:type_name -> eggbox.agent.v1.GroupItem
+	30, // 15: eggbox.agent.v1.Groups.groups:type_name -> eggbox.agent.v1.Group
+	34, // 16: eggbox.agent.v1.Connection.process:type_name -> eggbox.agent.v1.ProcessInfo
+	7,  // 17: eggbox.agent.v1.ConnectionEvent.type:type_name -> eggbox.agent.v1.ConnectionEvent.Type
+	35, // 18: eggbox.agent.v1.ConnectionEvent.connection:type_name -> eggbox.agent.v1.Connection
+	36, // 19: eggbox.agent.v1.ConnectionEvents.events:type_name -> eggbox.agent.v1.ConnectionEvent
+	39, // 20: eggbox.agent.v1.LogBatch.entries:type_name -> eggbox.agent.v1.LogEntry
+	8,  // 21: eggbox.agent.v1.Agent.Handshake:input_type -> eggbox.agent.v1.HandshakeRequest
+	45, // 22: eggbox.agent.v1.Agent.GetStatus:input_type -> google.protobuf.Empty
+	45, // 23: eggbox.agent.v1.Agent.WatchStatus:input_type -> google.protobuf.Empty
+	45, // 24: eggbox.agent.v1.Agent.GetSettings:input_type -> google.protobuf.Empty
+	12, // 25: eggbox.agent.v1.Agent.UpdateSettings:input_type -> eggbox.agent.v1.UpdateSettingsRequest
+	16, // 26: eggbox.agent.v1.Agent.ValidateConfig:input_type -> eggbox.agent.v1.ValidateConfigRequest
+	18, // 27: eggbox.agent.v1.Agent.ApplyConfig:input_type -> eggbox.agent.v1.ApplyConfigRequest
+	20, // 28: eggbox.agent.v1.Agent.Connect:input_type -> eggbox.agent.v1.ConnectRequest
+	21, // 29: eggbox.agent.v1.Agent.Disconnect:input_type -> eggbox.agent.v1.DisconnectRequest
+	22, // 30: eggbox.agent.v1.Agent.SelectOutbound:input_type -> eggbox.agent.v1.SelectOutboundRequest
+	23, // 31: eggbox.agent.v1.Agent.URLTest:input_type -> eggbox.agent.v1.URLTestRequest
+	24, // 32: eggbox.agent.v1.Agent.SetMode:input_type -> eggbox.agent.v1.SetModeRequest
+	25, // 33: eggbox.agent.v1.Agent.CloseConnection:input_type -> eggbox.agent.v1.CloseConnectionRequest
+	26, // 34: eggbox.agent.v1.Agent.CloseAllConnections:input_type -> eggbox.agent.v1.CloseAllConnectionsRequest
+	45, // 35: eggbox.agent.v1.Agent.WatchGroups:input_type -> google.protobuf.Empty
+	32, // 36: eggbox.agent.v1.Agent.WatchTraffic:input_type -> eggbox.agent.v1.WatchTrafficRequest
+	37, // 37: eggbox.agent.v1.Agent.WatchConnections:input_type -> eggbox.agent.v1.WatchConnectionsRequest
+	40, // 38: eggbox.agent.v1.Agent.WatchLogs:input_type -> eggbox.agent.v1.WatchLogsRequest
+	42, // 39: eggbox.agent.v1.Agent.GetDiagnostics:input_type -> eggbox.agent.v1.GetDiagnosticsRequest
+	27, // 40: eggbox.agent.v1.Agent.RetryCleanup:input_type -> eggbox.agent.v1.RetryCleanupRequest
+	28, // 41: eggbox.agent.v1.Agent.PrepareUpgrade:input_type -> eggbox.agent.v1.PrepareUpgradeRequest
+	9,  // 42: eggbox.agent.v1.Agent.Handshake:output_type -> eggbox.agent.v1.HandshakeResponse
+	10, // 43: eggbox.agent.v1.Agent.GetStatus:output_type -> eggbox.agent.v1.Status
+	10, // 44: eggbox.agent.v1.Agent.WatchStatus:output_type -> eggbox.agent.v1.Status
+	11, // 45: eggbox.agent.v1.Agent.GetSettings:output_type -> eggbox.agent.v1.Settings
+	11, // 46: eggbox.agent.v1.Agent.UpdateSettings:output_type -> eggbox.agent.v1.Settings
+	17, // 47: eggbox.agent.v1.Agent.ValidateConfig:output_type -> eggbox.agent.v1.ValidateConfigResponse
+	19, // 48: eggbox.agent.v1.Agent.ApplyConfig:output_type -> eggbox.agent.v1.OperationResult
+	19, // 49: eggbox.agent.v1.Agent.Connect:output_type -> eggbox.agent.v1.OperationResult
+	19, // 50: eggbox.agent.v1.Agent.Disconnect:output_type -> eggbox.agent.v1.OperationResult
+	19, // 51: eggbox.agent.v1.Agent.SelectOutbound:output_type -> eggbox.agent.v1.OperationResult
+	19, // 52: eggbox.agent.v1.Agent.URLTest:output_type -> eggbox.agent.v1.OperationResult
+	19, // 53: eggbox.agent.v1.Agent.SetMode:output_type -> eggbox.agent.v1.OperationResult
+	19, // 54: eggbox.agent.v1.Agent.CloseConnection:output_type -> eggbox.agent.v1.OperationResult
+	19, // 55: eggbox.agent.v1.Agent.CloseAllConnections:output_type -> eggbox.agent.v1.OperationResult
+	31, // 56: eggbox.agent.v1.Agent.WatchGroups:output_type -> eggbox.agent.v1.Groups
+	33, // 57: eggbox.agent.v1.Agent.WatchTraffic:output_type -> eggbox.agent.v1.Traffic
+	38, // 58: eggbox.agent.v1.Agent.WatchConnections:output_type -> eggbox.agent.v1.ConnectionEvents
+	41, // 59: eggbox.agent.v1.Agent.WatchLogs:output_type -> eggbox.agent.v1.LogBatch
+	43, // 60: eggbox.agent.v1.Agent.GetDiagnostics:output_type -> eggbox.agent.v1.DiagnosticsReport
+	19, // 61: eggbox.agent.v1.Agent.RetryCleanup:output_type -> eggbox.agent.v1.OperationResult
+	19, // 62: eggbox.agent.v1.Agent.PrepareUpgrade:output_type -> eggbox.agent.v1.OperationResult
 	42, // [42:63] is the sub-list for method output_type
 	21, // [21:42] is the sub-list for method input_type
 	21, // [21:21] is the sub-list for extension type_name

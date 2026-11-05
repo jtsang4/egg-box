@@ -3,10 +3,10 @@
 #
 #   packaging/macos/build.sh [--arch universal|arm64|x86_64] [--no-pkg]
 #
-# What comes out, in $SBUI_OUT (default build/macos):
+# What comes out, in $EGGBOX_OUT (default build/macos):
 #
-#   Sing-Box UI.app          the application, with the service inside it
-#   SingBoxUI-<version>.pkg  the installer (unless --no-pkg)
+#   EggBox.app          the application, with the service inside it
+#   EggBox-<version>.pkg  the installer (unless --no-pkg)
 #
 # The application bundle holds, besides the program of the interface:
 #
@@ -17,12 +17,12 @@
 #
 # Environment:
 #
-#   SBUI_VERSION          the version; default: the one in mygo.json
-#   SBUI_COMMIT           the source revision; default: git's
-#   SBUI_SIGN_IDENTITY    codesign identity for the code; "-" (the default) signs
+#   EGGBOX_VERSION          the version; default: the one in mygo.json
+#   EGGBOX_COMMIT           the source revision; default: git's
+#   EGGBOX_SIGN_IDENTITY    codesign identity for the code; "-" (the default) signs
 #                         ad hoc, which is enough to try the build here and is
 #                         not enough to ship: a Developer ID is.
-#   SBUI_INSTALLER_IDENTITY  identity that signs the .pkg; unsigned when unset.
+#   EGGBOX_INSTALLER_IDENTITY  identity that signs the .pkg; unsigned when unset.
 #
 # Nothing here installs anything or registers anything with the system.
 set -euo pipefail
@@ -51,19 +51,19 @@ goarch() { case "$1" in arm64) echo arm64 ;; x86_64) echo amd64 ;; esac; }
 # The version the application's metadata carries comes from mygo.json, so a
 # release must name the same one.
 config_version="$(python3 -c 'import json;print(json.load(open("mygo.json"))["version"])')"
-version="${SBUI_VERSION:-$config_version}"
+version="${EGGBOX_VERSION:-$config_version}"
 if [ "$version" != "$config_version" ]; then
-  echo "SBUI_VERSION is $version but mygo.json says $config_version: change mygo.json first (the metadata of the application comes from it)" >&2
+  echo "EGGBOX_VERSION is $version but mygo.json says $config_version: change mygo.json first (the metadata of the application comes from it)" >&2
   exit 1
 fi
-commit="${SBUI_COMMIT:-$(git rev-parse --short=9 HEAD 2>/dev/null || true)}"
-identity="${SBUI_SIGN_IDENTITY:--}"
-out="${SBUI_OUT:-$root/build/macos}"
+commit="${EGGBOX_COMMIT:-$(git rev-parse --short=9 HEAD 2>/dev/null || true)}"
+identity="${EGGBOX_SIGN_IDENTITY:--}"
+out="${EGGBOX_OUT:-$root/build/macos}"
 work="$out/work"
-app_id=me.jtsang.singboxui
-agent_id=me.jtsang.singboxui.agent
+app_id=org.eggbox.app
+agent_id=org.eggbox.app.agent
 tags="with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_clash_api,badlinkname"
-stamp="-X github.com/jtsang4/sing-box-ui/internal/version.Version=$version -X github.com/jtsang4/sing-box-ui/internal/version.Commit=$commit"
+stamp="-X eggbox/internal/version.Version=$version -X eggbox/internal/version.Commit=$commit"
 ldflags="-s -w $stamp"
 # MyGo adds these to the ones it uses for the application.
 export MYGO_LDFLAGS="$stamp"
@@ -71,7 +71,7 @@ export MYGO_LDFLAGS="$stamp"
 say() { printf '==> %s\n' "$*"; }
 
 # Only what this script makes is removed, never the folder as a whole.
-rm -rf "$work" "$out/Sing-Box UI.app" "$out/SingBoxUI-$version.pkg"
+rm -rf "$work" "$out/EggBox.app" "$out/EggBox-$version.pkg"
 mkdir -p "$work"
 
 # 1. The Swift library, for each architecture, joined into one file.
@@ -105,7 +105,7 @@ go tool mygo build -platform "$mygo_platform" -skip-dmg -skip-build-command -sig
   || { cat "$work/mygo.log" >&2; exit 1; }
 built="$(find "$work/mygo" -maxdepth 3 -name '*.app' -type d | head -1)"
 [ -n "$built" ] || { echo "mygo build produced no .app; see $work/mygo.log" >&2; exit 1; }
-app="$out/Sing-Box UI.app"
+app="$out/EggBox.app"
 cp -R "$built" "$app"
 
 # 5. The service goes into the bundle, and everything is signed from the
@@ -165,9 +165,9 @@ if [ "$make_pkg" -eq 1 ]; then
     --identifier "$app_id.pkg" --version "$version" \
     --scripts "$scripts" "$work/component.pkg" >/dev/null
   sed "s/@VERSION@/$version/g" packaging/macos/distribution.xml > "$work/distribution.xml"
-  pkg="$out/SingBoxUI-$version.pkg"
-  if [ -n "${SBUI_INSTALLER_IDENTITY:-}" ]; then
-    productbuild --distribution "$work/distribution.xml" --package-path "$work" --sign "$SBUI_INSTALLER_IDENTITY" "$pkg" >/dev/null
+  pkg="$out/EggBox-$version.pkg"
+  if [ -n "${EGGBOX_INSTALLER_IDENTITY:-}" ]; then
+    productbuild --distribution "$work/distribution.xml" --package-path "$work" --sign "$EGGBOX_INSTALLER_IDENTITY" "$pkg" >/dev/null
   else
     productbuild --distribution "$work/distribution.xml" --package-path "$work" "$pkg" >/dev/null
   fi

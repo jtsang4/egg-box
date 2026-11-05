@@ -7,7 +7,7 @@
 //     authorized user, and whose clients are verified by process and user.
 //   - macOS: connections handed over by the XPC bridge, which verified the
 //     peer's code-signing requirement and user.
-//   - Development builds (build tag sbui_dev): a Unix socket in a directory
+//   - Development builds (build tag eggbox_dev): a Unix socket in a directory
 //     the developer owns, verified by the peer's user id. This transport is not
 //     compiled into release binaries, so a release agent cannot be made to
 //     listen on a path an attacker can pick.

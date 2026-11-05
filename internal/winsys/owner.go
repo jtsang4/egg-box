@@ -1,4 +1,4 @@
-// Package winsys holds what the Windows installation of Sing-Box UI needs from
+// Package winsys holds what the Windows installation of EggBox needs from
 // the operating system and that both the service and the application share:
 // who the authorized user is, where the service's files live, how the service
 // is installed and started, and how the application asks for administrator

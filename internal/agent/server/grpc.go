@@ -11,9 +11,9 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/store"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
+	"eggbox/internal/agent/store"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/brand"
 )
 
 const (

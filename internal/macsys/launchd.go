@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/brand"
+	"eggbox/internal/brand"
 )
 
 // ShutdownBudget is how long the service takes, at most, to disconnect and put

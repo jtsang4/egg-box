@@ -34,4 +34,4 @@ mygo_windows_*.syso
 
 # Binaries built at the repo root by a bare `go build ./cmd/...`.
 /agentd
-/sing-box-ui
+/egg-box

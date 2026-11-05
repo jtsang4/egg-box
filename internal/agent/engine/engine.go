@@ -8,7 +8,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agentapi"
 )
 
 // Sentinel errors shared by implementations.

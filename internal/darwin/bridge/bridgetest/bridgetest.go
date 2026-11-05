@@ -14,7 +14,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/jtsang4/sing-box-ui/internal/darwin/bridge"
+	"eggbox/internal/darwin/bridge"
 )
 
 var (
@@ -44,7 +44,7 @@ func build() {
 		err = e
 		return
 	}
-	dir, e := os.MkdirTemp("", "sbui-bridge-*")
+	dir, e := os.MkdirTemp("", "eggbox-bridge-*")
 	if e != nil {
 		err = e
 		return

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/store"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agent/store"
+	"eggbox/internal/agentapi"
 )
 
 var (

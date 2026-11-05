@@ -14,7 +14,7 @@ import (
 	"net/netip"
 	"sort"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/routecheck"
+	"eggbox/internal/agent/routecheck"
 )
 
 // The flags macOS puts on a route (net/route.h). Only the ones that decide

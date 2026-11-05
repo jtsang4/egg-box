@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/ledger"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform"
-	"github.com/jtsang4/sing-box-ui/internal/agent/routecheck"
+	"eggbox/internal/agent/ledger"
+	"eggbox/internal/agent/platform"
+	"eggbox/internal/agent/routecheck"
 )
 
 func addr(s string) netip.Addr     { return netip.MustParseAddr(s) }
@@ -386,7 +386,7 @@ func (r *fakeRecorder) Remove(id string) error {
 }
 func (r *fakeRecorder) count() int { r.mu.Lock(); defer r.mu.Unlock(); return len(r.entries) }
 
-const testKey = "State:/Network/Service/test.sbui/DNS"
+const testKey = "State:/Network/Service/test.eggbox/DNS"
 
 func newTestDriver(t *testing.T) (*Driver, *fakeHost, *fakeSystem) {
 	t.Helper()

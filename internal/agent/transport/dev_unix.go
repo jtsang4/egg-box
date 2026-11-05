@@ -1,4 +1,4 @@
-//go:build sbui_dev && (darwin || linux)
+//go:build eggbox_dev && (darwin || linux)
 
 package transport
 
@@ -10,8 +10,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/server"
-	"github.com/jtsang4/sing-box-ui/internal/agentclient"
+	"eggbox/internal/agent/server"
+	"eggbox/internal/agentclient"
 )
 
 // ListenDev listens on a Unix socket at path (mode 0600, in a directory only

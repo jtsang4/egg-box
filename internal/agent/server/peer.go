@@ -27,7 +27,7 @@ type Verifier func(conn net.Conn) (Peer, error)
 type PeerInfo struct{ Peer }
 
 // AuthType implements credentials.AuthInfo.
-func (PeerInfo) AuthType() string { return "sbui-peer" }
+func (PeerInfo) AuthType() string { return "eggbox-peer" }
 
 // PeerFrom returns the verified identity of the caller of ctx.
 func PeerFrom(ctx context.Context) (Peer, bool) {
@@ -67,7 +67,7 @@ func (creds) ClientHandshake(_ context.Context, _ string, conn net.Conn) (net.Co
 }
 
 func (creds) Info() credentials.ProtocolInfo {
-	return credentials.ProtocolInfo{SecurityProtocol: "sbui-local"}
+	return credentials.ProtocolInfo{SecurityProtocol: "eggbox-local"}
 }
 
 func (c creds) Clone() credentials.TransportCredentials { return c }

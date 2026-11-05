@@ -4,10 +4,10 @@ import (
 	"context"
 	"path/filepath"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine"
-	"github.com/jtsang4/sing-box-ui/internal/agent/policy"
-	"github.com/jtsang4/sing-box-ui/internal/agent/store"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agent/engine"
+	"eggbox/internal/agent/policy"
+	"eggbox/internal/agent/store"
+	"eggbox/internal/agentapi"
 )
 
 // Connect brings the proxy up with the stored configuration.

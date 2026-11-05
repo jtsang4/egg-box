@@ -1,4 +1,4 @@
-//go:build !sbui_dev
+//go:build !eggbox_dev
 
 package main
 
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jtsang4/sing-box-ui/internal/version"
+	"eggbox/internal/version"
 )
 
 // run dispatches the command line of a release build.

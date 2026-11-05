@@ -27,13 +27,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine/demo"
-	"github.com/jtsang4/sing-box-ui/internal/agent/inproc"
-	"github.com/jtsang4/sing-box-ui/internal/agentclient"
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/demodata"
-	"github.com/jtsang4/sing-box-ui/internal/library"
-	"github.com/jtsang4/sing-box-ui/internal/ruledata"
+	"eggbox/internal/agent/engine/demo"
+	"eggbox/internal/agent/inproc"
+	"eggbox/internal/agentclient"
+	"eggbox/internal/app"
+	"eggbox/internal/demodata"
+	"eggbox/internal/library"
+	"eggbox/internal/ruledata"
 )
 
 // Mode is how the application runs.
@@ -146,7 +146,7 @@ func Start(ctx context.Context, cfg Config) (*Runtime, error) {
 	var startDemoAgent func(context.Context) error
 
 	if cfg.Mode == Demo {
-		dir, err := os.MkdirTemp("", "sing-box-ui-demo-*")
+		dir, err := os.MkdirTemp("", "egg-box-demo-*")
 		if err != nil {
 			return nil, err
 		}

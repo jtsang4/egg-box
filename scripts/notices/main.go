@@ -181,12 +181,12 @@ func main() {
 		goarch  = flag.String("goarch", "", "target architectures, separated by commas")
 		tags    = flag.String("tags", "", "build tags")
 		out     = flag.String("out", "", "file to write")
-		product = flag.String("product", "Sing-Box UI", "name of the product")
+		product = flag.String("product", "EggBox", "name of the product")
 	)
 	flag.Parse()
 	pkgs := flag.Args()
 	if len(pkgs) == 0 {
-		pkgs = []string{"./cmd/agentd", "./cmd/sing-box-ui"}
+		pkgs = []string{"./cmd/agentd", "./cmd/egg-box"}
 	}
 	if *goos == "" || *goarch == "" || *out == "" {
 		fmt.Fprintln(os.Stderr, "usage: notices -goos OS -goarch ARCH[,ARCH] [-tags TAGS] -out FILE [packages]")

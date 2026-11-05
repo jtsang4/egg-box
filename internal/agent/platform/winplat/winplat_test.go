@@ -4,8 +4,8 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform"
-	"github.com/jtsang4/sing-box-ui/internal/agent/routecheck"
+	"eggbox/internal/agent/platform"
+	"eggbox/internal/agent/routecheck"
 )
 
 func TestClassifyAdapter(t *testing.T) {
@@ -19,7 +19,7 @@ func TestClassifyAdapter(t *testing.T) {
 		{ifTypeWiFi, "Wi-Fi", "Intel(R) Wi-Fi 6 AX201 160MHz", routecheck.KindPhysical},
 		{ifTypeWWAN3GPP, "Cellular", "Mobile Broadband", routecheck.KindPhysical},
 		{ifTypeEthernet, "Ethernet 2", "Wintun Userspace Tunnel", routecheck.KindTunnel},
-		{ifTypeEthernet, "SingBoxUI", "Wintun Userspace Tunnel", routecheck.KindTunnel},
+		{ifTypeEthernet, "EggBox", "Wintun Userspace Tunnel", routecheck.KindTunnel},
 		{ifTypeEthernet, "WireGuard", "WireGuard Tunnel", routecheck.KindTunnel},
 		{ifTypeEthernet, "Local Area Connection", "TAP-Windows Adapter V9", routecheck.KindTunnel},
 		{ifTypePPP, "Company VPN", "WAN Miniport (IKEv2)", routecheck.KindTunnel},
@@ -42,14 +42,14 @@ var (
 		Addrs: []netip.Prefix{netip.MustParsePrefix("192.168.1.20/24")}}
 	eth = Adapter{Index: 7, Index6: 7, Name: "Ethernet", Metric4: 25, Metric6: 25, Up: true, Kind: routecheck.KindPhysical,
 		Addrs: []netip.Prefix{netip.MustParsePrefix("10.0.0.5/24")}}
-	tun = Adapter{Index: 31, Index6: 31, Name: "SingBoxUI", Metric4: 1, Metric6: 1, Up: true, Kind: routecheck.KindTunnel}
+	tun = Adapter{Index: 31, Index6: 31, Name: "EggBox", Metric4: 1, Metric6: 1, Up: true, Kind: routecheck.KindTunnel}
 )
 
 func def(gw string, idx, metric uint32) Route {
 	return Route{Dest: netip.MustParsePrefix("0.0.0.0/0"), Gateway: netip.MustParseAddr(gw), IfIndex: idx, Metric: metric}
 }
 
-func isOurs(a Adapter) bool { return a.Name == "SingBoxUI" }
+func isOurs(a Adapter) bool { return a.Name == "EggBox" }
 
 func TestDefaultRoutePrefersLowestTotalMetric(t *testing.T) {
 	routes := []Route{def("192.168.1.1", 12, 0), def("10.0.0.1", 7, 0)}
@@ -120,11 +120,11 @@ func TestSnapshotMarksOurAdapterAndNamesRoutes(t *testing.T) {
 		t.Fatalf("%+v", s)
 	}
 	for _, i := range s.Interfaces {
-		if i.Ours != (i.Name == "SingBoxUI") {
+		if i.Ours != (i.Name == "EggBox") {
 			t.Errorf("%s: Ours = %v", i.Name, i.Ours)
 		}
 	}
-	if s.Routes[0].IfName != "Wi-Fi" || s.Routes[1].IfName != "SingBoxUI" {
+	if s.Routes[0].IfName != "Wi-Fi" || s.Routes[1].IfName != "EggBox" {
 		t.Errorf("route names: %+v", s.Routes)
 	}
 }

@@ -6,7 +6,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
+	"eggbox/internal/app"
 )
 
 // orbLook is how the orb appears in a phase; the orb eases between looks.

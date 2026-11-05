@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine"
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine/demo"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/agent/engine"
+	"eggbox/internal/agent/engine/demo"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/configgen"
+	"eggbox/internal/subscription"
 )
 
 // generated builds the configuration the application would send, from

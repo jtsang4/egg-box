@@ -1,4 +1,4 @@
-//go:build sbui_dev && darwin
+//go:build eggbox_dev && darwin
 
 package transport
 

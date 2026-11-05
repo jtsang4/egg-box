@@ -55,19 +55,19 @@ func TestRequirementWithATeam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `anchor apple generic and identifier "me.jtsang.singboxui" and certificate leaf[subject.OU] = "ABCDE12345"`
+	want := `anchor apple generic and identifier "org.eggbox.app" and certificate leaf[subject.OU] = "ABCDE12345"`
 	if got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
 	}
 	agent, _ := AgentRequirement("ABCDE12345")
-	if !strings.Contains(agent, `identifier "me.jtsang.singboxui.agent"`) {
+	if !strings.Contains(agent, `identifier "org.eggbox.app.agent"`) {
 		t.Errorf("the agent requirement names the wrong identifier: %s", agent)
 	}
 }
 
 func TestRequirementWithoutATeamIsTheWeakDevelopmentForm(t *testing.T) {
 	got, err := AppRequirement("")
-	if err != nil || got != `identifier "me.jtsang.singboxui"` {
+	if err != nil || got != `identifier "org.eggbox.app"` {
 		t.Errorf("got %q, %v", got, err)
 	}
 }
@@ -77,9 +77,9 @@ func TestRequirementRefusesInjection(t *testing.T) {
 		{`x" or true or identifier "y`, ""},
 		{"a b", ""},
 		{"", ""},
-		{"me.jtsang.singboxui", `X" or anchor apple or "`},
-		{"me.jtsang.singboxui", "short"},
-		{"me.jtsang.singboxui", "abcde12345"}, // team ids are upper case
+		{"org.eggbox.app", `X" or anchor apple or "`},
+		{"org.eggbox.app", "short"},
+		{"org.eggbox.app", "abcde12345"}, // team ids are upper case
 	} {
 		if got, err := Requirement(bad.id, bad.team); err == nil {
 			t.Errorf("Requirement(%q, %q) = %q, want an error", bad.id, bad.team, got)

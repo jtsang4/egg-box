@@ -13,7 +13,7 @@ import (
 
 	"golang.org/x/net/route"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/routecheck"
+	"eggbox/internal/agent/routecheck"
 )
 
 // SystemHost reads the real machine: its interfaces, its routing table, and

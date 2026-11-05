@@ -25,7 +25,7 @@ var (
 // TestMain builds the Swift library once for the machine's own architecture.
 // Without a Swift toolchain the tests that need it are skipped.
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "sbui-bridge-*")
+	dir, err := os.MkdirTemp("", "eggbox-bridge-*")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -64,7 +64,7 @@ func TestServiceStatusOfAServiceTheProgramDoesNotContain(t *testing.T) {
 	b := load(t)
 	// Reading the status changes nothing. A test binary is not an application
 	// bundle, so no such service can exist.
-	if got := b.ServiceStatus("me.jtsang.singboxui.test-nothing.plist"); got != ServiceNotFound && got != ServiceNotRegistered {
+	if got := b.ServiceStatus("org.eggbox.app.test-nothing.plist"); got != ServiceNotFound && got != ServiceNotRegistered {
 		t.Errorf("status = %v", got)
 	}
 }
@@ -170,7 +170,7 @@ func TestXPCConnectToAServiceThatIsNotThereFails(t *testing.T) {
 	b := load(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_, err := b.Connect(ctx, "me.jtsang.singboxui.test.nothing-listens-here", "")
+	_, err := b.Connect(ctx, "org.eggbox.app.test.nothing-listens-here", "")
 	if err == nil {
 		t.Fatal("connecting to a service nobody registered succeeded")
 	}
@@ -300,7 +300,7 @@ func TestListenerCloseUnblocksAccept(t *testing.T) {
 func TestResolverEntryThatIsNotThere(t *testing.T) {
 	b := load(t)
 	// Only reads: nothing is written to the system's configuration here.
-	const key = "State:/Network/Service/me.jtsang.singboxui.test-absent/DNS"
+	const key = "State:/Network/Service/org.eggbox.app.test-absent/DNS"
 	if _, present := b.ResolverToken(key); present {
 		t.Fatal("an entry that nobody wrote is there")
 	}

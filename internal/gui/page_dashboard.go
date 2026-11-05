@@ -7,8 +7,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
+	"eggbox/internal/app"
+	"eggbox/internal/configgen"
 )
 
 // dashboardPage is the home of the application: the connection and what

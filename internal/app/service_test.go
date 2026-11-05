@@ -15,15 +15,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/testkit"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/agentclient"
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
-	"github.com/jtsang4/sing-box-ui/internal/library"
-	"github.com/jtsang4/sing-box-ui/internal/ruledata"
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
-	"github.com/jtsang4/sing-box-ui/internal/testsupport/srs"
+	"eggbox/internal/agent/testkit"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/agentclient"
+	"eggbox/internal/app"
+	"eggbox/internal/configgen"
+	"eggbox/internal/library"
+	"eggbox/internal/ruledata"
+	"eggbox/internal/subscription"
+	"eggbox/internal/testsupport/srs"
 )
 
 // secretToken is part of the provider's link; no output may contain it.

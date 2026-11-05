@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/fsutil"
+	"eggbox/internal/fsutil"
 )
 
 // Kind classifies a recorded resource. Drivers decide how to release each kind.

@@ -1,8 +1,8 @@
-//go:build !(sbui_dev && (darwin || linux))
+//go:build !(eggbox_dev && (darwin || linux))
 
 package main
 
-import "github.com/jtsang4/sing-box-ui/internal/boot"
+import "eggbox/internal/boot"
 
 // devOptions are the flags of development builds; release builds have none,
 // and neither has a platform that has no development agent (dev_on.go).

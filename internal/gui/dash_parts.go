@@ -6,8 +6,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/library"
+	"eggbox/internal/app"
+	"eggbox/internal/library"
 )
 
 // usageRow shows a subscription's quota: a ring, what was used, when it ends.

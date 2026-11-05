@@ -17,8 +17,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agent/engine"
+	"eggbox/internal/agentapi"
 )
 
 // watchRig runs the TUN watchdog against a fake interface table.
@@ -137,11 +137,11 @@ func TestWatchTunReportsOnlyOnce(t *testing.T) {
 func TestTunTargets(t *testing.T) {
 	raw := []byte(`{"inbounds": [
 	  {"type": "mixed", "tag": "m", "address": ["10.0.0.1/24"]},
-	  {"type": "tun", "tag": "tun-a", "interface_name": "SingBoxUI", "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126", "bogus"]},
+	  {"type": "tun", "tag": "tun-a", "interface_name": "EggBox", "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126", "bogus"]},
 	  {"type": "tun", "tag": "tun-b", "address": ["172.20.0.1/30"]}
 	]}`)
 	addrs, name := tunTargets(raw, "")
-	if name != "SingBoxUI" || len(addrs) != 2 || addrs[0] != netip.MustParseAddr("172.19.0.1") || addrs[1] != netip.MustParseAddr("fdfe:dcba:9876::1") {
+	if name != "EggBox" || len(addrs) != 2 || addrs[0] != netip.MustParseAddr("172.19.0.1") || addrs[1] != netip.MustParseAddr("fdfe:dcba:9876::1") {
 		t.Fatalf("first tun = %v %q", addrs, name)
 	}
 	addrs, name = tunTargets(raw, "tun-b")
@@ -164,15 +164,14 @@ func TestInterfaceWith(t *testing.T) {
 		t.Fatal("the loopback interface owns 127.0.0.1")
 	} else if _, err := net.InterfaceByName(got); err != nil {
 		t.Fatalf("returned an interface that does not exist: %q", got)
+	} else if !interfaceExists(got) {
+		t.Fatalf("the loopback interface is not visible: %q", got)
 	}
 	// 203.0.113.0/24 is TEST-NET-3: never assigned to a real interface.
 	if got := interfaceWith([]netip.Addr{netip.MustParseAddr("203.0.113.77")}); got != "" {
 		t.Fatalf("an address nobody has: %q", got)
 	}
-	if !interfaceExists("lo0") && !interfaceExists("lo") {
-		t.Fatal("no loopback interface is visible")
-	}
-	if interfaceExists("sbui-no-such-interface") {
+	if interfaceExists("eggbox-no-such-interface") {
 		t.Fatal("a made-up interface exists")
 	}
 }
@@ -184,8 +183,8 @@ func TestDiscoverTunWithoutTun(t *testing.T) {
 	// A configured TUN that never appears falls back to its fixed name once the wait is over.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	raw := []byte(`{"inbounds": [{"type": "tun", "tag": "t", "interface_name": "SingBoxUI", "address": ["203.0.113.1/30"]}]}`)
-	if got := discoverTun(ctx, engine.Prepared{JSON: raw, HasTun: true, TunTag: "t"}); got != "SingBoxUI" {
+	raw := []byte(`{"inbounds": [{"type": "tun", "tag": "t", "interface_name": "EggBox", "address": ["203.0.113.1/30"]}]}`)
+	if got := discoverTun(ctx, engine.Prepared{JSON: raw, HasTun: true, TunTag: "t"}); got != "EggBox" {
 		t.Fatalf("fallback = %q", got)
 	}
 }

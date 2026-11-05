@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/demodata"
-	"github.com/jtsang4/sing-box-ui/internal/ruledata"
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/demodata"
+	"eggbox/internal/ruledata"
+	"eggbox/internal/subscription"
 )
 
 var now = time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC)

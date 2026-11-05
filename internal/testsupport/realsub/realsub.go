@@ -2,8 +2,8 @@
 // one, and keeps what is in it out of every place a test could print to.
 //
 // The link and the nodes behind it are credentials. They live outside the
-// repository: SBUI_TEST_SUBSCRIPTION_FILE points at a private file, or
-// SBUI_TEST_SUBSCRIPTION_URL carries the link. A test that uses them logs
+// repository: EGGBOX_TEST_SUBSCRIPTION_FILE points at a private file, or
+// EGGBOX_TEST_SUBSCRIPTION_URL carries the link. A test that uses them logs
 // counts and protocol names only, never an address, a name, a key, and never
 // an error message before it went through Scrub.
 package realsub
@@ -21,19 +21,19 @@ import (
 // URL returns the real subscription's link, or skips the test.
 func URL(t testing.TB) string {
 	t.Helper()
-	if u := strings.TrimSpace(os.Getenv("SBUI_TEST_SUBSCRIPTION_URL")); u != "" {
+	if u := strings.TrimSpace(os.Getenv("EGGBOX_TEST_SUBSCRIPTION_URL")); u != "" {
 		return u
 	}
-	if f := os.Getenv("SBUI_TEST_SUBSCRIPTION_FILE"); f != "" {
+	if f := os.Getenv("EGGBOX_TEST_SUBSCRIPTION_FILE"); f != "" {
 		raw, err := os.ReadFile(f)
 		if err != nil {
-			t.Fatalf("cannot read SBUI_TEST_SUBSCRIPTION_FILE: %v", err)
+			t.Fatalf("cannot read EGGBOX_TEST_SUBSCRIPTION_FILE: %v", err)
 		}
 		if u := strings.TrimSpace(string(raw)); u != "" {
 			return u
 		}
 	}
-	t.Skip("set SBUI_TEST_SUBSCRIPTION_FILE (or SBUI_TEST_SUBSCRIPTION_URL) to run against a real subscription")
+	t.Skip("set EGGBOX_TEST_SUBSCRIPTION_FILE (or EGGBOX_TEST_SUBSCRIPTION_URL) to run against a real subscription")
 	return ""
 }
 

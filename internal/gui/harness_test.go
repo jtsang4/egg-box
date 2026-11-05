@@ -99,7 +99,7 @@ func (h *harness) settle() {
 	h.ui.Frame()
 	// Screenshots wait for every animation; assertions do not need to.
 	d := 900 * time.Millisecond
-	if os.Getenv("SBUI_SHOTS") != "" {
+	if os.Getenv("EGGBOX_SHOTS") != "" {
 		d = 2500 * time.Millisecond
 	}
 	h.ui.Advance(d)
@@ -133,10 +133,10 @@ func (h *harness) mustNotHave(texts ...string) {
 	}
 }
 
-// shot writes a screenshot when SBUI_SHOTS names a directory.
+// shot writes a screenshot when EGGBOX_SHOTS names a directory.
 func (h *harness) shot(name string) {
 	h.t.Helper()
-	dir := os.Getenv("SBUI_SHOTS")
+	dir := os.Getenv("EGGBOX_SHOTS")
 	if dir == "" {
 		return
 	}

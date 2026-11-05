@@ -25,15 +25,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine"
-	"github.com/jtsang4/sing-box-ui/internal/agent/ledger"
-	"github.com/jtsang4/sing-box-ui/internal/agent/loghub"
-	"github.com/jtsang4/sing-box-ui/internal/agent/netwatch"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform"
-	"github.com/jtsang4/sing-box-ui/internal/agent/policy"
-	"github.com/jtsang4/sing-box-ui/internal/agent/routecheck"
-	"github.com/jtsang4/sing-box-ui/internal/agent/store"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agent/engine"
+	"eggbox/internal/agent/ledger"
+	"eggbox/internal/agent/loghub"
+	"eggbox/internal/agent/netwatch"
+	"eggbox/internal/agent/platform"
+	"eggbox/internal/agent/policy"
+	"eggbox/internal/agent/routecheck"
+	"eggbox/internal/agent/store"
+	"eggbox/internal/agentapi"
 )
 
 // Config wires the controller to its collaborators.

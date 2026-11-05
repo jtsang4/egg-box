@@ -15,9 +15,9 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/ledger"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform/winplat"
-	"github.com/jtsang4/sing-box-ui/internal/winsys"
+	"eggbox/internal/agent/ledger"
+	"eggbox/internal/agent/platform/winplat"
+	"eggbox/internal/winsys"
 )
 
 const platformUsage = `  service      run as the Windows service (the system starts it this way)

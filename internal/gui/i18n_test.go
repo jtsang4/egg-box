@@ -107,7 +107,7 @@ func sourceLiterals(t *testing.T) map[string]bool {
 // uses is not an orphan) and the literals it passes to say (which must exist).
 func shellLiterals(t *testing.T) (all, said map[string]bool) {
 	t.Helper()
-	files, err := filepath.Glob(filepath.Join("..", "..", "cmd", "sing-box-ui", "*.go"))
+	files, err := filepath.Glob(filepath.Join("..", "..", "cmd", "egg-box", "*.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestKeysExist(t *testing.T) {
 func TestShellKeysExist(t *testing.T) {
 	all, said := shellLiterals(t)
 	if len(said) == 0 {
-		t.Fatal("found no say(...) calls in cmd/sing-box-ui; has the shell moved?")
+		t.Fatal("found no say(...) calls in cmd/egg-box; has the shell moved?")
 	}
 	for lit := range said {
 		if !known(lit) {
@@ -198,7 +198,7 @@ func TestShellKeysExist(t *testing.T) {
 // ignoredLiteral are dotted strings that are not keys.
 func ignoredLiteral(s string) bool {
 	switch {
-	case strings.HasPrefix(s, "me."), strings.HasPrefix(s, "sbui."), strings.HasPrefix(s, "example."), s == "clash.meta":
+	case strings.HasPrefix(s, "me."), strings.HasPrefix(s, "eggbox."), strings.HasPrefix(s, "example."), s == "clash.meta":
 		return true
 	case strings.HasSuffix(s, ".log"), strings.HasSuffix(s, ".json"), strings.HasSuffix(s, ".txt"), strings.HasSuffix(s, ".net"):
 		return true

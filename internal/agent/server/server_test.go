@@ -14,9 +14,9 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine"
-	"github.com/jtsang4/sing-box-ui/internal/agent/store"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agent/engine"
+	"eggbox/internal/agent/store"
+	"eggbox/internal/agentapi"
 )
 
 func TestToStatusMapsErrorsOntoGRPCCodes(t *testing.T) {
@@ -79,7 +79,7 @@ func TestCredentialsVerifyEveryConnectionBeforeGRPCSeesIt(t *testing.T) {
 	if err != nil || conn != c1 {
 		t.Fatalf("accepting verifier: %v", err)
 	}
-	if info.AuthType() != "sbui-peer" || info.(PeerInfo).Description != "uid=501" {
+	if info.AuthType() != "eggbox-peer" || info.(PeerInfo).Description != "uid=501" {
 		t.Fatalf("auth info = %#v", info)
 	}
 
@@ -107,7 +107,7 @@ func TestGuardRequiresAVerifiedPeerAndTheRightProtocol(t *testing.T) {
 	if err := s.guard(verified, agentapi.HandshakeMethod); err != nil {
 		t.Fatalf("the handshake is always allowed for a verified peer: %v", err)
 	}
-	if err := s.guard(verified, "/singboxui.agent.v1.Agent/GetStatus"); status.Code(err) != codes.FailedPrecondition {
+	if err := s.guard(verified, "/eggbox.agent.v1.Agent/GetStatus"); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("no version: %v", err)
 	}
 }

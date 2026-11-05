@@ -8,9 +8,9 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/brand"
-	"github.com/jtsang4/sing-box-ui/internal/brandart"
-	"github.com/jtsang4/sing-box-ui/internal/gui"
+	"eggbox/internal/brand"
+	"eggbox/internal/brandart"
+	"eggbox/internal/gui"
 )
 
 // The tray icon says whether the proxy is up; a click opens the panel, a right

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/subscription"
 )
 
 // RefreshOptions tune a refresh.

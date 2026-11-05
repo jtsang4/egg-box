@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/app"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/app"
 )
 
 // shot is a screen to photograph, reached the way a person would reach it:
@@ -83,7 +83,7 @@ var shots = []shot{
 	{name: "zh-failed-dashboard", lang: "zh", setup: failedConnection},
 }
 
-// TestShots renders the screens in both themes; with SBUI_SHOTS set the
+// TestShots renders the screens in both themes; with EGGBOX_SHOTS set the
 // images are written for review.
 func TestShots(t *testing.T) {
 	if testing.Short() {

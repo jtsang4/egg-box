@@ -17,9 +17,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/ledger"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform"
-	"github.com/jtsang4/sing-box-ui/internal/agent/routecheck"
+	"eggbox/internal/agent/ledger"
+	"eggbox/internal/agent/platform"
+	"eggbox/internal/agent/routecheck"
 )
 
 // Options configures a simulated platform.

@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/subscription"
 )
 
 // Resource is a file the configuration references as "res:<Name>".

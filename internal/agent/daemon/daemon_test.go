@@ -5,16 +5,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine/fake"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform/sim"
-	"github.com/jtsang4/sing-box-ui/internal/agent/policy"
-	"github.com/jtsang4/sing-box-ui/internal/agent/store"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
-	"github.com/jtsang4/sing-box-ui/internal/macsys"
+	"eggbox/internal/agent/engine/fake"
+	"eggbox/internal/agent/platform/sim"
+	"eggbox/internal/agent/policy"
+	"eggbox/internal/agent/store"
+	"eggbox/internal/brand"
+	"eggbox/internal/macsys"
 )
 
 func cfg(dir string) Config {
@@ -52,7 +53,7 @@ func TestBuildCreatesPrivateDirectoriesAndALogFile(t *testing.T) {
 	defer d.Shutdown(context.Background())
 	for _, sub := range []string{"", "core", "logs"} {
 		st, err := os.Stat(filepath.Join(dir, sub))
-		if err != nil || !st.IsDir() || st.Mode().Perm()&0o077 != 0 {
+		if err != nil || !st.IsDir() || (runtime.GOOS != "windows" && st.Mode().Perm()&0o077 != 0) {
 			t.Fatalf("%q: %v %v", sub, st, err)
 		}
 	}

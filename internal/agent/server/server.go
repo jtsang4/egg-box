@@ -20,12 +20,12 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/controller"
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine"
-	"github.com/jtsang4/sing-box-ui/internal/agent/loghub"
-	"github.com/jtsang4/sing-box-ui/internal/agent/store"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
+	"eggbox/internal/agent/controller"
+	"eggbox/internal/agent/engine"
+	"eggbox/internal/agent/loghub"
+	"eggbox/internal/agent/store"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/brand"
 )
 
 // maxLogReplay bounds how many buffered log lines one call may ask for.

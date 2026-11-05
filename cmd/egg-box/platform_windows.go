@@ -12,10 +12,10 @@ import (
 
 	"github.com/Microsoft/go-winio"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/boot"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
-	"github.com/jtsang4/sing-box-ui/internal/winsys"
+	"eggbox/internal/app"
+	"eggbox/internal/boot"
+	"eggbox/internal/brand"
+	"eggbox/internal/winsys"
 )
 
 // installedServices wires the application to the Windows service: it reaches

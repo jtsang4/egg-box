@@ -23,9 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
-	"github.com/jtsang4/sing-box-ui/internal/fsutil"
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/configgen"
+	"eggbox/internal/fsutil"
+	"eggbox/internal/subscription"
 )
 
 // Kind says where a subscription's nodes come from.

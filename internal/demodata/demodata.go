@@ -18,9 +18,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
-	"github.com/jtsang4/sing-box-ui/internal/library"
-	"github.com/jtsang4/sing-box-ui/internal/ruledata"
+	"eggbox/internal/configgen"
+	"eggbox/internal/library"
+	"eggbox/internal/ruledata"
 )
 
 // Hosts the invented world answers for.

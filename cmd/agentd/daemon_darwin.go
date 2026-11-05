@@ -12,15 +12,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/daemon"
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine/singbox"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform/macplat"
-	"github.com/jtsang4/sing-box-ui/internal/agent/policy"
-	"github.com/jtsang4/sing-box-ui/internal/agent/server"
-	"github.com/jtsang4/sing-box-ui/internal/agent/transport"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
-	"github.com/jtsang4/sing-box-ui/internal/macsys"
-	"github.com/jtsang4/sing-box-ui/internal/version"
+	"eggbox/internal/agent/daemon"
+	"eggbox/internal/agent/engine/singbox"
+	"eggbox/internal/agent/platform/macplat"
+	"eggbox/internal/agent/policy"
+	"eggbox/internal/agent/server"
+	"eggbox/internal/agent/transport"
+	"eggbox/internal/brand"
+	"eggbox/internal/macsys"
+	"eggbox/internal/version"
 )
 
 // runDaemon is the service: launchd starts it, as root, when the application

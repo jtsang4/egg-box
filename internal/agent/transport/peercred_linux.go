@@ -1,4 +1,4 @@
-//go:build sbui_dev && linux
+//go:build eggbox_dev && linux
 
 package transport
 

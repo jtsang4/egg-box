@@ -18,7 +18,7 @@ concurrency:
 env:
   # What the release is built with; the same tags are checked here so that a
   # change that only breaks the release build is found before the release.
-  SBUI_TAGS: with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_clash_api,badlinkname
+  EGGBOX_TAGS: with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_clash_api,badlinkname
 
 jobs:
   # Everything that does not depend on the operating system, and the checks of
@@ -71,14 +71,14 @@ jobs:
           go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
           for target in linux/amd64 darwin/arm64 windows/amd64; do
             echo "== $target"
-            CGO_ENABLED=0 GOOS="${target%/*}" GOARCH="${target#*/}" staticcheck -tags "$SBUI_TAGS" ./...
+            CGO_ENABLED=0 GOOS="${target%/*}" GOARCH="${target#*/}" staticcheck -tags "$EGGBOX_TAGS" ./...
           done
 
       - name: Vet
         run: |
           go vet ./...
-          go vet -tags "$SBUI_TAGS" ./...
-          go vet -tags "sbui_dev,$SBUI_TAGS" ./...
+          go vet -tags "$EGGBOX_TAGS" ./...
+          go vet -tags "eggbox_dev,$EGGBOX_TAGS" ./...
           go tool mygo vet
 
       # The interface tests draw whole screens, which is slow under the race
@@ -92,12 +92,12 @@ jobs:
       # The development agent (a simulated platform, a loopback proxy where the
       # TUN would be) runs here with the real core, from the application's
       # service to a connection through it. It never touches the network of the
-      # machine it runs on, and it is only built with the sbui_dev tag.
+      # machine it runs on, and it is only built with the eggbox_dev tag.
       #
       # The generator's tests are here too: with every protocol compiled in, the
       # real core checks what it makes for QUIC, WireGuard and REALITY nodes.
       - name: Tests with the real engine
-        run: go test -count=1 -tags "sbui_dev,$SBUI_TAGS" ./internal/agent/engine/... ./internal/agent/e2e/... ./internal/configgen/...
+        run: go test -count=1 -tags "eggbox_dev,$EGGBOX_TAGS" ./internal/agent/engine/... ./internal/agent/e2e/... ./internal/configgen/...
 
   # What a root service is built from must not carry a known vulnerability that
   # its code reaches. A new advisory can fail this without a change here, which
@@ -110,7 +110,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Known vulnerabilities in the code and what it calls
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest -tags "$SBUI_TAGS" ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest -tags "$EGGBOX_TAGS" ./...
 
   # The platform layers run for real on their own platform.
   macos:
@@ -168,7 +168,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           export GOOS="${{ matrix.target }}"; export GOARCH="${GOOS#*/}"; export GOOS="${GOOS%/*}"
-          go build -trimpath -tags "$SBUI_TAGS" ./...
+          go build -trimpath -tags "$EGGBOX_TAGS" ./...
           # The development tag must not break a platform that has no
           # development agent: it compiles there as a release build.
-          go vet -tags "sbui_dev,$SBUI_TAGS" ./...
+          go vet -tags "eggbox_dev,$EGGBOX_TAGS" ./...

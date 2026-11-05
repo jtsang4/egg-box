@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/fsutil"
+	"eggbox/internal/fsutil"
 )
 
 // Settings are the agent-side preferences. Start-at-boot of the service and

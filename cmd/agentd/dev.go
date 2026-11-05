@@ -1,4 +1,4 @@
-//go:build sbui_dev && (darwin || linux)
+//go:build eggbox_dev && (darwin || linux)
 
 package main
 
@@ -12,14 +12,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/controller"
-	"github.com/jtsang4/sing-box-ui/internal/agent/daemon"
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine/singbox"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform/sim"
-	"github.com/jtsang4/sing-box-ui/internal/agent/policy"
-	"github.com/jtsang4/sing-box-ui/internal/agent/server"
-	"github.com/jtsang4/sing-box-ui/internal/agent/transport"
-	"github.com/jtsang4/sing-box-ui/internal/version"
+	"eggbox/internal/agent/controller"
+	"eggbox/internal/agent/daemon"
+	"eggbox/internal/agent/engine/singbox"
+	"eggbox/internal/agent/platform/sim"
+	"eggbox/internal/agent/policy"
+	"eggbox/internal/agent/server"
+	"eggbox/internal/agent/transport"
+	"eggbox/internal/version"
 )
 
 const devUsage = "  dev          run the development agent: simulated OS, loopback proxy instead of a TUN\n"

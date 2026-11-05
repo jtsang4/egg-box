@@ -15,10 +15,10 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/ledger"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform"
-	"github.com/jtsang4/sing-box-ui/internal/agent/routecheck"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
+	"eggbox/internal/agent/ledger"
+	"eggbox/internal/agent/platform"
+	"eggbox/internal/agent/routecheck"
+	"eggbox/internal/brand"
 )
 
 const (

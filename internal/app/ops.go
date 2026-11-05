@@ -8,12 +8,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
-	"github.com/jtsang4/sing-box-ui/internal/library"
-	"github.com/jtsang4/sing-box-ui/internal/redact"
-	"github.com/jtsang4/sing-box-ui/internal/ruledata"
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/configgen"
+	"eggbox/internal/library"
+	"eggbox/internal/redact"
+	"eggbox/internal/ruledata"
+	"eggbox/internal/subscription"
 )
 
 // ---------------------------------------------------------------- runtime ops
@@ -457,7 +457,7 @@ func (s *Service) ExportDiagnostics(ctx context.Context) (filename string, data 
 		}
 	}
 	if filename == "" {
-		filename = "sing-box-ui-diagnostics-" + s.cfg.Clock().Format("20060102-150405") + ".json"
+		filename = "egg-box-diagnostics-" + s.cfg.Clock().Format("20060102-150405") + ".json"
 	}
 	raw, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {

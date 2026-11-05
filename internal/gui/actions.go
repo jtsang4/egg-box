@@ -5,8 +5,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
+	"eggbox/internal/app"
+	"eggbox/internal/configgen"
 )
 
 // toggleConnection connects or disconnects, as the orb and the buttons do.

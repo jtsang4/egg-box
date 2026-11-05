@@ -11,8 +11,8 @@ import (
 	"github.com/Microsoft/go-winio"
 	"golang.org/x/sys/windows"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/server"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
+	"eggbox/internal/agent/server"
+	"eggbox/internal/brand"
 )
 
 // PipeConfig says how the agent's pipe is guarded.

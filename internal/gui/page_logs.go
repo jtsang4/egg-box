@@ -7,7 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
+	"eggbox/internal/app"
 )
 
 // logsState is what the log page remembers.
@@ -121,7 +121,7 @@ func (a *App) logActions(c *ui.Context, lines []app.LogLine) {
 	if a.opt.SaveFile != nil {
 		if a.btn(c, btnSpec{kind: btnSecondary, icon: "download", iconOnly: true, tip: a.t("logs.export"), disabled: len(lines) == 0}).Clicked() {
 			text := a.logText(lines)
-			name := "sing-box-ui-" + a.now.Format("20060102-150405") + ".log"
+			name := "egg-box-" + a.now.Format("20060102-150405") + ".log"
 			if path, err := a.opt.SaveFile(name, []byte(text)); err != nil {
 				a.fail(err)
 			} else if path != "" {

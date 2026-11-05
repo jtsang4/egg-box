@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/jtsang4/sing-box-ui/internal/fsutil"
+	"eggbox/internal/fsutil"
 )
 
 // ErrNoSecret means nothing is stored under the key.

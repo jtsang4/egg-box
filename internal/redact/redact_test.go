@@ -74,8 +74,8 @@ func TestFileNamesAndLocalhostAreNotHostNames(t *testing.T) {
 }
 
 func TestKeptIdentifiersSurvive(t *testing.T) {
-	r := New("me.jtsang.singboxui")
-	in := "service me.jtsang.singboxui.agent registered, pipe me.jtsang.singboxui.agent"
+	r := New("org.eggbox.app")
+	in := "service org.eggbox.app.agent registered, pipe org.eggbox.app.agent"
 	if got := r.String(in); got != in {
 		t.Fatalf("got %q", got)
 	}
@@ -127,9 +127,9 @@ func TestLongTokensNeedDigitsAndLetters(t *testing.T) {
 func TestAccountNamesInPaths(t *testing.T) {
 	r := New()
 	cases := map[string]string{
-		"/Users/jtsang/Library/Application Support/x":   "/Users/user/Library/Application Support/x",
-		`C:\Users\Jtsang\AppData\Local\x`:               `C:\Users\user\AppData\Local\x`,
-		`"C:\\Users\\Jtsang\\AppData"`:                  `"C:\\Users\\user\\AppData"`,
+		"/Users/alex/Library/Application Support/x":     "/Users/user/Library/Application Support/x",
+		`C:\Users\Alex\AppData\Local\x`:                 `C:\Users\user\AppData\Local\x`,
+		`"C:\\Users\\Alex\\AppData"`:                    `"C:\\Users\\user\\AppData"`,
 		"/home/alice/.config and /home/bob/.cache":      "/home/user/.config and /home/user/.cache",
 		"/var/root/Library is not a user path, kept ok": "/var/root/Library is not a user path, kept ok",
 	}
@@ -150,14 +150,14 @@ func TestJSONRedactsCredentialKeysAndKeepsStructure(t *testing.T) {
 	    {"type": "shadowsocks", "tag": "us", "server": "203.0.113.9", "server_port": 8388, "password": "hunter2"},
 	    {"type": "direct", "tag": "direct"}
 	  ],
-	  "route": {"final": "direct", "rule_set": [{"tag": "cn", "path": "/Users/jtsang/x/cn.srs"}]}
+	  "route": {"final": "direct", "rule_set": [{"tag": "cn", "path": "/Users/alex/x/cn.srs"}]}
 	}`
 	out, err := New().JSON([]byte(in))
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(out)
-	for _, leak := range []string{"hk.example.com", "cdn.example.com", "203.0.113.9", "hunter2", "b8f8c3f4", "AAAA", "ab12", "jtsang"} {
+	for _, leak := range []string{"hk.example.com", "cdn.example.com", "203.0.113.9", "hunter2", "b8f8c3f4", "AAAA", "ab12", "alex"} {
 		if strings.Contains(s, leak) {
 			t.Errorf("%q leaked:\n%s", leak, s)
 		}

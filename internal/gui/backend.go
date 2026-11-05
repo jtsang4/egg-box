@@ -3,10 +3,10 @@ package gui
 import (
 	"context"
 
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
-	"github.com/jtsang4/sing-box-ui/internal/library"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/app"
+	"eggbox/internal/configgen"
+	"eggbox/internal/library"
 )
 
 // Backend is what the interface needs from the application layer. It is

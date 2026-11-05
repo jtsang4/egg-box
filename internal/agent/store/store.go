@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/fsutil"
+	"eggbox/internal/fsutil"
 )
 
 // Limits protect the agent from absurd inputs coming from the (unprivileged) GUI.

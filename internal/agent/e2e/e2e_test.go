@@ -1,4 +1,4 @@
-//go:build sbui_dev && (darwin || linux)
+//go:build eggbox_dev && (darwin || linux)
 
 // Package e2e runs the whole agent stack the way the development agent does:
 // the real controller, policy and sing-box core, a simulated operating system,
@@ -21,14 +21,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/daemon"
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine/singbox"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform/sim"
-	"github.com/jtsang4/sing-box-ui/internal/agent/policy"
-	"github.com/jtsang4/sing-box-ui/internal/agent/server"
-	"github.com/jtsang4/sing-box-ui/internal/agent/transport"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/agentclient"
+	"eggbox/internal/agent/daemon"
+	"eggbox/internal/agent/engine/singbox"
+	"eggbox/internal/agent/platform/sim"
+	"eggbox/internal/agent/policy"
+	"eggbox/internal/agent/server"
+	"eggbox/internal/agent/transport"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/agentclient"
 )
 
 type stack struct {
@@ -46,7 +46,7 @@ func start(t *testing.T) *stack {
 	if os.Geteuid() == 0 {
 		t.Skip("the development agent never runs as root")
 	}
-	dir, err := os.MkdirTemp("/tmp", "sbui")
+	dir, err := os.MkdirTemp("/tmp", "eggbox")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestHotApplySwitchesTheRunningConfiguration(t *testing.T) {
 }
 
 func TestStateSurvivesAnAgentRestart(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "sbui")
+	dir, err := os.MkdirTemp("/tmp", "eggbox")
 	if err != nil {
 		t.Fatal(err)
 	}

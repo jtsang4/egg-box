@@ -4,7 +4,7 @@ import (
 	"net/netip"
 	"sort"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/routecheck"
+	"eggbox/internal/agent/routecheck"
 )
 
 // Adapter is one network adapter as read from the system.

@@ -10,11 +10,11 @@ import (
 	"os"
 	"sync"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/brand"
-	"github.com/jtsang4/sing-box-ui/internal/darwin/bridge"
-	"github.com/jtsang4/sing-box-ui/internal/darwin/service"
-	"github.com/jtsang4/sing-box-ui/internal/macsys"
+	"eggbox/internal/app"
+	"eggbox/internal/brand"
+	"eggbox/internal/darwin/bridge"
+	"eggbox/internal/darwin/service"
+	"eggbox/internal/macsys"
 )
 
 // installedServices wires the application to the macOS service. The bridge

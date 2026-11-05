@@ -9,7 +9,7 @@ package winplat
 import (
 	"strings"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/routecheck"
+	"eggbox/internal/agent/routecheck"
 )
 
 // The interface types Windows reports (IANAifType).

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/store"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
+	"eggbox/internal/agent/store"
+	"eggbox/internal/agentapi"
 )
 
 func noResume(o *hopts) { o.settings = func(s *store.Settings) { s.ResumeAfterCrash = false } }

@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/store"
+	"eggbox/internal/agent/store"
 )
 
 func jsonNumber(s string) json.Number { return json.Number(s) }

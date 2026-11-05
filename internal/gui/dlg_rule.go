@@ -7,7 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/jtsang4/sing-box-ui/internal/configgen"
+	"eggbox/internal/configgen"
 )
 
 // ruleKinds are the kinds of custom rule the dialog offers.

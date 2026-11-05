@@ -1,4 +1,4 @@
-//go:build sbui_dev && (darwin || linux)
+//go:build eggbox_dev && (darwin || linux)
 
 package e2e
 
@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/agent/daemon"
-	"github.com/jtsang4/sing-box-ui/internal/agent/engine/singbox"
-	"github.com/jtsang4/sing-box-ui/internal/agent/platform/sim"
-	"github.com/jtsang4/sing-box-ui/internal/agent/policy"
-	"github.com/jtsang4/sing-box-ui/internal/agent/server"
-	"github.com/jtsang4/sing-box-ui/internal/agent/transport"
-	"github.com/jtsang4/sing-box-ui/internal/agentapi"
-	"github.com/jtsang4/sing-box-ui/internal/agentclient"
+	"eggbox/internal/agent/daemon"
+	"eggbox/internal/agent/engine/singbox"
+	"eggbox/internal/agent/platform/sim"
+	"eggbox/internal/agent/policy"
+	"eggbox/internal/agent/server"
+	"eggbox/internal/agent/transport"
+	"eggbox/internal/agentapi"
+	"eggbox/internal/agentclient"
 )
 
 // version starts an agent over the folder a previous one used, the way the
@@ -94,7 +94,7 @@ func TestAnUpgradeBringsTheConnectionBackAndAPlainRestartDoesNot(t *testing.T) {
 		{"the service is simply restarted", false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			dir, err := os.MkdirTemp("/tmp", "sbui")
+			dir, err := os.MkdirTemp("/tmp", "eggbox")
 			if err != nil {
 				t.Fatal(err)
 			}

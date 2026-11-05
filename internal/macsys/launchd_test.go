@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/brand"
+	"eggbox/internal/brand"
 )
 
 // value is one plist value: a string, a number, a boolean, a list or a dict.

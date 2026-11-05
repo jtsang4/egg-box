@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
-    <title>Sing-Box UI</title>
+    <title>EggBox</title>
     <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
     <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
     <os-version min="13.0"/>
     <choices-outline>
         <line choice="default">
-            <line choice="me.jtsang.singboxui.pkg"/>
+            <line choice="org.eggbox.app.pkg"/>
         </line>
     </choices-outline>
     <choice id="default"/>
-    <choice id="me.jtsang.singboxui.pkg" visible="false">
-        <pkg-ref id="me.jtsang.singboxui.pkg"/>
+    <choice id="org.eggbox.app.pkg" visible="false">
+        <pkg-ref id="org.eggbox.app.pkg"/>
     </choice>
-    <pkg-ref id="me.jtsang.singboxui.pkg" version="@VERSION@" onConclusion="none">component.pkg</pkg-ref>
+    <pkg-ref id="org.eggbox.app.pkg" version="@VERSION@" onConclusion="none">component.pkg</pkg-ref>
 </installer-gui-script>

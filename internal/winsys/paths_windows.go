@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"github.com/jtsang4/sing-box-ui/internal/brand"
+	"eggbox/internal/brand"
 )
 
 // DataDir is where the service keeps its state: under ProgramData, which the

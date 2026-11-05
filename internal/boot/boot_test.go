@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jtsang4/sing-box-ui/internal/app"
-	"github.com/jtsang4/sing-box-ui/internal/boot"
-	"github.com/jtsang4/sing-box-ui/internal/library"
-	"github.com/jtsang4/sing-box-ui/internal/subscription"
+	"eggbox/internal/app"
+	"eggbox/internal/boot"
+	"eggbox/internal/library"
+	"eggbox/internal/subscription"
 )
 
 func within(t *testing.T, what string, ok func() bool) {

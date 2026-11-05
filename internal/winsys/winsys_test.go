@@ -68,14 +68,14 @@ func TestSessionTrackerIgnoresUnreadableSessions(t *testing.T) {
 func TestUnderAny(t *testing.T) {
 	dirs := []string{`C:\Program Files`, `C:\Program Files (x86)`, ""}
 	for path, want := range map[string]bool{
-		`C:\Program Files\Sing-Box UI\agentd.exe`:     true,
-		`c:\program files\sing-box ui\agentd.exe`:     true,
-		`C:\Program Files (x86)\X\agentd.exe`:         true,
-		`C:\Program Files`:                            false, // the directory itself
-		`C:\Program Files Evil\agentd.exe`:            false, // a sibling with the same prefix
-		`C:\Users\me\Downloads\agentd.exe`:            false,
-		`C:\Program Files\..\Users\me\agentd.exe`:     false,
-		`C:\Program Files\Sing-Box UI\..\..\evil.exe`: false,
+		`C:\Program Files\EggBox\agentd.exe`:      true,
+		`c:\program files\eggbox\agentd.exe`:      true,
+		`C:\Program Files (x86)\X\agentd.exe`:     true,
+		`C:\Program Files`:                        false, // the directory itself
+		`C:\Program Files Evil\agentd.exe`:        false, // a sibling with the same prefix
+		`C:\Users\me\Downloads\agentd.exe`:        false,
+		`C:\Program Files\..\Users\me\agentd.exe`: false,
+		`C:\Program Files\EggBox\..\..\evil.exe`:  false,
 	} {
 		if got := UnderAny(path, dirs); got != want {
 			t.Errorf("UnderAny(%q) = %v, want %v", path, got, want)
