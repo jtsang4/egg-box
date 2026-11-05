@@ -79,3 +79,23 @@ func TestLiveDataDoesNotKeepAnimating(t *testing.T) {
 		})
 	}
 }
+
+// TestConnectedScreensRest: with animations on, the dashboard and the tray
+// panel of a working connection come to rest; only the spinning arc of a
+// connection being made keeps moving (the control case, which proves the
+// check can fail).
+func TestConnectedScreensRest(t *testing.T) {
+	for _, panel := range []bool{false, true} {
+		h := newHarness(t, harnessOpt{panel: panel, motion: true, scale: 0.5})
+		if h.ui.FramePending() {
+			t.Fatalf("panel=%v: a connected screen keeps animating", panel)
+		}
+		s := *h.be.Snapshot()
+		s.Phase = app.PhaseConnecting
+		h.be.set_(&s)
+		h.settle()
+		if !h.ui.FramePending() {
+			t.Fatalf("panel=%v: the connecting arc stopped moving", panel)
+		}
+	}
+}

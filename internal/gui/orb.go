@@ -67,17 +67,13 @@ func (a *App) orb(c *ui.Context, size float32) ui.Element {
 	motion := !c.Preferences().ReduceMotion
 
 	b.Draw(func(pt *ui.Painter, r ui.Rect) {
-		// The halo breathes and the rings drift slowly: that looks the same at
-		// half the display's rate for half of the power, which a window that
-		// sits open all day should not waste. Only the spinning arc, which
-		// turns fast, asks for the smoother frames.
+		// Only the spinning arc moves, while a connection is being made or
+		// taken down: it says that something is happening. A connected orb is
+		// at rest (the halo, rings and ring keep their pose), because a window
+		// that sits open all day must not redraw for decoration.
 		t := 0.0
-		if motion {
-			if spin > 0.01 {
-				pt.AnimationFrameRate(60)
-			} else {
-				pt.AnimationFrameRate(30)
-			}
+		if motion && spin > 0.01 {
+			pt.AnimationFrameRate(60)
 			t = float64(pt.Now().UnixMilli()) / 1000
 		}
 		cx, cy := r.X+r.W/2, r.Y+r.H/2

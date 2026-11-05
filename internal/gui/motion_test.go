@@ -10,14 +10,17 @@ import (
 	"eggbox/internal/app"
 )
 
+// TestMotionPreferences: only progress moves (the arc of a connection being
+// made), and only while the desktop allows motion; screens at rest stay still.
 func TestMotionPreferences(t *testing.T) {
 	for _, state := range []struct {
-		name  string
-		setup func(*fixtureBackend, *Options)
+		name   string
+		setup  func(*fixtureBackend, *Options)
+		moving bool
 	}{
-		{"connected", nil},
-		{"connecting", func(be *fixtureBackend, _ *Options) { be.snap.Phase = app.PhaseConnecting }},
-		{"welcome", introduction},
+		{"connected", nil, false},
+		{"connecting", connecting, true},
+		{"welcome", introduction, false},
 	} {
 		for _, motion := range []bool{false, true} {
 			name := state.name + "/reduced"
@@ -29,7 +32,7 @@ func TestMotionPreferences(t *testing.T) {
 				before := bytes.Clone(h.ui.Image().Pix)
 				h.ui.Advance(200 * time.Millisecond)
 				changed := !bytes.Equal(before, h.ui.Image().Pix)
-				if changed != motion {
+				if changed != (motion && state.moving) {
 					t.Fatalf("image changed=%v with motion=%v", changed, motion)
 				}
 			})
@@ -56,8 +59,10 @@ func TestAnimatedInteractions(t *testing.T) {
 	h.mustHave("PROTECTED", "Disconnect")
 }
 
+func connecting(be *fixtureBackend, _ *Options) { be.snap.Phase = app.PhaseConnecting }
+
 func TestMotionPreferenceChangesWhileOpen(t *testing.T) {
-	h := newHarness(t, harnessOpt{motion: true, scale: 0.5})
+	h := newHarness(t, harnessOpt{motion: true, scale: 0.5, setup: connecting})
 	for _, reduce := range []bool{true, false} {
 		h.ui.SetPreferences(ui.Preferences{ReduceMotion: reduce, TextScale: 1})
 		h.settle()
