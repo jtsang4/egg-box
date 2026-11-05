@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"eggbox/internal/planimport"
 	"eggbox/internal/subscription"
 )
 
@@ -28,6 +29,8 @@ type RefreshResult struct {
 	Added, Removed int
 	NodeCount      int
 	Skipped        []subscription.Skipped
+	// Plan says what became of the routing the subscription came with.
+	Plan PlanSync
 }
 
 // Refresh downloads a remote subscription and replaces its nodes. Failures
@@ -112,10 +115,18 @@ func (l *Library) Refresh(ctx context.Context, id string, opts RefreshOptions) (
 	if err != nil {
 		return nil, err
 	}
-	return &RefreshResult{
+	out := &RefreshResult{
 		Changed: added+removed > 0, Added: added, Removed: removed,
 		NodeCount: len(res.Nodes), Skipped: res.Skipped,
-	}, nil
+	}
+	// A subscription without routing keeps the plan it had: a provider that
+	// stops sending rules should not take the person's routing with it.
+	if imp, ierr := planimport.Import(fetched.Body, planimport.Options{SubID: id}); ierr == nil {
+		if out.Plan, err = l.SyncPlan(id, imp); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 func applyResult(s *Subscription, res *subscription.Result, now time.Time) {

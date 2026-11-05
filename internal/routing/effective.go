@@ -733,3 +733,24 @@ func (d Dest) String() string {
 	}
 	return string(d.Kind)
 }
+
+// Customized reports whether the person has chosen anything of their own yet:
+// an exception, a plan of their own, a main exit other than the automatic one,
+// or a change laid over a plan. A subscription's plan is only adopted for them
+// while this is false.
+func (s *State) Customized() bool {
+	if len(s.Exceptions) > 0 || s.Main.Kind != DestAuto {
+		return true
+	}
+	for _, p := range s.Plans {
+		if p.Kind == PlanMine {
+			return true
+		}
+	}
+	for _, o := range s.Overlays {
+		if o != nil && (len(o.Dest) > 0 || len(o.Enabled) > 0 || len(o.Items) > 0 || o.Fallback != nil) {
+			return true
+		}
+	}
+	return false
+}
