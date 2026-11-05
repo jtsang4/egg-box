@@ -181,7 +181,7 @@ func (a *App) panelTraffic(c *ui.Context) {
 						a.eyebrow(c, a.t(it.key))
 					})
 					ui.Row(c).Gap(4).AlignItems(ui.Baseline).Children(func() {
-						a.number(c, num, 22, p.Text).ContentTransition(rolling)
+						a.number(c, num, 22, p.Text)
 						a.txt(c, unit, 12, 500, p.Text3).SingleLine()
 					})
 				})

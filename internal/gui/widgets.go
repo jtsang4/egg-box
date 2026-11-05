@@ -66,15 +66,10 @@ func (a *App) caption(c *ui.Context, s string) ui.Element {
 	return a.txt(c, s, 12, 400, a.pl.Text3)
 }
 
-// number is a figure in tabular numerals.
-// rolling is how a live figure changes: the digits that differ roll over
-// quickly, so that a number updated every second is at rest almost all of the
-// time instead of always being half way between two values.
-var rolling = ui.ContentTransition{
-	Numeric:   true,
-	Animation: &ui.Animation{Spring: ui.SpringOptions{Duration: 180 * time.Millisecond}},
-}
-
+// number is a figure in tabular numerals. Live figures change in place: an
+// animated change on every data tick would keep the whole window redrawing at
+// the display's rate (TestLiveDataDoesNotKeepAnimating), and the fixed-width
+// digits already keep a changing number from jittering.
 func (a *App) number(c *ui.Context, s string, size float32, col ui.Color) ui.Element {
 	return a.txt(c, s, size, 650, col).FontFeatures("tnum").LetterSpacing(-0.4).SingleLine()
 }

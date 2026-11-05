@@ -271,7 +271,7 @@ func (a *App) heroSpeeds(c *ui.Context) {
 					a.eyebrow(c, a.t(it.key))
 				})
 				ui.Row(c).Gap(5).AlignItems(ui.Baseline).Children(func() {
-					a.number(c, num, 32, p.Text).ContentTransition(rolling)
+					a.number(c, num, 32, p.Text)
 					a.txt(c, unit, 13, 500, p.Text3).SingleLine()
 				})
 			})
@@ -374,7 +374,7 @@ func (a *App) statTile(c *ui.Context, iconName string, t tone, label, value, uni
 			if value == "—" {
 				col = p.Text3
 			}
-			a.number(c, value, 28, col).ContentTransition(rolling)
+			a.number(c, value, 28, col)
 			if unit != "" {
 				a.txt(c, unit, 13, 500, p.Text3).SingleLine()
 			}
