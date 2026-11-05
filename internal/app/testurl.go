@@ -147,7 +147,13 @@ func (s *Service) TestURL(ctx context.Context, raw string) (*TestURLResult, erro
 		}
 		rctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 		defer cancel()
-		addrs, err := net.DefaultResolver.LookupNetIP(rctx, "ip", t.host)
+		lookup := s.cfg.Resolve
+		if lookup == nil {
+			lookup = func(ctx context.Context, host string) ([]netip.Addr, error) {
+				return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+			}
+		}
+		addrs, err := lookup(rctx, t.host)
 		res.Resolved = true
 		if err != nil || len(addrs) == 0 {
 			res.ResolveErr = "no answer"

@@ -146,7 +146,7 @@ func TestRealSubscriptionEveryNodeWorksInTheSandbox(t *testing.T) {
 				lastClass = "select: " + realsub.Class(err)
 				continue
 			}
-			until(t, "the node is selected", 10*time.Second, func() bool { return svc.SelectedTag() == n.tag })
+			until(t, "the node is selected", 10*time.Second, func() bool { return selected(svc, configgen.TagProxy) == n.tag })
 			at := time.Now()
 			code, err := viaSandbox(port, probeURL)
 			elapsed := time.Since(at)

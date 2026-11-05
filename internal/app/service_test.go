@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strings"
@@ -116,6 +117,35 @@ type harness struct {
 	rules *ruleServer
 	data  *ruledata.Manager
 	clock *clock
+	dns   *names
+}
+
+// names is what the test URL dialog's lookups find: nothing resolves unless a
+// test says it does, so no name ever leaves the machine.
+type names struct {
+	mu sync.Mutex
+	m  map[string][]netip.Addr
+}
+
+func (n *names) set(host string, addrs ...string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.m == nil {
+		n.m = map[string][]netip.Addr{}
+	}
+	n.m[host] = nil
+	for _, a := range addrs {
+		n.m[host] = append(n.m[host], netip.MustParseAddr(a))
+	}
+}
+
+func (n *names) lookup(_ context.Context, host string) ([]netip.Addr, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if a := n.m[host]; len(a) > 0 {
+		return append([]netip.Addr(nil), a...), nil
+	}
+	return nil, errors.New("no such host")
 }
 
 // clock is the time the service and the rule data share in tests: the real
@@ -261,8 +291,10 @@ func newHarnessWith(t *testing.T, mutate func(*app.Config), prepare func(*ruleSe
 	if prepare != nil {
 		prepare(rs)
 	}
+	dns := &names{}
 	cfg := app.Config{
 		Library: lib, Rules: rules, Agent: client, Version: "test", HTTPClient: prov.srv.Client(), Clock: clk.Now,
+		Resolve: dns.lookup,
 		// Never the public mirrors: tests must not reach the Internet.
 		Mirrors: func(string, string) []ruledata.Mirror { return []ruledata.Mirror{mirror} },
 	}
@@ -274,7 +306,7 @@ func newHarnessWith(t *testing.T, mutate func(*app.Config), prepare func(*ruleSe
 	svc.Run(ctx)
 	t.Cleanup(func() { cancel(); svc.Close() })
 
-	h := &harness{t: t, svc: svc, lib: lib, agent: agent, net: fl, prov: prov, rules: rs, data: rules, clock: clk}
+	h := &harness{t: t, svc: svc, lib: lib, agent: agent, net: fl, prov: prov, rules: rs, data: rules, clock: clk, dns: dns}
 	h.waitFor("the link to become ready", func(s *app.Snapshot) bool { return s.Link.Ready() && s.Status != nil })
 	return h
 }

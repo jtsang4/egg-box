@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/netip"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -49,6 +50,9 @@ type Config struct {
 	// runs. Nil uses the public mirrors; tests and offline builds supply their
 	// own.
 	Mirrors func(setting, prefix string) []ruledata.Mirror
+	// Resolve looks a host name up for the test URL dialog; nil asks the
+	// system. Tests supply their own so that no name leaves the machine.
+	Resolve func(ctx context.Context, host string) ([]netip.Addr, error)
 }
 
 // Service is safe for concurrent use.

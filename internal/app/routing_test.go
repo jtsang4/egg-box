@@ -352,6 +352,37 @@ func TestAScheduledRefreshThatOnlyChangesThePlanReachesTheCore(t *testing.T) {
 
 // ---------------------------------------------------- where would it go?
 
+// A name no item lists is looked up, and where it leads can decide: the
+// address part of an item (a service's published ranges) comes after every
+// name in the plan, and a name nobody can look up falls to the fallback.
+func TestAnAddressTheNameLeadsToDecidesWhenNoNameDoes(t *testing.T) {
+	h := newHarness(t, nil)
+	h.addSubscription()
+	h.waitPlan("the built-in plan's rule files", func(p app.PlanInfo) bool { return len(p.Items) == 12 && p.Missing == 0 })
+
+	inside := func(set string) string { return netip.MustParsePrefix(cidrOf(set)).Addr().Next().Next().String() }
+	h.dns.set("video.unlisted.example", inside("netflix"))
+	h.dns.set("elsewhere.unlisted.example", "198.51.100.9")
+	h.dns.set("both.unlisted.example", inside("google"), inside("netflix")) // streaming comes before Google in the plan
+
+	res := h.testURL("https://video.unlisted.example/", func(r *app.TestURLResult) bool { return r.Why.ID == "b-streaming" })
+	if !res.Resolved || res.ResolveErr != "" || len(res.Addrs) != 1 || res.Addrs[0].String() != inside("netflix") || res.Source == nil {
+		t.Errorf("a name that leads into an item's addresses: %+v", res)
+	}
+	res = h.testURL("elsewhere.unlisted.example", func(r *app.TestURLResult) bool { return r.Why.Kind == app.WhyFallback })
+	if !res.Resolved || res.ResolveErr != "" || len(res.Addrs) != 1 || res.Source != nil {
+		t.Errorf("a name that leads nowhere in the plan: %+v", res)
+	}
+	res = h.testURL("both.unlisted.example", func(r *app.TestURLResult) bool { return r.Why.Kind == app.WhyItem })
+	if res.Why.ID != "b-streaming" || len(res.Addrs) != 2 {
+		t.Errorf("the item earlier in the plan decides, whatever the order of the addresses: %+v", res)
+	}
+	res = h.testURL("nobody-knows.unlisted.example", func(r *app.TestURLResult) bool { return r.Why.Kind == app.WhyFallback })
+	if !res.Resolved || res.ResolveErr != "no answer" || len(res.Addrs) != 0 {
+		t.Errorf("a name nobody can look up says so and falls back: %+v", res)
+	}
+}
+
 func TestTestURLEvaluatesThePlanTheWayTheCoreDoes(t *testing.T) {
 	h := newHarness(t, nil)
 	h.addSubscription()

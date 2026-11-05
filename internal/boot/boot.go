@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"sync"
@@ -70,6 +71,9 @@ type Config struct {
 	// HTTPClient downloads subscriptions and rule data; nil uses the default
 	// clients. Demo mode brings its own, which only knows the invented world.
 	HTTPClient *http.Client
+	// Resolve looks a name up for the dialog that says where an address
+	// would go; nil asks the system. Tests supply their own.
+	Resolve func(ctx context.Context, host string) ([]netip.Addr, error)
 	// Authorize asks the system to allow the privileged service (Installed).
 	Authorize func(ctx context.Context) error
 	// ServiceStartup reads and changes the service's start with the computer.
@@ -254,7 +258,7 @@ func Start(ctx context.Context, cfg Config) (*Runtime, error) {
 
 	svc := app.New(app.Config{
 		Library: lib, Rules: rd, Agent: client, Version: cfg.Version,
-		Clock: cfg.Now, HTTPClient: httpc, Notify: cfg.OnChange, Mirrors: mirrors,
+		Clock: cfg.Now, HTTPClient: httpc, Notify: cfg.OnChange, Mirrors: mirrors, Resolve: cfg.Resolve,
 	})
 	rt.Service = svc
 
