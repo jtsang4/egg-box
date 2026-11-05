@@ -302,3 +302,53 @@ func TestValidLogLevel(t *testing.T) {
 		}
 	}
 }
+
+func TestScratchHoldsResourcesAndCleansUp(t *testing.T) {
+	s, root := open(t)
+	sc, err := s.Scratch([]Resource{{Name: "a.srs", Data: []byte("x")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(sc.ResourceDir(), "a.srs"))
+	if err != nil || string(got) != "x" {
+		t.Fatalf("resource = %q, %v", got, err)
+	}
+	sc.Close()
+	if _, err := os.Stat(sc.ResourceDir()); !os.IsNotExist(err) {
+		t.Fatalf("scratch dir must be gone, stat err = %v", err)
+	}
+
+	// A leftover from a crash is swept on the next Open.
+	left, err := s.Scratch(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(left.ResourceDir()); !os.IsNotExist(err) {
+		t.Fatalf("leftover scratch dir must be swept, stat err = %v", err)
+	}
+}
+
+func TestScratchValidatesResources(t *testing.T) {
+	s, _ := open(t)
+	if _, err := s.Scratch([]Resource{{Name: "../evil", Data: []byte("x")}}); !errors.Is(err, ErrInvalidResource) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestPendingResourceDirExistsBeforePromote(t *testing.T) {
+	s, _ := open(t)
+	st, err := s.Stage(0, "p", "P", []Resource{{Name: "a.srs", Data: []byte("x")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(st.PendingResourceDir(), "a.srs")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(st.FinalResourceDir()); !os.IsNotExist(err) {
+		t.Fatal("final dir must not exist before Promote")
+	}
+	s.Discard(st)
+}

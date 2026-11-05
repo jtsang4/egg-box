@@ -94,6 +94,10 @@ type Env struct {
 	LogLevel string
 	// Tun is applied when the configuration contains a TUN inbound.
 	Tun TunSettings
+	// SandboxPort, when non-zero, replaces the TUN inbound with a loopback
+	// "mixed" proxy on this port. The development sandbox uses it to run the
+	// real core without touching the host's interfaces, routes or DNS.
+	SandboxPort int
 }
 
 // Result is the outcome of Normalize.
@@ -102,7 +106,9 @@ type Result struct {
 	JSON   []byte
 	HasTun bool
 	TunTag string
-	Issues []Issue
+	// SandboxTun is true when a TUN inbound was replaced by a loopback proxy.
+	SandboxTun bool
+	Issues     []Issue
 }
 
 // HasErrors reports whether any issue is an error.

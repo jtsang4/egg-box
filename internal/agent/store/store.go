@@ -62,7 +62,9 @@ type Revision struct {
 	Dir         string    `json:"-"`
 }
 
-// ConfigPath is the normalized configuration file of the revision.
+// ConfigPath is the stored configuration file of the revision. It holds the
+// configuration as the GUI sent it; the policy layer normalizes it again every
+// time it is started, with the platform plan of that moment.
 func (r Revision) ConfigPath() string { return filepath.Join(r.Dir, "config.json") }
 
 // ResourceDir holds the resources of the revision.
@@ -102,6 +104,7 @@ func Open(root string) (*Store, error) {
 		}
 	}
 	s.sweepLocked()
+	_ = os.RemoveAll(s.scratchRoot())
 	return s, nil
 }
 
@@ -169,6 +172,11 @@ type Staged struct {
 // FinalResourceDir is where the resources will be after Promote. The policy
 // layer uses it to rewrite "res:<name>" references before the move happens.
 func (st *Staged) FinalResourceDir() string { return filepath.Join(st.final, "resources") }
+
+// PendingResourceDir is where the resources are right now. A dry-run of the
+// core (which opens rule-set files while it is being built) must use this
+// directory, because the final one does not exist before Promote.
+func (st *Staged) PendingResourceDir() string { return filepath.Join(st.dir, "resources") }
 
 // WriteConfig stores the normalized configuration in the pending directory.
 func (st *Staged) WriteConfig(data []byte) error {

@@ -515,3 +515,51 @@ func TestIssuesCarryJSONPaths(t *testing.T) {
 		t.Fatalf("path = %q", got)
 	}
 }
+
+func TestSandboxReplacesTunWithLoopbackProxy(t *testing.T) {
+	env := testEnv
+	env.SandboxPort = 17890
+	cfg := `{"inbounds":[{"type":"tun","tag":"tun-in","address":["10.0.0.1/8"],"auto_route":true,"mtu":1400}],
+	  "route":{"rules":[{"inbound":["tun-in"],"action":"hijack-dns","port":[53]}]},
+	  "outbounds":[{"type":"direct","tag":"d"}]}`
+	res := prod().Normalize([]byte(cfg), env)
+	if res.HasErrors() {
+		t.Fatalf("unexpected errors: %s", dump(res))
+	}
+	if res.HasTun || !res.SandboxTun {
+		t.Fatalf("result = %+v", res)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(res.JSON, &out); err != nil {
+		t.Fatal(err)
+	}
+	in := out["inbounds"].([]any)[0].(map[string]any)
+	if in["type"] != "mixed" || in["tag"] != "tun-in" || in["listen"] != "127.0.0.1" || in["listen_port"] != float64(17890) {
+		t.Fatalf("inbound = %v", in)
+	}
+	for _, k := range []string{"address", "auto_route", "mtu", "strict_route", "dns_mode"} {
+		if _, ok := in[k]; ok {
+			t.Fatalf("%s must not survive the replacement: %v", k, in)
+		}
+	}
+	route := out["route"].(map[string]any)
+	if _, ok := route["auto_detect_interface"]; ok {
+		t.Fatalf("sandbox must not force TUN route settings: %v", route)
+	}
+	found := false
+	for _, i := range res.Issues {
+		found = found || i.Code == "sandbox_tun_replaced"
+	}
+	if !found {
+		t.Fatalf("expected a sandbox warning, got %s", dump(res))
+	}
+}
+
+func TestSandboxDoesNotAffectConfigsWithoutTun(t *testing.T) {
+	env := testEnv
+	env.SandboxPort = 17890
+	res := prod().Normalize([]byte(minimal), env)
+	if res.HasErrors() || res.SandboxTun || res.HasTun {
+		t.Fatalf("result = %+v %s", res, dump(res))
+	}
+}

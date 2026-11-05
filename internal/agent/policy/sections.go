@@ -255,7 +255,12 @@ func (n *normalizer) inbounds(val any, path string) {
 				n.errorf(ip, "tun_multiple", "only one TUN inbound can be active")
 				continue
 			}
-			n.tun(obj, ip)
+			if n.env.SandboxPort > 0 {
+				n.sandboxTun(obj, ip)
+				typ = "mixed"
+			} else {
+				n.tun(obj, ip)
+			}
 		case typ == "mixed" || n.serverInboundAllowed(typ):
 			n.listener(obj, ip)
 		default:

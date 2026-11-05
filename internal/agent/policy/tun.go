@@ -117,3 +117,21 @@ func (n *normalizer) finishTun(root map[string]any) {
 	}
 	n.forceRoute(route)
 }
+
+// sandboxTun swaps the TUN for a loopback proxy that keeps the same tag, so
+// route rules that reference the inbound still resolve.
+func (n *normalizer) sandboxTun(obj map[string]any, path string) {
+	tag, _ := obj["tag"].(string)
+	if tag == "" {
+		tag = defaultTunTag
+	}
+	for k := range obj {
+		delete(obj, k)
+	}
+	obj["type"] = "mixed"
+	obj["tag"] = tag
+	obj["listen"] = "127.0.0.1"
+	obj["listen_port"] = jsonNumber(strconv.Itoa(n.env.SandboxPort))
+	n.res.SandboxTun = true
+	n.warnf(path, "sandbox_tun_replaced", "sandbox mode: the TUN inbound runs as a loopback proxy on 127.0.0.1:%d and the host network is not touched", n.env.SandboxPort)
+}

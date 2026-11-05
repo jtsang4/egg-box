@@ -163,6 +163,9 @@ message Status {
   // reconnect_attempts counts consecutive automatic reconnect attempts.
   uint32 reconnect_attempts = 20;
   int64 updated_unix = 21;
+  // sandbox_port is the loopback proxy port that stands in for the TUN when the
+  // agent runs in sandbox mode (development, demos); 0 otherwise.
+  uint32 sandbox_port = 22;
 }
 
 // ----------------------------------------------------------------- settings

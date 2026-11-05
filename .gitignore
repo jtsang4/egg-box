@@ -4,13 +4,6 @@
 *.out
 coverage.*
 
-# Frontend
-node_modules/
-/frontend/dist/
-/frontend/.vite/
-/frontend/test-results/
-/frontend/playwright-report/
-
 # MyGo
 /dist/
 /build/
@@ -23,6 +16,9 @@ mygo_windows_*.syso
 
 # Packaging output
 /out/
+
+# Review artifacts (screenshots rendered while iterating on the UI)
+/artifacts/
 *.pkg
 *.dmg
 

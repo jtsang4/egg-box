@@ -700,8 +700,11 @@ type Status struct {
 	// reconnect_attempts counts consecutive automatic reconnect attempts.
 	ReconnectAttempts uint32 `protobuf:"varint,20,opt,name=reconnect_attempts,json=reconnectAttempts,proto3" json:"reconnect_attempts,omitempty"`
 	UpdatedUnix       int64  `protobuf:"varint,21,opt,name=updated_unix,json=updatedUnix,proto3" json:"updated_unix,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// sandbox_port is the loopback proxy port that stands in for the TUN when the
+	// agent runs in sandbox mode (development, demos); 0 otherwise.
+	SandboxPort   uint32 `protobuf:"varint,22,opt,name=sandbox_port,json=sandboxPort,proto3" json:"sandbox_port,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Status) Reset() {
@@ -877,6 +880,13 @@ func (x *Status) GetReconnectAttempts() uint32 {
 func (x *Status) GetUpdatedUnix() int64 {
 	if x != nil {
 		return x.UpdatedUnix
+	}
+	return 0
+}
+
+func (x *Status) GetSandboxPort() uint32 {
+	if x != nil {
+		return x.SandboxPort
 	}
 	return 0
 }
@@ -3000,7 +3010,7 @@ const file_agent_proto_rawDesc = "" +
 	"\x04peer\x18\t \x01(\tR\x04peer\x12\x16\n" +
 	"\x06driver\x18\n" +
 	" \x01(\tR\x06driver\x12\x19\n" +
-	"\bdev_mode\x18\v \x01(\bR\adevMode\"\x86\a\n" +
+	"\bdev_mode\x18\v \x01(\bR\adevMode\"\xa9\a\n" +
 	"\x06Status\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x04R\x03seq\x12:\n" +
 	"\aservice\x18\x02 \x01(\x0e2 .singboxui.agent.v1.ServiceStateR\aservice\x12C\n" +
@@ -3027,7 +3037,8 @@ const file_agent_proto_rawDesc = "" +
 	"\n" +
 	"has_config\x18\x13 \x01(\bR\thasConfig\x12-\n" +
 	"\x12reconnect_attempts\x18\x14 \x01(\rR\x11reconnectAttempts\x12!\n" +
-	"\fupdated_unix\x18\x15 \x01(\x03R\vupdatedUnix\"\xb7\x01\n" +
+	"\fupdated_unix\x18\x15 \x01(\x03R\vupdatedUnix\x12!\n" +
+	"\fsandbox_port\x18\x16 \x01(\rR\vsandboxPort\"\xb7\x01\n" +
 	"\bSettings\x12!\n" +
 	"\fauto_connect\x18\x01 \x01(\bR\vautoConnect\x12,\n" +
 	"\x12resume_after_crash\x18\x02 \x01(\bR\x10resumeAfterCrash\x12=\n" +
