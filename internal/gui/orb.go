@@ -66,7 +66,15 @@ func (a *App) orb(c *ui.Context, size float32) ui.Element {
 	iconName := look.icon
 
 	b.Draw(func(pt *ui.Painter, r ui.Rect) {
-		pt.AnimationFrameRate(60)
+		// The halo breathes and the rings drift slowly: that looks the same at
+		// half the display's rate for half of the power, which a window that
+		// sits open all day should not waste. Only the spinning arc, which
+		// turns fast, asks for the smoother frames.
+		if spin > 0.01 {
+			pt.AnimationFrameRate(60)
+		} else {
+			pt.AnimationFrameRate(30)
+		}
 		t := float64(pt.Now().UnixMilli()) / 1000
 		cx, cy := r.X+r.W/2, r.Y+r.H/2
 		core := r.W * 0.27
