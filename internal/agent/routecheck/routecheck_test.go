@@ -181,3 +181,88 @@ func TestClassifyByName(t *testing.T) {
 		t.Error("an unknown point-to-point interface should be a tunnel")
 	}
 }
+
+func TestChoosePlanToleratesBroadBypassRoutesThroughAGateway(t *testing.T) {
+	// A VPN app sends every private range around its tunnel through the router.
+	snap := physical()
+	gw := netip.MustParseAddr("192.0.2.1")
+	snap.Routes = append(snap.Routes,
+		Route{Dest: pfx("172.16.0.0/12"), Gateway: gw, IfName: "en0"},
+		Route{Dest: pfx("10.0.0.0/8"), Gateway: gw, IfName: "en0"},
+		Route{Dest: pfx("100.64.0.0/10"), Gateway: gw, IfName: "en0"},
+	)
+	plan, ok := ChoosePlan(snap, DefaultCandidates())
+	if !ok || plan.V4 != pfx("172.19.0.1/30") {
+		t.Fatalf("plan = %+v ok=%v", plan, ok)
+	}
+	// A completely free candidate still wins over shadowing a bypass route.
+	snap.Routes = snap.Routes[:len(snap.Routes)-1]
+	plan, ok = ChoosePlan(snap, DefaultCandidates())
+	if !ok || plan.V4 != pfx("100.127.250.1/30") {
+		t.Fatalf("plan = %+v ok=%v", plan, ok)
+	}
+}
+
+func TestChoosePlanNeverShadowsSpecificGatewayRoutes(t *testing.T) {
+	snap := physical()
+	gw := netip.MustParseAddr("192.0.2.1")
+	for _, c := range DefaultCandidates() {
+		snap.Routes = append(snap.Routes, Route{Dest: c.V4.Masked(), Gateway: gw, IfName: "en0"})
+	}
+	if _, ok := ChoosePlan(snap, DefaultCandidates()); ok {
+		t.Fatal("a route as specific as the candidate must rule it out")
+	}
+}
+
+func TestTakeoverRoutesOutrankAForeignSplitDefault(t *testing.T) {
+	snap := physical()
+	snap.Interfaces = append(snap.Interfaces, Interface{Name: "utun4", Up: true, Kind: KindTunnel})
+	for _, p := range []string{"0.0.0.0/0", "1.0.0.0/8", "2.0.0.0/7", "4.0.0.0/6", "8.0.0.0/5", "16.0.0.0/4",
+		"32.0.0.0/3", "64.0.0.0/2", "128.0.0.0/1", "198.18.0.0/15", "::/1", "8000::/1"} {
+		snap.Routes = append(snap.Routes, Route{Dest: pfx(p), IfName: "utun4"})
+	}
+	// A broad route through the physical uplink is not a competitor.
+	snap.Routes = append(snap.Routes, Route{Dest: pfx("10.0.0.0/8"), Gateway: netip.MustParseAddr("192.0.2.1"), IfName: "en0"})
+	routes := TakeoverRoutes(snap)
+
+	for _, dest := range []string{"0.0.0.1", "1.1.1.1", "3.3.3.3", "40.0.0.1", "63.255.255.255", "90.0.0.1",
+		"127.0.0.1", "150.1.1.1", "198.18.0.10", "220.0.0.1", "255.255.255.255", "10.1.1.1",
+		"::1", "2001:db8::1", "7fff::1", "8001::1", "ffff::1"} {
+		addr := netip.MustParseAddr(dest)
+		var best netip.Prefix
+		matches := 0
+		for _, r := range routes {
+			if r.Contains(addr) {
+				matches++
+				best = r
+			}
+		}
+		if matches != 1 {
+			t.Fatalf("%s is covered %d times by %v", dest, matches, routes)
+		}
+		for _, f := range snap.Routes {
+			if f.IfName == "utun4" && f.Dest.Contains(addr) && f.Dest.Bits() <= 8 && f.Dest.Bits() >= best.Bits() {
+				t.Fatalf("%s: %s does not outrank %s", dest, best, f.Dest)
+			}
+		}
+		if best.Bits() < 2 {
+			t.Fatalf("%s: %s is not more specific than a split default", dest, best)
+		}
+	}
+	if len(routes) > 40 {
+		t.Fatalf("too many routes: %d", len(routes))
+	}
+}
+
+func TestTakeoverRoutesWithoutCompetitorsAreQuarters(t *testing.T) {
+	got := TakeoverRoutes(physical())
+	want := []string{"0.0.0.0/2", "64.0.0.0/2", "128.0.0.0/2", "192.0.0.0/2", "::/2", "4000::/2", "8000::/2", "c000::/2"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v", got)
+	}
+	for i := range want {
+		if got[i] != pfx(want[i]) {
+			t.Fatalf("got %v", got)
+		}
+	}
+}

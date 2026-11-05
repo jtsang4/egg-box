@@ -65,6 +65,11 @@ func Explain(err error) Explanation {
 	var oe *agentclient.OpError
 	if errors.As(err, &oe) {
 		ex := Explanation{Code: codeOfAgent(oe.Code), Detail: detail}
+		// Running out of private subnets is reported as a route conflict, but
+		// taking over another VPN's routes cannot solve it.
+		if oe.Code == agentapi.ErrorCode_ERROR_CODE_ROUTE_CONFLICT && oe.Details["kind"] == "no_free_subnet" {
+			ex.Code = "no_free_subnet"
+		}
 		for _, i := range oe.Issues {
 			ex.Issues = append(ex.Issues, Issue{Path: i.GetPath(), Code: i.GetCode(), Message: i.GetMessage(), Warning: i.GetSeverity() == agentapi.Issue_SEVERITY_WARNING})
 		}

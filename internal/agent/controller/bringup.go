@@ -89,13 +89,14 @@ func (c *Controller) bringUp(ctx context.Context, rev store.Revision, opts upOpt
 	var active platform.ActiveTun
 	if res.HasTun {
 		// A real TUN: judge the machine's routes first, then fix the plan.
-		plan, uplink, perr := c.planTun(ctx, opts)
+		plan, takeover, perr := c.planTun(ctx, opts)
 		if perr != nil {
 			return perr
 		}
 		env.Tun.Addresses = prefixStrings(plan.Addresses())
 		if opts.ignoreConflicts {
-			env.Tun.TakeoverInterface = uplink
+			env.Tun.TakeoverInterface = takeover.uplink
+			env.Tun.TakeoverRoutes = prefixStrings(takeover.routes)
 		}
 		res = c.cfg.Policy.Normalize(raw, env)
 		if res.HasErrors() {
@@ -176,11 +177,18 @@ func (c *Controller) bringUp(ctx context.Context, rev store.Revision, opts upOpt
 	return nil
 }
 
+// takeoverPlan is how a confirmed takeover leaves the machine and outranks
+// the other tunnel.
+type takeoverPlan struct {
+	uplink string
+	routes []netip.Prefix
+}
+
 // planTun inspects the machine and picks a conflict-free TUN subnet.
-func (c *Controller) planTun(ctx context.Context, opts upOptions) (routecheck.Plan, string, *opError) {
+func (c *Controller) planTun(ctx context.Context, opts upOptions) (routecheck.Plan, takeoverPlan, *opError) {
 	snap, err := c.cfg.Driver.Snapshot(ctx)
 	if err != nil {
-		return routecheck.Plan{}, "", newOpError(agentapi.ErrorCode_ERROR_CODE_PLATFORM, err, "the network configuration cannot be read")
+		return routecheck.Plan{}, takeoverPlan{}, newOpError(agentapi.ErrorCode_ERROR_CODE_PLATFORM, err, "the network configuration cannot be read")
 	}
 	owned := map[string]bool{}
 	for _, e := range c.cfg.Ledger.Entries() {
@@ -201,7 +209,7 @@ func (c *Controller) planTun(ctx context.Context, opts upOptions) (routecheck.Pl
 			names = append(names, cf.Interface)
 			lines = append(lines, cf.String())
 		}
-		return routecheck.Plan{}, "", &opError{
+		return routecheck.Plan{}, takeoverPlan{}, &opError{
 			code: agentapi.ErrorCode_ERROR_CODE_ROUTE_CONFLICT,
 			msg:  "another VPN or tunnel already carries the default route: " + strings.Join(names, ", "),
 			details: map[string]string{
@@ -213,7 +221,7 @@ func (c *Controller) planTun(ctx context.Context, opts upOptions) (routecheck.Pl
 	}
 	plan, ok := routecheck.ChoosePlan(snap, c.cfg.Candidates)
 	if !ok {
-		return routecheck.Plan{}, "", &opError{
+		return routecheck.Plan{}, takeoverPlan{}, &opError{
 			code:    agentapi.ErrorCode_ERROR_CODE_ROUTE_CONFLICT,
 			msg:     "every private subnet the tunnel could use is already taken on this machine",
 			details: map[string]string{"kind": string(routecheck.ConflictNoSubnet)},
@@ -228,11 +236,11 @@ func (c *Controller) planTun(ctx context.Context, opts upOptions) (routecheck.Pl
 			}
 		}
 		if !physical {
-			return routecheck.Plan{}, "", newOpError(agentapi.ErrorCode_ERROR_CODE_PLATFORM, nil,
+			return routecheck.Plan{}, takeoverPlan{}, newOpError(agentapi.ErrorCode_ERROR_CODE_PLATFORM, nil,
 				"cannot take over VPN routes without a physical network uplink; disconnect the other VPN and retry")
 		}
 	}
-	return plan, snap.PhysicalUplink, nil
+	return plan, takeoverPlan{uplink: snap.PhysicalUplink, routes: routecheck.TakeoverRoutes(snap)}, nil
 }
 
 // teardown stops the core and releases everything the agent created. It is

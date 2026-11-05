@@ -168,6 +168,7 @@ var catalogZH = map[string]string{
 	"err.not_connected":          "当前没有活动的连接。",
 	"err.busy":                   "服务正忙于其他操作。",
 	"err.route_conflict":         "另一个 VPN 占用了重叠的路由。",
+	"err.no_free_subnet":         "隧道可用的私有网段都已被本机其他网络占用。",
 	"err.core_start_failed":      "网络引擎无法启动。",
 	"err.platform":               "系统拒绝了一项网络更改。",
 	"err.cleanup_failed":         "部分网络更改无法撤销。",

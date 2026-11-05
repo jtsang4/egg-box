@@ -571,6 +571,7 @@ func TestExplainClassifiesErrors(t *testing.T) {
 		{context.DeadlineExceeded, "timeout"},
 		{library.ErrNotFound, "not_found"},
 		{&agentclient.OpError{Code: agentapi.ErrorCode_ERROR_CODE_ROUTE_CONFLICT}, "route_conflict"},
+		{&agentclient.OpError{Code: agentapi.ErrorCode_ERROR_CODE_ROUTE_CONFLICT, Details: map[string]string{"kind": "no_free_subnet"}}, "no_free_subnet"},
 		{&agentclient.OpError{Code: agentapi.ErrorCode_ERROR_CODE_CORE_START_FAILED, RolledBack: true}, "rolled_back"},
 		{&app.ValidationError{Issues: []app.Issue{{Path: "$.x", Message: "bad"}}}, "invalid_config"},
 		{errors.New("something odd"), "unknown"},

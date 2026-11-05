@@ -169,6 +169,7 @@ var catalogEN = map[string]string{
 	"err.not_connected":          "There is no active connection.",
 	"err.busy":                   "The service is busy with another operation.",
 	"err.route_conflict":         "Another VPN owns overlapping routes.",
+	"err.no_free_subnet":         "Every private subnet the tunnel could use is already taken on this machine.",
 	"err.core_start_failed":      "The network engine could not start.",
 	"err.platform":               "The system refused a network change.",
 	"err.cleanup_failed":         "Some network changes could not be undone.",

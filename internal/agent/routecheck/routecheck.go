@@ -132,17 +132,27 @@ func (c Conflict) String() string {
 }
 
 // ChoosePlan returns the first candidate whose subnets overlap no existing
-// interface address or route. ok is false when every candidate collides.
+// interface address or route. When every candidate overlaps something, it
+// falls back to the first one that only sits inside broad routes forwarded to
+// a gateway: VPN apps install such routes to send whole private ranges
+// (10/8, 172.16/12, 100.64/10...) around their tunnel, and the TUN's much
+// longer prefix only shadows a few addresses of them. ok is false when every
+// candidate collides with an address, an on-link network or a route at least
+// as specific as itself.
 func ChoosePlan(snap Snapshot, candidates []Plan) (Plan, bool) {
-	for _, c := range candidates {
-		if !overlapsAnything(snap, c.V4) && !overlapsAnything(snap, c.V6) {
-			return c, true
+	for _, strict := range []bool{true, false} {
+		for _, c := range candidates {
+			if !overlaps(snap, c.V4, strict) && !overlaps(snap, c.V6, strict) {
+				return c, true
+			}
 		}
 	}
 	return Plan{}, false
 }
 
-func overlapsAnything(snap Snapshot, p netip.Prefix) bool {
+// overlaps reports whether p collides with the machine's networks. When strict
+// is false, a broader route through a gateway does not count.
+func overlaps(snap Snapshot, p netip.Prefix, strict bool) bool {
 	if !p.IsValid() {
 		return false
 	}
@@ -158,6 +168,9 @@ func overlapsAnything(snap Snapshot, p netip.Prefix) bool {
 	}
 	for _, r := range snap.Routes {
 		if ownInterface(snap, r.IfName) || isDefault(r.Dest) {
+			continue
+		}
+		if !strict && r.Gateway.IsValid() && !r.Gateway.IsUnspecified() && r.Dest.Bits() < p.Bits() {
 			continue
 		}
 		if r.Dest.Overlaps(p) {
@@ -238,4 +251,74 @@ func ClassifyByName(name string, pointToPoint, loopback bool) Kind {
 	default:
 		return KindUnknown
 	}
+}
+
+// takeoverMaxBits limits how far TakeoverRoutes splits the address space to
+// outrank another tunnel. VPN apps cover "everything" with a handful of broad
+// routes (0/1 + 128/1, or 1/8, 2/7 ... 128/1); narrower routes of theirs name
+// specific networks they serve, such as their own fake-IP range, and stay theirs.
+const (
+	takeoverMaxBits4 = 8
+	takeoverMaxBits6 = 16
+)
+
+// TakeoverRoutes returns routes that cover the whole address space of both
+// families and are each strictly more specific than every broad route of a
+// foreign tunnel, so the longest-prefix match prefers the agent's TUN without
+// touching the other tunnel's routes. The coarsest pieces are quarters, which
+// also outrank a split default.
+func TakeoverRoutes(snap Snapshot) []netip.Prefix {
+	var foreign []netip.Prefix
+	for _, r := range snap.Routes {
+		ifc, ok := interfaceNamed(snap, r.IfName)
+		if !ok || ifc.Ours || ifc.Kind != KindTunnel {
+			continue
+		}
+		limit := takeoverMaxBits4
+		if r.Dest.Addr().Is6() {
+			limit = takeoverMaxBits6
+		}
+		if r.Dest.Bits() <= limit {
+			foreign = append(foreign, r.Dest.Masked())
+		}
+	}
+	var out []netip.Prefix
+	var split func(p netip.Prefix)
+	split = func(p netip.Prefix) {
+		mustSplit := p.Bits() < 2
+		for _, f := range foreign {
+			if f.Bits() >= p.Bits() && p.Overlaps(f) {
+				mustSplit = true
+				break
+			}
+		}
+		if !mustSplit {
+			out = append(out, p)
+			return
+		}
+		lo, _ := p.Addr().Prefix(p.Bits() + 1)
+		split(lo)
+		split(netip.PrefixFrom(highHalf(p), p.Bits()+1))
+	}
+	split(netip.PrefixFrom(netip.IPv4Unspecified(), 0))
+	split(netip.PrefixFrom(netip.IPv6Unspecified(), 0))
+	return out
+}
+
+// highHalf is the first address of the upper half of p.
+func highHalf(p netip.Prefix) netip.Addr {
+	b := p.Masked().Addr().AsSlice()
+	bit := p.Bits()
+	b[bit/8] |= 0x80 >> (bit % 8)
+	a, _ := netip.AddrFromSlice(b)
+	return a
+}
+
+func interfaceNamed(snap Snapshot, name string) (Interface, bool) {
+	for _, ifc := range snap.Interfaces {
+		if ifc.Name == name {
+			return ifc, true
+		}
+	}
+	return Interface{}, false
 }
