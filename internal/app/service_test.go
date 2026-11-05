@@ -412,10 +412,11 @@ func TestRefreshWhileConnectedReappliesChangedNodes(t *testing.T) {
 	if err != nil || !res.Changed || res.Added != 1 {
 		t.Fatalf("%+v, %v", res, err)
 	}
-	snap := h.waitFor("the new revision", func(s *app.Snapshot) bool { return s.Applied.Revision > rev && s.Applied.Nodes == 4 })
-	if snap.Phase != app.PhaseConnected {
-		t.Errorf("phase %s", snap.Phase)
-	}
+	// The revision moves while the core restarts; the connection is back a
+	// moment later, and that is what is asserted.
+	h.waitFor("the new revision, connected again", func(s *app.Snapshot) bool {
+		return s.Applied.Revision > rev && s.Applied.Nodes == 4 && s.Phase == app.PhaseConnected
+	})
 	if len(h.agent.Engine.Started()) <= starts {
 		t.Error("the core was not restarted with the new configuration")
 	}

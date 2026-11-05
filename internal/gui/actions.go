@@ -23,8 +23,11 @@ func (a *App) toggleConnection() {
 	case app.PhaseDisconnecting:
 	default:
 		if len(a.subs) == 0 || a.nodeCount() == 0 {
+			// Adding a subscription happens in the window.
 			a.goTo(pageSubscriptions)
 			a.openAddSubscription()
+			a.reveal()
+			a.closePanel()
 			return
 		}
 		a.connect(false)
@@ -42,6 +45,8 @@ func (a *App) connect(ignoreConflicts bool) {
 		// conflict also needs a decision.
 		if ex := app.Explain(err); ex.Code == "route_conflict" {
 			a.openDialog(&routeConflictDialog{detail: ex.Detail})
+			a.reveal()
+			a.closePanel()
 		}
 	})
 }

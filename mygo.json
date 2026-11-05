@@ -1,0 +1,14 @@
+{
+  "name": "Sing-Box UI",
+  "slug": "sing-box-ui",
+  "identifier": "me.jtsang.singboxui",
+  "version": "0.1.0",
+  "copyright": "© 2026 jtsang",
+  "publisher": "jtsang",
+  "icon": "resources/icon.png",
+  "main": "./cmd/sing-box-ui",
+  "out": "build",
+  "macos": { "minimumSystemVersion": "13.0" },
+  "windows": { "displayName": "Sing-Box UI", "installDirName": "SingBoxUI" },
+  "linux": { "webview": false, "comment": "A native client for sing-box" }
+}

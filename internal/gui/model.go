@@ -98,8 +98,10 @@ func (a *App) nodeCount() int {
 }
 
 // group finds a group of the running core.
-func (a *App) group(tag string) (app.Group, bool) {
-	for _, g := range a.snap.Groups {
+func (a *App) group(tag string) (app.Group, bool) { return groupIn(a.snap, tag) }
+
+func groupIn(snap *app.Snapshot, tag string) (app.Group, bool) {
+	for _, g := range snap.Groups {
 		if g.Tag == tag {
 			return g, true
 		}
@@ -109,10 +111,12 @@ func (a *App) group(tag string) (app.Group, bool) {
 
 // exitNode resolves the node traffic leaves through, following the selector
 // and any fastest-node group it points at.
-func (a *App) exitNode() (item app.GroupItem, via string, ok bool) {
+func (a *App) exitNode() (item app.GroupItem, via string, ok bool) { return exitNodeIn(a.snap) }
+
+func exitNodeIn(snap *app.Snapshot) (item app.GroupItem, via string, ok bool) {
 	tag := configgen.TagProxy
 	for depth := 0; depth < 4; depth++ {
-		g, found := a.group(tag)
+		g, found := groupIn(snap, tag)
 		if !found || g.Selected == "" {
 			return app.GroupItem{}, "", false
 		}

@@ -166,19 +166,30 @@ func (a *App) pageNavIndex() int {
 	return -1
 }
 
-// navIndicatorY is where the indicator sits for the item at index i.
+// navIndicatorY is where the indicator sits for the item at index i: the
+// total of what the list lays out above it, a gap after each child.
 func (a *App) navIndicatorY(i int) float32 {
 	if i < 0 {
 		return 0
 	}
-	y := float32(0)
-	// Section header (22) before the first group.
-	y += 22
-	if i < len(navMain) {
-		return y + float32(i)*(navItemH+navItemGap)
+	// The list's children, top to bottom: a heading, the main items, a space,
+	// a heading and the monitor items.
+	heights := []float32{22}
+	for range navMain {
+		heights = append(heights, navItemH)
 	}
-	y += float32(len(navMain)) * (navItemH + navItemGap)
-	y += 12 + 22 + float32(i-len(navMain))*(navItemH+navItemGap)
+	heights = append(heights, 12, 22)
+	for range navMonitor {
+		heights = append(heights, navItemH)
+	}
+	above := 1 + i
+	if i >= len(navMain) {
+		above = 1 + len(navMain) + 2 + (i - len(navMain))
+	}
+	var y float32
+	for _, h := range heights[:above] {
+		y += h + navItemGap
+	}
 	return y
 }
 
@@ -310,22 +321,25 @@ func (a *App) speedPair(c *ui.Context, iconName string, v float64, col ui.Color)
 }
 
 // phaseTone is the colour and the word of a connection phase.
-func (a *App) phaseTone(ph app.Phase) (tone, string) {
+func (a *App) phaseTone(ph app.Phase) (tone, string) { return phaseToneIn(a.lang, ph) }
+
+// phaseToneIn is phaseTone in a language, for the places without a window.
+func phaseToneIn(lang string, ph app.Phase) (tone, string) {
 	switch ph {
 	case app.PhaseConnected:
-		return toneGood, a.t("phase.connected")
+		return toneGood, translate(lang, "phase.connected")
 	case app.PhaseConnecting:
-		return toneBlue, a.t("phase.connecting")
+		return toneBlue, translate(lang, "phase.connecting")
 	case app.PhaseReconnecting:
-		return toneWarn, a.t("phase.reconnecting")
+		return toneWarn, translate(lang, "phase.reconnecting")
 	case app.PhaseDisconnecting:
-		return toneBlue, a.t("phase.disconnecting")
+		return toneBlue, translate(lang, "phase.disconnecting")
 	case app.PhaseFailed:
-		return toneBad, a.t("phase.failed")
+		return toneBad, translate(lang, "phase.failed")
 	case app.PhaseNoAgent:
-		return toneWarn, a.t("phase.noagent")
+		return toneWarn, translate(lang, "phase.noagent")
 	}
-	return toneNeutral, a.t("phase.disconnected")
+	return toneNeutral, translate(lang, "phase.disconnected")
 }
 
 // phaseHint is a one-line explanation of a phase.

@@ -643,10 +643,8 @@ func (a *App) regionBadge(c *ui.Context, code string, size float32) ui.Element {
 	}
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(code))
-	hue := float32(h.Sum32()%360)*0.55 + 205 // stays in the blue-violet-teal range
-	if hue > 360 {
-		hue -= 360
-	}
+	// Cyan through blue to violet: every region stays in the brand's family.
+	hue := 195 + float32(h.Sum32()%100)
 	var top, bot ui.Color
 	if p.Dark {
 		top, bot = ui.Oklch(0.62, 0.17, hue), ui.Oklch(0.42, 0.16, hue+18)

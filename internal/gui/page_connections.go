@@ -2,6 +2,8 @@ package gui
 
 import (
 	"context"
+	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -181,13 +183,13 @@ func (a *App) connRow(c *ui.Context, cn app.Conn) {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					a.outboundChip(c, cn)
 				})
-				if cn.Rule != "" {
-					a.txt(c, cn.Rule, 11.5, 400, p.Text3).SingleLine()
+				if why := a.matchedRule(cn.Rule); why != "" {
+					a.txt(c, why, 11.5, 400, p.Text3).SingleLine().Tooltip(cn.Rule)
 				}
 			})
 			connCell(c, 2).Justify(ui.Center).Children(func() {
 				if cn.Process != "" {
-					a.txt(c, cn.Process, 12.5, 500, p.Text2).SingleLine()
+					a.txt(c, appName(cn.Process), 12.5, 500, p.Text2).SingleLine().Tooltip(cn.Process)
 				} else {
 					a.txt(c, "—", 12.5, 400, p.Text3)
 				}
@@ -267,4 +269,72 @@ func (a *App) outboundChip(c *ui.Context, cn app.Conn) {
 	default:
 		a.chip(c, truncate(out, 22), toneBlue, "shield-check")
 	}
+}
+
+// appName is what a person calls the program behind a connection: the bundle
+// of a macOS application, the executable of anything else, never a path.
+func appName(process string) string {
+	p := strings.ReplaceAll(process, "\\", "/")
+	// The outermost bundle: a browser's helpers all count as the browser.
+	if i := strings.Index(p, ".app/"); i > 0 {
+		return path.Base(p[:i])
+	}
+	name := path.Base(strings.TrimSuffix(p, "/"))
+	if strings.EqualFold(path.Ext(name), ".exe") {
+		name = name[:len(name)-4]
+	}
+	if name == "." || name == "/" || name == "" {
+		return process
+	}
+	return name
+}
+
+var ruleKind = regexp.MustCompile(`^[a-z_]+$`)
+
+// matchedRule says in a few words why a connection went where it did, from
+// the core's own description of the rule that decided it, which looks like
+// "rule_set=[geosite-cn] => route(direct)" or "final".
+func (a *App) matchedRule(rule string) string {
+	left, _, _ := strings.Cut(rule, " => ")
+	left = strings.TrimSpace(left)
+	if left == "" {
+		return ""
+	}
+	if left == "final" {
+		return a.t("conns.rule.final")
+	}
+	kind, rest, ok := strings.Cut(left, "=")
+	if !ok || !ruleKind.MatchString(kind) {
+		return a.t("conns.rule.generic") // an inverted or composite rule
+	}
+	var value string
+	if strings.HasPrefix(rest, "[") {
+		inner, _, _ := strings.Cut(rest[1:], "]")
+		value = strings.Join(strings.Fields(inner), ", ")
+	} else {
+		value, _, _ = strings.Cut(rest, " ")
+	}
+	label := a.t("conns.rule.generic")
+	if k := "conns.rule." + kind; a.has(k) {
+		label = a.t(k)
+	}
+	if kind == "rule_set" {
+		value = a.ruleSetLabel(value)
+	}
+	if value == "" {
+		return label
+	}
+	return label + "  ·  " + value
+}
+
+// ruleSetLabel names the rule sets this application ships; others keep the
+// name their owner gave them.
+func (a *App) ruleSetLabel(tags string) string {
+	parts := strings.Split(tags, ", ")
+	for i, t := range parts {
+		if k := "ruleset." + t; a.has(k) {
+			parts[i] = a.t(k)
+		}
+	}
+	return strings.Join(parts, ", ")
 }

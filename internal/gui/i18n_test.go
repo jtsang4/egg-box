@@ -102,11 +102,55 @@ func sourceLiterals(t *testing.T) map[string]bool {
 	return out
 }
 
+// shellLiterals reads the program that hosts the interface, which words its
+// menus and tray through Say. It returns every string literal (so a text it
+// uses is not an orphan) and the literals it passes to say (which must exist).
+func shellLiterals(t *testing.T) (all, said map[string]bool) {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join("..", "..", "cmd", "sing-box-ui", "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	all, said = map[string]bool{}, map[string]bool{}
+	fset := token.NewFileSet()
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, f, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.BasicLit:
+				if n.Kind == token.STRING {
+					if s, err := strconv.Unquote(n.Value); err == nil {
+						all[s] = true
+					}
+				}
+			case *ast.CallExpr:
+				id, ok := n.Fun.(*ast.Ident)
+				if !ok || id.Name != "say" || len(n.Args) == 0 {
+					return true
+				}
+				if lit, ok := n.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+					if s, err := strconv.Unquote(lit.Value); err == nil {
+						said[s] = true
+					}
+				}
+			}
+			return true
+		})
+	}
+	return all, said
+}
+
 // dynamicPrefixes are the keys built at run time from a known stem.
 var dynamicPrefixes = []string{
 	"notice.", "err.", "phase.", "rulekind.", "ruleset.", "ruledlg.hint.", "ruledlg.example.",
 	"preset.", "target.", "welcome.f", "welcome.sub.", "nav.", "time.", "mode.", "sort.",
-	"region.", "tray.", "empty.", "hero.hint.",
+	"region.", "tray.", "empty.", "hero.hint.", "conns.rule.",
 }
 
 func isDynamic(k string) bool {
@@ -128,6 +172,26 @@ func TestKeysExist(t *testing.T) {
 			continue
 		}
 		t.Errorf("the code uses the key %q, which has no text", lit)
+	}
+}
+
+// TestShellKeysExist: every text the program's menus and tray ask for exists.
+func TestShellKeysExist(t *testing.T) {
+	all, said := shellLiterals(t)
+	if len(said) == 0 {
+		t.Fatal("found no say(...) calls in cmd/sing-box-ui; has the shell moved?")
+	}
+	for lit := range said {
+		if !known(lit) {
+			t.Errorf("the program asks for the text %q, which does not exist", lit)
+		}
+	}
+	// The navigation texts are named through a table; each page it lists
+	// must have its text.
+	for lit := range all {
+		if strings.HasPrefix(lit, "nav.") && !known(lit) {
+			t.Errorf("the program names the page text %q, which does not exist", lit)
+		}
 	}
 }
 
@@ -164,6 +228,10 @@ func known(lit string) bool {
 // TestNoOrphanKeys: no text is left behind unused.
 func TestNoOrphanKeys(t *testing.T) {
 	lits := sourceLiterals(t)
+	shell, _ := shellLiterals(t)
+	for l := range shell {
+		lits[l] = true
+	}
 	for k := range catalogEN {
 		if isDynamic(k) {
 			continue

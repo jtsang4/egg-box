@@ -213,7 +213,28 @@ func (s *Service) watchLink(ctx context.Context) {
 }
 
 func (s *Service) onStatus(st *agentapi.Status) {
-	s.update(func(sn *Snapshot) { sn.Status = st })
+	var prev *agentapi.Status
+	s.update(func(sn *Snapshot) { prev, sn.Status = sn.Status, st })
+	s.statusNotices(prev, st)
+}
+
+// statusNotices tells about what happens to the connection on its own, with
+// nobody at the window: it breaks, mends or fails for good. What the user
+// asks for (connect, disconnect) reports itself.
+func (s *Service) statusNotices(prev, cur *agentapi.Status) {
+	if prev == nil || cur == nil {
+		return
+	}
+	was, is := prev.GetConnection(), cur.GetConnection()
+	switch {
+	case was == agentapi.ConnectionState_CONNECTION_STATE_CONNECTED && is == agentapi.ConnectionState_CONNECTION_STATE_RECONNECTING:
+		s.notice(LevelWarning, "reconnecting", "", nil)
+	case was == agentapi.ConnectionState_CONNECTION_STATE_RECONNECTING && is == agentapi.ConnectionState_CONNECTION_STATE_CONNECTED:
+		s.notice(LevelSuccess, "reconnected", "", nil)
+	case (was == agentapi.ConnectionState_CONNECTION_STATE_CONNECTED || was == agentapi.ConnectionState_CONNECTION_STATE_RECONNECTING) &&
+		is == agentapi.ConnectionState_CONNECTION_STATE_FAILED:
+		s.notice(LevelError, "connection_lost", cur.GetLastError(), nil)
+	}
 }
 
 func (s *Service) onGroups(g *agentapi.Groups) {

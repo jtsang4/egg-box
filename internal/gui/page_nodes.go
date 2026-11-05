@@ -175,9 +175,9 @@ func delayLess(x, y int) bool {
 // routeStrip offers the smart routes: automatic, and the fastest of a region.
 func (a *App) routeStrip(c *ui.Context, nodes []nodeEntry) {
 	type route struct {
-		key, title, sub, region string
+		key, title, sub, tip, region string
 	}
-	routes := []route{{key: "", title: a.t("nodes.auto"), sub: a.t("nodes.auto.hint", "min", strconv.Itoa(a.prefs.TestIntervalMin))}}
+	routes := []route{{key: "", title: a.t("nodes.auto"), sub: a.t("nodes.auto.hint"), tip: a.t("nodes.auto.tip", "min", strconv.Itoa(a.prefs.TestIntervalMin))}}
 	if a.prefs.RegionGroups {
 		count := map[string]int{}
 		for _, n := range nodes {
@@ -202,7 +202,7 @@ func (a *App) routeStrip(c *ui.Context, nodes []nodeEntry) {
 	cur := a.selectedKey()
 	ui.Row(c.Key("routes")).Gap(14).Children(func() {
 		for _, r := range routes {
-			a.routeCard(c, r.key, r.title, r.sub, r.region, cur == r.key)
+			a.routeCard(c, r.key, r.title, r.sub, r.tip, r.region, cur == r.key)
 		}
 		// Keep the cards from stretching when few.
 		if len(routes) < 4 {
@@ -213,27 +213,34 @@ func (a *App) routeStrip(c *ui.Context, nodes []nodeEntry) {
 	})
 }
 
-func (a *App) routeCard(c *ui.Context, key, title, sub, region string, selected bool) {
+func (a *App) routeCard(c *ui.Context, key, title, sub, tip, region string, selected bool) {
 	p := a.pl
 	b := ui.ButtonBase(c.Key("route-" + key))
 	b.Label(title)
+	if tip != "" {
+		b.Tooltip(tip)
+	}
 	b.Grow(1).Basis(0).Height(64).Padding(0, 14).Gap(12).Radius(radiusCard - 4).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 	hov := b.AnimateTo("hov", boolf(b.Hovered()), ui.Animation{Duration: 150 * time.Millisecond})
 	sel := b.AnimateTo("sel", boolf(selected), ui.Animation{Duration: 260 * time.Millisecond, Ease: ui.EaseOut})
 	a.selectableFace(b, hov, sel)
 	b.Children(func() {
-		if region == "" {
-			a.iconTile(c, "zap", toneBlue, 36)
-		} else {
-			a.regionBadge(c, region, 36)
-		}
+		// The tick sits on the badge, like a status dot on an avatar, so the
+		// words keep the whole width of the card.
+		ui.Box(c).Size(36, 36).Children(func() {
+			if region == "" {
+				a.iconTile(c, "zap", toneBlue, 36)
+			} else {
+				a.regionBadge(c, region, 36)
+			}
+			if selected {
+				a.checkBadge(c, 17).Border(2, p.Panel).Absolute().Right(-5).Bottom(-5)
+			}
+		})
 		ui.Column(c).Grow(1).Basis(0).Gap(2).Children(func() {
 			a.txt(c, title, 13.5, 650, p.Text).SingleLine()
 			a.txt(c, sub, 11.5, 400, p.Text3).SingleLine()
 		})
-		if selected {
-			a.checkBadge(c, 20)
-		}
 	})
 	if b.Clicked() {
 		a.pickNode(key)
@@ -394,12 +401,15 @@ func (a *App) nodeCard(c *ui.Context, n nodeEntry, selected, inUse bool) {
 	b.Children(func() {
 		a.regionBadge(c, n.Region, 44)
 		ui.Column(c).Grow(1).Basis(0).Gap(6).Children(func() {
-			a.txt(c, n.Name, 14.5, 650, p.Text).SingleLine()
+			ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+				if inUse {
+					a.dot(c, toneGood, 7, true).Tooltip(a.t("nodes.in_use"))
+				}
+				a.txt(c, n.Name, 14.5, 650, p.Text).SingleLine()
+			})
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				a.protoChip(c, n)
-				if inUse {
-					a.chip(c, a.t("nodes.in_use"), toneGood, "")
-				} else if n.SubName != "" {
+				if n.SubName != "" {
 					a.txt(c, n.SubName, 11.5, 400, p.Text3).SingleLine()
 				}
 			})
@@ -425,10 +435,27 @@ func (a *App) nodeCard(c *ui.Context, n nodeEntry, selected, inUse bool) {
 func (a *App) protoChip(c *ui.Context, n nodeEntry) {
 	p := a.pl
 	label := n.Protocol
-	if n.Transport != "" && n.Transport != "TCP" {
-		label += " · " + n.Transport
+	if t := shortTransport(n.Transport); t != "" {
+		label += " · " + t
 	}
-	ui.Box(c).Padding(2, 8).Radius(7).Background(p.Field).Border(1, p.Line).Children(func() {
+	// The tag keeps its size; the provider's name beside it gives way first.
+	ui.Box(c).Padding(2, 8).Radius(7).Background(p.Field).Border(1, p.Line).Shrink(0).Children(func() {
 		a.txt(c, label, 11, 600, p.Text2).SingleLine()
 	})
+}
+
+// shortTransport abbreviates a transport for the small tag. Plain TCP says
+// nothing, and the QUIC protocols are QUIC by definition.
+func shortTransport(t string) string {
+	switch t {
+	case "", "TCP", "QUIC":
+		return ""
+	case "WebSocket":
+		return "WS"
+	case "HTTP/2":
+		return "H2"
+	case "HTTPUpgrade":
+		return "HTTP↑"
+	}
+	return t
 }

@@ -29,6 +29,8 @@ type harnessOpt struct {
 	platform string
 	scale    float32
 	setup    func(*fixtureBackend, *Options)
+	// panel shows the tray panel instead of the window.
+	panel bool
 }
 
 // newHarness builds an interface of the given size on a fixture.
@@ -58,6 +60,9 @@ func newHarness(t *testing.T, o harnessOpt) *harness {
 		return "/tmp/" + name, nil
 	}
 	opt.SetLaunchAtLogin = func(on bool) error { be.record("launch-at-login %v", on); return nil }
+	opt.ShowWindow = func() { be.record("show-window") }
+	opt.ClosePanel = func() { be.record("close-panel") }
+	opt.Quit = func() { be.record("quit") }
 	boot := true
 	opt.ServiceStartup = &ServiceStartup{
 		Get: func() (bool, error) { return boot, nil },
@@ -67,7 +72,11 @@ func newHarness(t *testing.T, o harnessOpt) *harness {
 		o.setup(be, &opt)
 	}
 	a := New(opt)
-	tt := ui.NewTester(a.View, o.w, o.h)
+	view := a.View
+	if o.panel {
+		view, o.w, o.h = a.PanelView, PanelWidth, PanelHeight
+	}
+	tt := ui.NewTester(view, o.w, o.h)
 	if o.scale > 0 {
 		tt.SetScale(o.scale)
 	}
@@ -76,7 +85,9 @@ func newHarness(t *testing.T, o harnessOpt) *harness {
 	if o.platform == "windows" {
 		bar = ui.TitleBar{Height: 32, Right: 138}
 	}
-	tt.SetTitleBar(bar)
+	if !o.panel {
+		tt.SetTitleBar(bar)
+	}
 	h := &harness{t: t, ui: tt, app: a, be: be}
 	h.settle()
 	return h

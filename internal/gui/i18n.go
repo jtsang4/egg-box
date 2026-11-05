@@ -15,11 +15,11 @@ var Languages = []struct{ Code, Name string }{
 	{"zh", "简体中文"},
 }
 
-// t returns a translated string. Placeholders are written {name} and filled
-// from the pairs that follow the key: t("x", "name", "Ada").
-func (a *App) t(key string, kv ...string) string {
+// translate returns the text of a key in a language. Placeholders are written
+// {name} and filled from the pairs that follow the key.
+func translate(lang, key string, kv ...string) string {
 	cat := catalogEN
-	if a.lang == "zh" {
+	if lang == "zh" {
 		cat = catalogZH
 	}
 	s, ok := cat[key]
@@ -28,14 +28,14 @@ func (a *App) t(key string, kv ...string) string {
 			return key
 		}
 	}
-	if len(kv) == 0 {
-		return s
-	}
 	for i := 0; i+1 < len(kv); i += 2 {
 		s = strings.ReplaceAll(s, "{"+kv[i]+"}", kv[i+1])
 	}
 	return s
 }
+
+// t returns a translated string: t("x", "name", "Ada").
+func (a *App) t(key string, kv ...string) string { return translate(a.lang, key, kv...) }
 
 // pk is t for text that depends on the platform: it looks for key.darwin,
 // key.windows, and then key.other.

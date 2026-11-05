@@ -53,6 +53,22 @@ type Options struct {
 	Sync bool
 	// OnLanguage is told the language the interface settled on ("en", "zh").
 	OnLanguage func(lang string)
+	// OnTheme is told the appearance the user chose ("", "light", "dark"), so
+	// that the window's own chrome can follow it.
+	OnTheme func(theme string)
+	// OnChange is called, from any goroutine, after the backend changed; the
+	// tray follows the connection with it.
+	OnChange func()
+	// Notify shows a system notification. The interface decides what is worth
+	// one; nil turns notifications off.
+	Notify func(title, body string)
+	// ShowWindow brings the main window to the front.
+	ShowWindow func()
+	// SystemLocale is the language of the system, for text outside the window.
+	SystemLocale func() string
+	// ClosePanel closes the tray panel; Quit quits the application.
+	ClosePanel func()
+	Quit       func()
 }
 
 // page is a destination of the sidebar.
@@ -74,20 +90,23 @@ type App struct {
 	opt Options
 	be  Backend
 	win *mygo.Window
-	svc atomic.Pointer[ui.Services] // the window's persistent services: redraws from any goroutine
+	svc atomic.Pointer[ui.Services] // the main window's persistent services: redraws from any goroutine
+	// psvc is the tray panel's, while it is open.
+	psvc atomic.Pointer[ui.Services]
 
 	// Resolved at the start of every frame.
-	snap     *app.Snapshot
-	set      library.Settings
-	subs     []library.Subscription
-	prefs    configgen.Prefs
-	lang     string
-	dark     bool
-	sysDark  bool
-	pl       *palette
-	now      time.Time
-	platform string
-	bar      ui.TitleBar
+	snap      *app.Snapshot
+	set       library.Settings
+	subs      []library.Subscription
+	prefs     configgen.Prefs
+	lang      string
+	themeSeen string
+	dark      bool
+	sysDark   bool
+	pl        *palette
+	now       time.Time
+	platform  string
+	bar       ui.TitleBar
 
 	page     page
 	pageFrom page
@@ -119,6 +138,11 @@ type App struct {
 	pending atomic.Bool
 	mu      sync.Mutex
 	queue   []func()
+
+	// What the system notifications have told so far (see notifyNew).
+	nmu      sync.Mutex
+	nStarted bool
+	nLast    uint64
 }
 
 // New creates the interface for a backend.
@@ -132,7 +156,13 @@ func New(opt Options) *App {
 	a := &App{opt: opt, be: opt.Backend, platform: opt.Platform, jobs: map[string]bool{}, flash: map[string]time.Time{}}
 	a.initState()
 	if a.be != nil {
-		a.be.SetNotify(a.invalidate)
+		a.be.SetNotify(func() {
+			a.invalidate()
+			a.notifyNew()
+			if a.opt.OnChange != nil {
+				a.opt.OnChange()
+			}
+		})
 	}
 	return a
 }
@@ -151,13 +181,12 @@ func (a *App) Close() {
 
 // invalidate asks for a redraw from any goroutine, coalescing bursts.
 func (a *App) invalidate() {
-	s := a.svc.Load()
-	if s == nil || !a.pending.CompareAndSwap(false, true) {
+	if a.svc.Load() == nil && a.psvc.Load() == nil || !a.pending.CompareAndSwap(false, true) {
 		return
 	}
 	time.AfterFunc(24*time.Millisecond, func() {
 		a.pending.Store(false)
-		s.Invalidate()
+		a.again()
 	})
 }
 
@@ -210,17 +239,27 @@ func (a *App) fail(err error) {
 
 // view draws the window. It is the function the window's content runs.
 func (a *App) View(c *ui.Context) {
-	a.frame(c)
+	a.frame(c, &a.svc)
 	a.maybeWelcome()
 	a.shell(c)
 }
 
 // frame reads everything the frame needs, once, so that the pieces of the
-// view agree with each other.
-func (a *App) frame(c *ui.Context) {
-	if a.svc.Load() == nil {
+// view agree with each other, and does the bookkeeping of notices and toasts.
+func (a *App) frame(c *ui.Context, slot *atomic.Pointer[ui.Services]) {
+	a.resolve(c, slot)
+	a.absorbNotices()
+	a.pruneToasts()
+	a.pruneFlash()
+}
+
+// resolve reads the backend and the preferences into the App's per-frame
+// state. Every window of the application (the main one and the tray panel)
+// does it at the start of its frame.
+func (a *App) resolve(c *ui.Context, slot *atomic.Pointer[ui.Services]) {
+	if slot.Load() == nil {
 		s := c.Services()
-		a.svc.Store(&s)
+		slot.Store(&s)
 	}
 	a.now = a.opt.Now()
 	a.sysDark = c.Theme().Dark
@@ -241,6 +280,12 @@ func (a *App) frame(c *ui.Context) {
 			a.opt.OnLanguage(lang)
 		}
 	}
+	if a.set.Theme != a.themeSeen {
+		a.themeSeen = a.set.Theme
+		if a.opt.OnTheme != nil {
+			a.opt.OnTheme(a.set.Theme)
+		}
+	}
 	switch a.set.Theme {
 	case "dark":
 		a.dark = true
@@ -251,10 +296,6 @@ func (a *App) frame(c *ui.Context) {
 	}
 	a.pl = a.pal()
 	c.SetTheme(themeCache(a.pl))
-
-	a.absorbNotices()
-	a.pruneToasts()
-	a.pruneFlash()
 }
 
 // systemLanguage maps a locale tag to a language the interface has.
@@ -306,6 +347,9 @@ func (a *App) pruneFlash() {
 // built shows in the next one.
 func (a *App) again() {
 	if s := a.svc.Load(); s != nil {
+		s.Invalidate()
+	}
+	if s := a.psvc.Load(); s != nil {
 		s.Invalidate()
 	}
 }
