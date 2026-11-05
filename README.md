@@ -99,8 +99,12 @@ refuses to run as root, and release binaries do not contain the development tran
 go vet ./... && go tool mygo vet
 go test -race -short ./...                                        # the quick suite
 go test ./...                                                     # everything, including screenshots
-go test -tags "$TAGS" ./internal/agent/engine/... ./internal/agent/e2e/...   # with the real sing-box core
+go test -tags "sbui_dev,$TAGS" ./internal/agent/engine/... ./internal/agent/e2e/... ./internal/configgen/...
+                                                                  # with the real sing-box core
 ```
+
+CI also runs `staticcheck` for the three platforms, `shellcheck` on the installer scripts, and `govulncheck` (on every
+change and weekly): the service runs as root, so a dependency with a known vulnerability the code reaches is a failure.
 
 The interface is tested without a window (`ui.NewTester`), including screenshots rendered in memory (`ui.Render`), so a
 change can be reviewed without opening anything: `SBUI_SHOTS=/some/dir go test ./internal/gui -run TestShots`.
@@ -178,3 +182,12 @@ to be exercised on the real thing before a release is handed to people:
 
 The Windows code compiles for amd64 and arm64 and its pure parts (ACL construction, owner policy, trust rules) are unit
 tested; that is not a substitute for running it.
+
+## Licensing
+
+The program embeds [sing-box](https://github.com/SagerNet/sing-box), which is GPL-3.0-or-later with one added condition:
+no derivative work may use its name or imply association with it without prior consent. Two things follow before
+binaries are handed to anybody: the combined program has to be distributed under terms compatible with the GPL (this
+repository has no license file yet; choosing one is the owner's decision), and the product name has to be settled with
+the sing-box authors, since "Sing-Box UI" contains theirs. The name and the identifiers made from it (`me.jtsang.singboxui`,
+`SingBoxUI`) are used in `internal/brand`, `mygo.json`, `packaging/`, the interface texts and the service protocol.
