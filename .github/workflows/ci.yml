@@ -74,8 +74,11 @@ jobs:
       # TUN would be) runs here with the real core, from the application's
       # service to a connection through it. It never touches the network of the
       # machine it runs on, and it is only built with the sbui_dev tag.
+      #
+      # The generator's tests are here too: with every protocol compiled in, the
+      # real core checks what it makes for QUIC, WireGuard and REALITY nodes.
       - name: Tests with the real engine
-        run: go test -count=1 -tags "sbui_dev,$SBUI_TAGS" ./internal/agent/engine/... ./internal/agent/e2e/...
+        run: go test -count=1 -tags "sbui_dev,$SBUI_TAGS" ./internal/agent/engine/... ./internal/agent/e2e/... ./internal/configgen/...
 
   # The platform layers run for real on their own platform.
   macos:
