@@ -1,7 +1,9 @@
 package gui
 
 import (
+	"context"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -276,6 +278,60 @@ func TestNoManagedServiceRowWhereTheSwitchIsOurs(t *testing.T) {
 	h.click("Settings")
 	h.settle()
 	h.mustNotHave("Open Login Items")
+}
+
+func TestRemovingTheServiceAsksFirstAndDisconnectsBeforeRemoving(t *testing.T) {
+	h := newHarness(t, harnessOpt{h: 2800, platform: "darwin", setup: func(be *fixtureBackend, o *Options) {
+		o.RemoveService = func(context.Context) error { be.record("remove-service"); return nil }
+	}})
+	h.click("Settings")
+	h.settle()
+	h.mustHave("Remove the service")
+	h.click("Remove…")
+	h.settle()
+	h.mustHave("Remove the network service?")
+	if h.be.took("remove-service") {
+		t.Fatalf("the service was removed before the person confirmed: %v", h.be.called())
+	}
+	h.click("Remove service")
+	h.settle()
+	calls := h.be.called()
+	di, ri := slices.Index(calls, "disconnect"), slices.Index(calls, "remove-service")
+	if di < 0 || ri < 0 || di > ri {
+		t.Fatalf("the connection must be closed before the service is removed: %v", calls)
+	}
+}
+
+func TestRemovingTheServiceCancelledChangesNothing(t *testing.T) {
+	h := newHarness(t, harnessOpt{h: 2800, platform: "darwin", setup: func(be *fixtureBackend, o *Options) {
+		o.RemoveService = func(context.Context) error { be.record("remove-service"); return nil }
+	}})
+	h.click("Settings")
+	h.settle()
+	h.click("Remove…")
+	h.settle()
+	h.click("Cancel")
+	h.settle()
+	if calls := h.be.called(); slices.Contains(calls, "remove-service") || slices.Contains(calls, "disconnect") {
+		t.Fatalf("cancelling must change nothing: %v", calls)
+	}
+}
+
+func TestNoRemoveActionWhereTheServiceCannotBeRemovedOrIsNotThere(t *testing.T) {
+	// The platform has no such step: nothing is offered.
+	h := newHarness(t, harnessOpt{h: 2800})
+	h.click("Settings")
+	h.settle()
+	h.mustNotHave("Remove the service")
+
+	// The service is not allowed yet: nothing to remove.
+	h = newHarness(t, harnessOpt{h: 2800, setup: func(be *fixtureBackend, o *Options) {
+		noService(be, o)
+		o.RemoveService = func(context.Context) error { return nil }
+	}})
+	h.click("Settings")
+	h.settle()
+	h.mustNotHave("Remove the service")
 }
 
 func TestNetworkEditsApplyTogether(t *testing.T) {

@@ -69,6 +69,35 @@ func (a *App) authorize() {
 	})
 }
 
+// removeService asks first, then puts the network back and takes the service
+// out of the system. The application cannot connect again until the person
+// allows the service anew; what they added stays.
+func (a *App) removeService() {
+	if a.opt.RemoveService == nil {
+		return
+	}
+	a.confirm(a.t("settings.service.remove.title"), a.t("settings.service.remove.body"), a.t("settings.service.remove.confirm"), true, func() {
+		active := a.snap.Phase.Online() || a.snap.Phase == app.PhaseConnecting
+		a.job("remove-service", func(ctx context.Context) error {
+			// The connection is closed first, so that the network is back as
+			// it was before the service goes (it would do the same on its way
+			// out, but this way a failure is reported here, with the cause).
+			if active {
+				if err := a.be.Disconnect(ctx); err != nil {
+					return err
+				}
+			}
+			return a.opt.RemoveService(ctx)
+		}, func(err error) {
+			if err != nil {
+				a.fail(err)
+				return
+			}
+			a.toastInfo(a.t("settings.service.removed"))
+		})
+	})
+}
+
 // testAll measures every node.
 func (a *App) testAll() {
 	a.job("test-all", func(ctx context.Context) error { return a.be.TestLatency(ctx, configgen.TagProxy) }, nil)

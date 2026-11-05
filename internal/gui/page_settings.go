@@ -496,6 +496,14 @@ func (a *App) serviceSection(c *ui.Context) {
 				}
 			})
 		})
+		if a.opt.RemoveService != nil && a.snap.Phase != app.PhaseNoAgent {
+			a.rowDivider(c)
+			a.settingRow(c, a.t("settings.service.remove"), a.t("settings.service.remove.desc"), func() {
+				if a.btn(c, btnSpec{kind: btnSecondary, label: a.t("settings.service.remove.btn"), icon: "trash", busy: a.busy("remove-service")}).Clicked() {
+					a.removeService()
+				}
+			})
+		}
 		if a.snap.Phase == app.PhaseNoAgent && a.opt.Authorize != nil {
 			a.rowDivider(c)
 			ui.Row(c).Padding(14, 0).Children(func() {

@@ -51,6 +51,10 @@ type Options struct {
 	// privileged service on or off, for platforms (macOS) where that is the
 	// only place to do it; nil hides the row.
 	OpenServiceSettings func()
+	// RemoveService takes the privileged service out of the system, for
+	// platforms where the application itself can (macOS); elsewhere the
+	// uninstaller does it. nil hides the action.
+	RemoveService func(ctx context.Context) error
 	// OpenURL opens a link in the browser; nil uses the context's.
 	OpenURL func(url string)
 	// Sync runs jobs inline, for tests.

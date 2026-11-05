@@ -69,5 +69,15 @@ func installedServices() platformServices {
 				b.OpenLoginItems()
 			}
 		},
+		// Unregistering stops the service (launchd ends it with a termination
+		// signal, which it answers by putting the network back) and removes
+		// its entry from Login Items & Extensions.
+		RemoveService: func(context.Context) error {
+			b, err := load()
+			if err != nil {
+				return err
+			}
+			return b.Unregister(macsys.DaemonPlist)
+		},
 	}
 }

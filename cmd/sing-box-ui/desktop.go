@@ -44,6 +44,9 @@ type desktop struct {
 	// openServiceSettings opens the system page that switches the privileged
 	// service on or off, when the platform has one (macOS).
 	openServiceSettings func()
+	// removeService takes the privileged service out of the system, when the
+	// platform lets the application do it (macOS).
+	removeService func(ctx context.Context) error
 
 	menu menuItems
 	lang string
@@ -78,6 +81,7 @@ func (d *desktop) bootConfig() (boot.Config, error) {
 		ps := installedServices()
 		cfg.Dial, cfg.Authorize, cfg.ServiceStartup = ps.Dial, ps.Authorize, ps.ServiceStartup
 		d.openServiceSettings = ps.OpenServiceSettings
+		d.removeService = ps.RemoveService
 	}
 	return cfg, nil
 }
@@ -157,6 +161,7 @@ func (d *desktop) guiOptions(cfg boot.Config) gui.Options {
 	if d.openServiceSettings != nil {
 		o.OpenServiceSettings = func() { go d.openServiceSettings() }
 	}
+	o.RemoveService = d.removeService
 	if d.mode() == boot.Installed {
 		// Only the installed application is a login item: a demonstration or
 		// a development build must leave nothing behind.

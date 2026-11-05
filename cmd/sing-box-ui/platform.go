@@ -22,4 +22,7 @@ type platformServices struct {
 	// OpenServiceSettings opens the system page where the service is switched
 	// on or off, on platforms where that is the only place; nil otherwise.
 	OpenServiceSettings func()
+	// RemoveService takes the service out of the system, on platforms where
+	// the application can do that itself; nil otherwise.
+	RemoveService func(ctx context.Context) error
 }
