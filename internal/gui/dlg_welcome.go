@@ -163,7 +163,12 @@ func (a *App) welcomeService(c *ui.Context) {
 		a.txt(c, a.t("welcome.service.title"), 22, 720, p.Text).LetterSpacing(-0.5)
 		a.txt(c, a.pk("welcome.service.body"), 13.5, 400, p.Text2).LineHeight(1.55).TextAlign(ui.Center)
 	})
-	tn, ic, title, body := toneWarn, "lock", a.t("welcome.service.pending"), a.pk("welcome.service.how")
+	// Before the button is pressed this tells what is about to be asked; once
+	// the system is waiting for the person, it says so.
+	tn, ic, title, body := toneWarn, "lock", a.t("welcome.service.needed"), a.pk("welcome.service.how")
+	if a.busy("authorize") {
+		title = a.t("welcome.service.pending")
+	}
 	if ok {
 		tn, ic, title, body = toneGood, "check-circle", a.t("welcome.service.ready"), a.t("welcome.service.ready.body")
 	}

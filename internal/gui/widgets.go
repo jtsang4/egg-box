@@ -71,6 +71,14 @@ func (a *App) caption(c *ui.Context, s string) ui.Element {
 }
 
 // number is a figure in tabular numerals.
+// rolling is how a live figure changes: the digits that differ roll over
+// quickly, so that a number updated every second is at rest almost all of the
+// time instead of always being half way between two values.
+var rolling = ui.ContentTransition{
+	Numeric:   true,
+	Animation: &ui.Animation{Spring: ui.SpringOptions{Duration: 180 * time.Millisecond}},
+}
+
 func (a *App) number(c *ui.Context, s string, size float32, col ui.Color) ui.Element {
 	return a.txt(c, s, size, 650, col).FontFeatures("tnum").LetterSpacing(-0.4).SingleLine()
 }

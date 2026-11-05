@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/jtsang4/sing-box-ui/internal/agentapi"
 	"github.com/jtsang4/sing-box-ui/internal/app"
 )
 
@@ -25,7 +26,21 @@ func introduction(be *fixtureBackend, o *Options) {
 	o.Authorize = func(context.Context) error { return nil }
 }
 
+// failedConnection is the state after an attempt that did not work.
+func failedConnection(be *fixtureBackend, _ *Options) {
+	be.snap = be.disconnectedSnapshot()
+	be.snap.Phase = app.PhaseFailed
+	be.snap.Status = &agentapi.Status{
+		Service: agentapi.ServiceState_SERVICE_STATE_READY, Connection: agentapi.ConnectionState_CONNECTION_STATE_FAILED,
+		HasConfig: true, Mode: "Rule", LastError: "the core could not start: the outbound handshake timed out",
+	}
+}
+
 var shots = []shot{
+	{name: "empty-dashboard", setup: emptyLibrary},
+	{name: "empty-nodes", setup: emptyLibrary, run: func(h *harness) { h.click("Nodes") }},
+	{name: "empty-subscriptions", setup: emptyLibrary, run: func(h *harness) { h.click("Subscriptions") }},
+	{name: "failed-dashboard", setup: failedConnection},
 	{name: "dashboard"},
 	{name: "dashboard-off", setup: func(be *fixtureBackend, _ *Options) { be.snap = be.disconnectedSnapshot() }},
 	{name: "nodes", run: func(h *harness) { h.click("Nodes") }},

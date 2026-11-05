@@ -199,16 +199,23 @@ func (a *App) routeStrip(c *ui.Context, nodes []nodeEntry) {
 	if len(routes) == 1 && len(nodes) < 2 {
 		return
 	}
+	// Only as many cards as the window gives room for: a card that has to
+	// cut its words is worse than a region that is one filter away.
+	w, _ := c.Size()
+	const minRoute, gap = 176, 14
+	fit := int((w - sidebarWidth - 2*pagePadding - 1 + gap) / (minRoute + gap))
+	fit = max(fit, 2)
+	if len(routes) > fit {
+		routes = routes[:fit]
+	}
 	cur := a.selectedKey()
-	ui.Row(c.Key("routes")).Gap(14).Children(func() {
+	ui.Row(c.Key("routes")).Gap(gap).Children(func() {
 		for _, r := range routes {
 			a.routeCard(c, r.key, r.title, r.sub, r.tip, r.region, cur == r.key)
 		}
 		// Keep the cards from stretching when few.
-		if len(routes) < 4 {
-			for i := len(routes); i < 4; i++ {
-				ui.Box(c).Grow(1).Basis(0)
-			}
+		for i := len(routes); i < min(4, fit); i++ {
+			ui.Box(c).Grow(1).Basis(0)
 		}
 	})
 }

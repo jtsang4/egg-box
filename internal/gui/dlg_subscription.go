@@ -109,11 +109,14 @@ func (d *subDialog) frame(a *App, c *ui.Context) dlgFrame {
 					a.segmented(c, "sd-interval", &d.interval, items, segOpts{small: true})
 				})
 			}
-			// Advanced options fold away.
-			adv := a.btn(c, btnSpec{kind: btnGhost, small: true, label: a.t("subdlg.advanced"), icon: boolOr(d.advanced, "chevron-down", "chevron-right")})
-			if adv.Clicked() {
-				d.advanced = !d.advanced
-			}
+			// Advanced options fold away. The button sits at the start of its
+			// own row: alone in the column it would be stretched across it.
+			ui.Row(c).Children(func() {
+				adv := a.btn(c, btnSpec{kind: btnGhost, small: true, label: a.t("subdlg.advanced"), icon: boolOr(d.advanced, "chevron-down", "chevron-right")})
+				if adv.Clicked() {
+					d.advanced = !d.advanced
+				}
+			})
 			if d.advanced {
 				ui.Column(c).Gap(14).Padding(0, 0, 0, 2).Children(func() {
 					if d.remote() {
