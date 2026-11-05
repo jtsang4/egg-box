@@ -1,10 +1,11 @@
-//go:build !sbui_dev
+//go:build !(sbui_dev && (darwin || linux))
 
 package main
 
 import "github.com/jtsang4/sing-box-ui/internal/boot"
 
-// devOptions are the flags of development builds; release builds have none.
+// devOptions are the flags of development builds; release builds have none,
+// and neither has a platform that has no development agent (dev_on.go).
 type devOptions struct{}
 
 func (devOptions) parse(string, func() (string, error)) (bool, error) { return false, nil }

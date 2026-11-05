@@ -169,3 +169,6 @@ jobs:
         run: |
           export GOOS="${{ matrix.target }}"; export GOARCH="${GOOS#*/}"; export GOOS="${GOOS%/*}"
           go build -trimpath -tags "$SBUI_TAGS" ./...
+          # The development tag must not break a platform that has no
+          # development agent: it compiles there as a release build.
+          go vet -tags "sbui_dev,$SBUI_TAGS" ./...
