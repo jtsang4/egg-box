@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo/ui"
+
 	"eggbox/internal/app"
 )
 
@@ -52,4 +54,18 @@ func TestAnimatedInteractions(t *testing.T) {
 	h.click("Connect")
 	h.settle()
 	h.mustHave("PROTECTED", "Disconnect")
+}
+
+func TestMotionPreferenceChangesWhileOpen(t *testing.T) {
+	h := newHarness(t, harnessOpt{motion: true, scale: 0.5})
+	for _, reduce := range []bool{true, false} {
+		h.ui.SetPreferences(ui.Preferences{ReduceMotion: reduce, TextScale: 1})
+		h.settle()
+		before := bytes.Clone(h.ui.Image().Pix)
+		h.ui.Advance(200 * time.Millisecond)
+		changed := !bytes.Equal(before, h.ui.Image().Pix)
+		if changed == reduce {
+			t.Fatalf("image changed=%v after setting reduced motion=%v", changed, reduce)
+		}
+	}
 }

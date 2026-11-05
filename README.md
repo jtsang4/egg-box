@@ -108,16 +108,15 @@ go test -count=1 -timeout 10m -tags "eggbox_dev,$TAGS" ./internal/agent/engine/.
                                                                   # with the real sing-box core
 ```
 
-CI runs the GUI suite once on Linux when its Go import dependencies change. Backend and native-platform tests run
-on Linux, macOS and Windows; GUI-only changes avoid repeating unchanged backend tests on the native runners.
+CI runs on manual dispatch and as a release prerequisite. It runs the GUI suite once on Linux, plus backend and
+native-platform tests on Linux, macOS and Windows.
 The five cross-build targets also vet development builds; `staticcheck` covers each operating system. Compiler and
 analysis caches are isolated by workload and target, with module downloads shared. `shellcheck`, `actionlint` and
 module/format checks run before expensive platform jobs. Tests execute afresh, including the race and real-core tiers.
 
-Documentation-only changes skip CI. The weekly schedule runs `govulncheck`; code changes also scan for reachable
-vulnerabilities. Installers are built when their scripts, native bridge, metadata, dependencies or icons change, on a
-manual CI run with **installers** enabled, and on release tags. CI artifacts expire after three days; release workflow
-transfer artifacts expire after one day. Only standard hosted runners are used.
+Use **Actions → ci → Run workflow** for ad hoc verification; enable **installers** to also build unsigned packages.
+The weekly schedule runs only `govulncheck`. CI artifacts expire after three days; release workflow transfer artifacts
+expire after one day. Only standard hosted runners are used.
 Native macOS tests and universal packaging use the fixed `macos-15-intel` image; packages contain both Intel and Apple
 Silicon executables.
 
@@ -161,10 +160,10 @@ The Windows installer is per machine: it installs under Program Files (the progr
 registers the service, authorizes the installing user, and its uninstaller removes the service, the adapter and the data
 (`agentd.exe uninstall --purge`).
 
-CI (`.github/workflows/ci.yml`) runs the checks and the tests on Linux, macOS and Windows, builds both installers, and
-cross-builds every target. A `v*` tag builds the installers and attaches them to a release
-(`.github/workflows/release.yml`); with the signing secrets listed there they are signed, without them they are not
-fit to hand to anybody.
+CI (`.github/workflows/ci.yml`) verifies Linux, macOS, Windows and every cross-build target. A `v*` tag matching the
+version in `mygo.json` first runs that complete workflow, then builds the installers and publishes the release
+(`.github/workflows/release.yml`). Failed verification blocks both packaging and publication. Signing uses the secrets
+listed in the release workflow; without them the installers are not fit to hand to anybody.
 
 ## Layout
 

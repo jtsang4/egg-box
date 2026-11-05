@@ -1,11 +1,6 @@
 name: ci
 
 on:
-  push:
-    branches: [main]
-    paths-ignore: ['**/*.md', 'docs/**']
-  pull_request:
-    paths-ignore: ['**/*.md', 'docs/**']
   schedule:
     - cron: '23 4 * * 1'
   workflow_dispatch:
@@ -13,7 +8,13 @@ on:
       installers:
         description: Build and upload both installers as well as running all checks
         type: boolean
-        default: true
+        default: false
+  workflow_call:
+    inputs:
+      installers:
+        description: Build unsigned installers during verification
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -31,27 +32,9 @@ env:
   GOFLAGS: -trimpath
 
 jobs:
-  scope:
-    runs-on: ubuntu-slim
-    timeout-minutes: 3
-    outputs:
-      code: ${{ steps.changes.outputs.code }}
-      gui: ${{ steps.changes.outputs.gui }}
-      macos_native: ${{ steps.changes.outputs.macos_native }}
-      windows_native: ${{ steps.changes.outputs.windows_native }}
-      macos_package: ${{ steps.changes.outputs.macos_package }}
-      windows_package: ${{ steps.changes.outputs.windows_package }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - id: changes
-        run: python3 scripts/ci/scope.py
-
   # Fail inexpensive checks before starting platform runners and the matrix.
   check:
-    needs: scope
-    if: needs.scope.outputs.code == 'true'
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -77,10 +60,9 @@ jobs:
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum
-      - name: Scripts and workflow scope
+      - name: Shell scripts
         run: |
           git ls-files -z '*.sh' 'packaging/macos/scripts/*' | xargs -0 shellcheck
-          python3 -m unittest discover -s scripts/ci -p '*_test.py'
       - name: Workflows
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
       - name: Vet
@@ -95,8 +77,7 @@ jobs:
         run: go test -count=1 -timeout 10m -tags "eggbox_dev,$EGGBOX_TAGS" ./internal/agent/engine/... ./internal/agent/e2e/... ./internal/configgen/...
 
   gui:
-    needs: [scope, check]
-    if: needs.scope.outputs.gui == 'true'
+    needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -111,8 +92,6 @@ jobs:
 
   # The schedule scans for new advisories, without rebuilding unchanged apps.
   vulnerabilities:
-    needs: scope
-    if: github.event_name == 'schedule' || needs.scope.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -126,22 +105,21 @@ jobs:
   # Shared GUI behaviour, including platform flavours, runs once on Linux.
   # Every other test still runs on its native OS, including filesystem tests.
   macos:
-    needs: [scope, check]
-    if: needs.scope.outputs.macos_native == 'true' || needs.scope.outputs.macos_package == 'true'
+    needs: check
     runs-on: macos-15-intel
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/go
         with:
-          cache-name: macos
+          cache-name: macos-${{ inputs.installers && 'package' || 'test' }}
       - name: Native and backend tests (including Swift and real XPC)
         run: bash scripts/ci/backend-tests.sh -race -short -timeout 10m -count=1
       - name: Package (unsigned)
-        if: needs.scope.outputs.macos_package == 'true'
+        if: inputs.installers
         run: packaging/macos/build.sh --arch universal
       - uses: actions/upload-artifact@v4
-        if: needs.scope.outputs.macos_package == 'true'
+        if: inputs.installers
         with:
           name: macos-unsigned
           path: build/macos/*.pkg
@@ -150,27 +128,26 @@ jobs:
           retention-days: 3
 
   windows:
-    needs: [scope, check]
-    if: needs.scope.outputs.windows_native == 'true' || needs.scope.outputs.windows_package == 'true'
+    needs: check
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/go
         with:
-          cache-name: windows
+          cache-name: windows-${{ inputs.installers && 'package' || 'test' }}
       - name: Native and backend tests
         run: bash scripts/ci/backend-tests.sh -short -timeout 10m -count=1
       - name: Install NSIS
-        if: needs.scope.outputs.windows_package == 'true'
+        if: inputs.installers
         run: choco install nsis -y --no-progress
       - name: Installer (unsigned)
-        if: needs.scope.outputs.windows_package == 'true'
+        if: inputs.installers
         run: |
           export PATH="/c/Program Files (x86)/NSIS:$PATH"
           packaging/windows/build.sh --arch amd64
       - uses: actions/upload-artifact@v4
-        if: needs.scope.outputs.windows_package == 'true'
+        if: inputs.installers
         with:
           name: windows-unsigned
           path: build/windows/*.exe

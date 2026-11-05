@@ -1,6 +1,6 @@
 name: release
 
-# A tag such as v1.2.3 builds the installers and attaches them to a release.
+# A matching version tag verifies the source, builds installers and publishes.
 #
 # They are signed when the secrets below exist. Without them they are signed
 # ad hoc on macOS and not at all on Windows: good to try, not good to hand to
@@ -23,7 +23,30 @@ env:
   GOFLAGS: -trimpath
 
 jobs:
+  version:
+    runs-on: ubuntu-slim
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches the application version
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          expected = 'v' + json.load(open('mygo.json'))['version']
+          if os.environ['GITHUB_REF_NAME'] != expected:
+              sys.exit(f'Release tag must be {expected}; update mygo.json before tagging.')
+          PY
+
+  verify:
+    needs: version
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      installers: false
+
   macos:
+    needs: verify
     runs-on: macos-15-intel
     env:
       # Here, because a step cannot ask whether a secret exists, only whether
@@ -36,7 +59,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/go
         with:
-          cache-name: macos
+          cache-name: macos-package
 
       - name: Import the signing certificate
         if: env.EGGBOX_CERTIFICATE != ''
@@ -68,6 +91,7 @@ jobs:
           retention-days: 1
 
   windows:
+    needs: verify
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -92,7 +116,7 @@ jobs:
           retention-days: 1
 
   publish:
-    needs: [macos, windows]
+    needs: [verify, macos, windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

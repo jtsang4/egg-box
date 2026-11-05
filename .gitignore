@@ -25,7 +25,6 @@ mygo_windows_*.syso
 
 # Local state & editors
 .DS_Store
-__pycache__/
 .idea/
 .vscode/
 *.log
