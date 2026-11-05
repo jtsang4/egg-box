@@ -211,6 +211,12 @@ func (s *Service) updateScheduledRuleData(ctx context.Context, maxAge time.Durat
 	if len(urls) == 0 {
 		return
 	}
+	// Files the plan lacks are being fetched already, and that run asks for
+	// the same ones: the next round looks again.
+	if !s.fetching.CompareAndSwap(false, true) {
+		return
+	}
+	defer s.fetching.Store(false)
 	s.setBusy(func(b *Busy) { b.RuleData = true })
 	defer s.setBusy(func(b *Busy) { b.RuleData = false })
 	updated, failed, first := summarize(s.fetchRuleData(ctx, urls, ruledata.UpdateOptions{MaxAge: maxAge}))

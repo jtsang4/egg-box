@@ -9,6 +9,10 @@ import (
 	"eggbox/internal/agentapi"
 	"eggbox/internal/agentclient"
 	"eggbox/internal/library"
+	"eggbox/internal/routing"
+	"eggbox/internal/ruledata"
+	"eggbox/internal/rulefmt"
+	"eggbox/internal/ruleurl"
 	"eggbox/internal/subscription"
 )
 
@@ -82,6 +86,9 @@ func Explain(err error) Explanation {
 	if errors.As(err, &fe) {
 		return Explanation{Code: "fetch_" + string(fe.Kind), Detail: detail}
 	}
+	if code := routingCode(err); code != "" {
+		return Explanation{Code: code, Detail: detail}
+	}
 	switch {
 	case errors.Is(err, ErrNoNodes), isNoNodes(err):
 		return Explanation{Code: "no_nodes", Detail: detail}
@@ -139,4 +146,52 @@ func codeOfAgent(c agentapi.ErrorCode) string {
 		return "agent_unreachable"
 	}
 	return "internal"
+}
+
+// routingCode classifies what can go wrong with a person's routing choices
+// and the rule files behind them; "" when err is neither.
+func routingCode(err error) string {
+	var status ruledata.StatusError
+	var parse *ruledata.ParseError
+	switch {
+	case errors.Is(err, routing.ErrDuplicateName):
+		return "item_duplicate_name"
+	case errors.Is(err, routing.ErrNoName):
+		return "item_no_name"
+	case errors.Is(err, routing.ErrBadEntry):
+		return "entry_invalid"
+	case errors.Is(err, routing.ErrLocked):
+		return "plan_locked"
+	case errors.Is(err, routing.ErrNotMine):
+		return "plan_not_mine"
+	case errors.Is(err, routing.ErrTooManyExceptions):
+		return "too_many_exceptions"
+	case errors.Is(err, routing.ErrNoItem), errors.Is(err, routing.ErrNoException), errors.Is(err, routing.ErrNoPlan), errors.Is(err, routing.ErrNoSource):
+		return "not_found"
+	case errors.Is(err, routing.ErrDuplicateSource):
+		return "source_duplicate"
+	case errors.Is(err, routing.ErrLastSource):
+		return "source_last"
+	case errors.Is(err, routing.ErrNotInline):
+		return "source_not_inline"
+	case errors.Is(err, routing.ErrNoEntries):
+		return "entries_empty"
+	case errors.Is(err, routing.ErrTooManyEntries):
+		return "entries_too_many"
+	case errors.Is(err, ErrBadTarget):
+		return "bad_target"
+	case errors.Is(err, ErrLooksLikeSubscription):
+		return "looks_like_subscription"
+	case errors.Is(err, ruleurl.ErrAddress):
+		return "rule_bad_address"
+	case errors.Is(err, ruledata.ErrTooLarge):
+		return "rule_too_large"
+	case errors.Is(err, rulefmt.ErrEmpty):
+		return "rule_empty"
+	case errors.Is(err, rulefmt.ErrUnrecognized), errors.Is(err, rulefmt.ErrMalformed), errors.Is(err, rulefmt.ErrMRS), errors.As(err, &parse):
+		return "rule_unreadable"
+	case errors.As(err, &status):
+		return "rule_http_status"
+	}
+	return ""
 }

@@ -217,7 +217,7 @@ func (s *Service) TestURL(ctx context.Context, raw string) (*TestURLResult, erro
 		case rulefmt.Match:
 			e := x.Entry()
 			res.Source = &TestSource{Entry: &e}
-			return finish(Why{Kind: WhyException, ID: x.ID, Name: x.Value, Index: v.state.ExceptionIndex(x.ID) + 1}, x.Dest, x.ID)
+			return finish(Why{Kind: WhyException, ID: x.ID, Name: x.Value, Index: v.state.ExceptionIndex(x.ID)}, x.Dest, x.ID)
 		case rulefmt.Unknown:
 			res.Skipped++
 		}
@@ -344,12 +344,11 @@ func ConnCandidates(c Conn) []Candidate {
 	host := strings.TrimSuffix(strings.ToLower(c.Host), ".")
 	if host != "" && net.ParseIP(host) == nil {
 		out = append(out, Candidate{ScopeHost, routing.Entry{Kind: routing.EntryDomain, Value: host}})
+		// A name that is itself a public suffix ("github.io", "co.uk") has no
+		// registered domain: widening it would take in everybody else's sites,
+		// so only the name is offered.
 		if base, err := publicsuffix.EffectiveTLDPlusOne(host); err == nil && base != "" {
 			out = append(out, Candidate{ScopeDomain, routing.Entry{Kind: routing.EntryDomainSuffix, Value: base}})
-		} else if strings.Contains(host, ".") {
-			// A name the list does not know (a private or new suffix): the
-			// name itself is as wide as can be said safely.
-			out = append(out, Candidate{ScopeDomain, routing.Entry{Kind: routing.EntryDomainSuffix, Value: host}})
 		}
 	}
 	if ip := connIP(c.Destination); ip.IsValid() {

@@ -62,7 +62,31 @@ func TestEntryNormalizeAndValid(t *testing.T) {
 		{Entry{EntryDomainRegex, `([`}, Entry{}, false},
 		{Entry{EntryProcessName, "chrome.exe"}, Entry{EntryProcessName, "chrome.exe"}, true},
 		{Entry{EntryProcessPath, `C:\Program Files\x.exe`}, Entry{EntryProcessPath, `C:\Program Files\x.exe`}, true},
-		{Entry{EntryProcessName, "a b"}, Entry{}, false},
+		{Entry{EntryProcessName, "Google Chrome Helper"}, Entry{EntryProcessName, "Google Chrome Helper"}, true},
+		{Entry{EntryProcessName, "dir/x"}, Entry{}, false},
+		{Entry{EntryProcessName, `dir\x.exe`}, Entry{}, false},
+		{Entry{EntryProcessName, "a\nb"}, Entry{}, false},
+		// What is not a name of a host cannot be a domain, whatever else it is.
+		{Entry{EntryDomainSuffix, "10.0.0.0/8"}, Entry{}, false},
+		{Entry{EntryDomainSuffix, "10.0.0.1"}, Entry{}, false},
+		{Entry{EntryDomainSuffix, "8443"}, Entry{}, false},
+		{Entry{EntryDomainSuffix, "a..b"}, Entry{}, false},
+		{Entry{EntryDomainSuffix, "-a.org"}, Entry{}, false},
+		{Entry{EntryDomainSuffix, "a b.org"}, Entry{}, false},
+		{Entry{EntryDomainSuffix, "https://a.org"}, Entry{}, false},
+		{Entry{EntryDomainSuffix, "a.org:443"}, Entry{}, false},
+		{Entry{EntryDomain, "*.a.org"}, Entry{}, false},
+		{Entry{EntryDomain, "2001:db8::1"}, Entry{}, false},
+		{Entry{EntryDomainSuffix, "cn"}, Entry{EntryDomainSuffix, "cn"}, true},
+		{Entry{EntryDomainSuffix, "_dmarc.a.org"}, Entry{EntryDomainSuffix, "_dmarc.a.org"}, true},
+		{Entry{EntryDomainSuffix, "a.org."}, Entry{EntryDomainSuffix, "a.org"}, true},
+		{Entry{EntryDomainSuffix, "例子.com"}, Entry{EntryDomainSuffix, "xn--fsqu00a.com"}, true},
+		{Entry{EntryDomain, "Bücher.example"}, Entry{EntryDomain, "xn--bcher-kva.example"}, true},
+		{Entry{EntryDomainKeyword, "Ads-Tracker"}, Entry{EntryDomainKeyword, "ads-tracker"}, true},
+		{Entry{EntryDomainKeyword, ".cn."}, Entry{EntryDomainKeyword, ".cn."}, true},
+		{Entry{EntryDomainKeyword, "ads tracker"}, Entry{}, false},
+		{Entry{EntryDomainKeyword, "ads/tracker"}, Entry{}, false},
+		{Entry{EntryDomainKeyword, "例子"}, Entry{}, false},
 		{Entry{EntryDomainSuffix, "*."}, Entry{}, false},
 		{Entry{"weird", "x"}, Entry{}, false},
 		{Entry{EntryDomain, "  "}, Entry{}, false},
@@ -683,5 +707,53 @@ func TestStateCloneIsDeep(t *testing.T) {
 	c.Plans[0].Items[0].Name = "changed"
 	if r, _, _ := s.View().Row("a-a"); r.Item.Dest.Kind != DestNode || len(s.Exceptions) != 1 || s.Plans[0].Items[0].Name != "A" {
 		t.Error("editing a clone must not touch the original")
+	}
+}
+
+func TestRecentNodesAreTheLastChosenAsMain(t *testing.T) {
+	s := NewState()
+	node := func(name string) NodeID { return NodeID{Sub: "s1", Name: name, Hash: "h-" + name} }
+	for _, n := range []string{"A", "B", "C", "A"} {
+		if err := s.SetMain(ToNode(node(n))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := len(s.Recent); got != 3 || s.Recent[0].Name != "A" || s.Recent[1].Name != "C" || s.Recent[2].Name != "B" {
+		t.Errorf("newest first, each node once: %+v", s.Recent)
+	}
+	// A region or automatic leaves the memory alone.
+	_ = s.SetMain(Auto())
+	_ = s.SetMain(ToRegion("jp"))
+	if len(s.Recent) != 3 {
+		t.Errorf("only nodes are remembered: %+v", s.Recent)
+	}
+	// The same node under another name (the provider renamed it) is still one entry.
+	_ = s.SetMain(ToNode(NodeID{Sub: "s1", Name: "A renamed", Hash: "h-A"}))
+	if len(s.Recent) != 3 || s.Recent[0].Name != "A renamed" {
+		t.Errorf("a renamed node replaces its old entry: %+v", s.Recent)
+	}
+	// There is room for MaxRecent and no more.
+	for i := 0; i < 2*MaxRecent; i++ {
+		_ = s.SetMain(ToNode(node(string(rune('a' + i)))))
+	}
+	if len(s.Recent) != MaxRecent {
+		t.Errorf("kept %d, want %d", len(s.Recent), MaxRecent)
+	}
+	// A failed choice is not remembered.
+	before := s.Recent[0]
+	if err := s.SetMain(Dest{Kind: DestFollow}); err == nil {
+		t.Fatal("the main exit cannot follow itself")
+	}
+	if s.Recent[0] != before {
+		t.Error("an invalid choice changed the memory")
+	}
+	// Renames are followed, and a copy shares nothing.
+	c := s.Clone()
+	live := []LiveNode{{Sub: "s1", Name: "renamed " + before.Name, Hash: before.Hash, Region: "HK"}}
+	if !c.RefreshIdentities(live) || c.Recent[0].Name != "renamed "+before.Name {
+		t.Errorf("recent nodes follow a rename: %+v", c.Recent[0])
+	}
+	if s.Recent[0] != before {
+		t.Error("refreshing a clone changed the original")
 	}
 }

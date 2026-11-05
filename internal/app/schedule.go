@@ -37,7 +37,7 @@ func (s *Service) tick(ctx context.Context) {
 			if err != nil {
 				continue // the failure is on the subscription; Due retries it later
 			}
-			changed = changed || res.Changed
+			changed = changed || refreshed(res)
 		}
 		if changed {
 			s.notice(LevelInfo, "subscriptions_auto_updated", "", nil)

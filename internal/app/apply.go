@@ -382,8 +382,22 @@ func (s *Service) connectNotices() {
 		s.tellOnce("waiting:"+strconv.Itoa(waiting), LevelWarning, "items_waiting", "", map[string]string{"count": strconv.Itoa(waiting)})
 	}
 	for _, n := range v.res.Notices {
-		if n.Code == plancompile.NoticePinGone {
-			s.tellOnce("gone:"+string(n.Owner)+n.ID+n.Node.Key(), LevelWarning, "pin_gone", "", map[string]string{"node": n.Node.Name, "for": v.names[n.ID]})
+		if n.Code != plancompile.NoticePinGone {
+			continue
+		}
+		key, args := "gone:"+string(n.Owner)+n.ID+n.Node.Key(), map[string]string{"node": n.Node.Name, "for": v.names[n.ID]}
+		// The main exit and the rest of the traffic have no name of their own.
+		switch n.Owner {
+		case plancompile.OwnerMain:
+			s.tellOnce(key, LevelWarning, "pin_gone_main", "", args)
+		case plancompile.OwnerFallback:
+			s.tellOnce(key, LevelWarning, "pin_gone_fallback", "", args)
+		default:
+			if n.Owner == plancompile.OwnerItem {
+				// The interface names a shipped item in its own language.
+				args["item"] = n.ID
+			}
+			s.tellOnce(key, LevelWarning, "pin_gone", "", args)
 		}
 	}
 }

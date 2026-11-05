@@ -150,6 +150,10 @@ func (s *Service) refreshIdentities(v *planView) {
 // from being written.
 var errNothingChanged = errors.New("nothing changed")
 
+// RegionOf is the region a node counts as: the person's correction, else what
+// its name says. The interface shows the same one the configuration uses.
+func RegionOf(st routing.State, a library.ActiveNode) string { return regionFor(st, a) }
+
 // regionFor is the region a node counts as: the person's correction, else
 // what its name says.
 func regionFor(st routing.State, a library.ActiveNode) string {
@@ -321,7 +325,7 @@ func (s *Service) whyOf(rule, outbound string) Why {
 		}
 		switch o.Kind {
 		case configgen.OwnerException:
-			return Why{Kind: WhyException, ID: o.ID, Name: v.names[o.ID], Index: v.state.ExceptionIndex(o.ID) + 1}
+			return Why{Kind: WhyException, ID: o.ID, Name: v.names[o.ID], Index: v.state.ExceptionIndex(o.ID)}
 		case configgen.OwnerItem:
 			return Why{Kind: WhyItem, ID: o.ID, Name: v.names[o.ID]}
 		}

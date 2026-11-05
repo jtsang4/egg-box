@@ -241,6 +241,14 @@ func (s *State) RefreshIdentities(live []LiveNode) bool {
 			changed = true
 		}
 	})
+	for i, r := range s.Recent {
+		if j, how := Resolve(r, live); how == MatchName || how == MatchHash {
+			if n := live[j].ID(); n != r {
+				s.Recent[i] = n
+				changed = true
+			}
+		}
+	}
 	if len(s.Nodes) > 0 {
 		next := make(map[string]NodePref, len(s.Nodes))
 		for key, pref := range s.Nodes {

@@ -196,55 +196,81 @@ type Entry struct {
 	Value string    `json:"value"`
 }
 
+// ErrBadEntry is what Valid reports for an entry that cannot be used. The
+// text of the error says why, in English; the interface words it itself.
+var ErrBadEntry = errors.New("not a usable entry")
+
+// badEntry is a reason an entry cannot be used; it is an ErrBadEntry.
+type badEntry string
+
+func (e badEntry) Error() string        { return string(e) }
+func (e badEntry) Is(target error) bool { return target == ErrBadEntry }
+
+func badEntryf(format string, args ...any) error { return badEntry(fmt.Sprintf(format, args...)) }
+
 // Valid reports why an entry cannot be used.
 func (e Entry) Valid() error {
 	v := strings.TrimSpace(e.Value)
 	if v == "" {
-		return errors.New("the entry has no value")
+		return badEntry("the entry has no value")
 	}
 	switch e.Kind {
-	case EntryDomain, EntryDomainSuffix, EntryDomainKeyword, EntryProcessName:
-		if strings.ContainsAny(v, " \t\r\n") {
-			return fmt.Errorf("%q must not contain spaces", v)
+	case EntryDomain, EntryDomainSuffix:
+		n := e.Normalize().Value
+		if n == "" {
+			return badEntryf("%q is not a domain", v)
 		}
-		if e.Kind == EntryDomainSuffix && strings.Trim(v, ".*+") == "" {
-			return fmt.Errorf("%q is not a domain", v)
+		if !validHostName(n) {
+			return badEntryf("%q is not a domain name", v)
+		}
+	case EntryDomainKeyword:
+		if !validKeyword(v) {
+			return badEntryf("%q is not text that can be part of a domain name", v)
+		}
+	case EntryProcessName:
+		if strings.ContainsAny(v, "/\\") || strings.ContainsFunc(v, unicode.IsControl) {
+			return badEntryf("%q is not the name of a program (a path is a program path)", v)
 		}
 	case EntryProcessPath:
-		if strings.ContainsAny(v, "\r\n") {
-			return errors.New("the path must be on one line")
+		if strings.ContainsFunc(v, unicode.IsControl) {
+			return badEntry("the path must be on one line")
 		}
 	case EntryDomainRegex:
 		if _, err := regexp.Compile(v); err != nil {
-			return fmt.Errorf("%q is not a valid regular expression", v)
+			return badEntryf("%q is not a valid regular expression", v)
 		}
 	case EntryIPCIDR:
 		if _, ok := NormalizeCIDR(v); !ok {
-			return fmt.Errorf("%q is not an IP address or CIDR range", v)
+			return badEntryf("%q is not an IP address or CIDR range", v)
 		}
 	case EntryPort:
 		if _, ok := NormalizePort(v); !ok {
-			return fmt.Errorf("%q is not a port or port range", v)
+			return badEntryf("%q is not a port or port range", v)
 		}
 	default:
-		return fmt.Errorf("unknown entry type %q", e.Kind)
+		return badEntryf("unknown entry type %q", e.Kind)
 	}
 	return nil
 }
 
 // Normalize returns the entry in the form the generator expects: trimmed,
-// lower-cased where case does not matter, suffixes without wildcards,
+// lower-cased where case does not matter, domains in the ASCII form the
+// engine sees names in and without a final dot, suffixes without wildcards,
 // addresses as prefixes, port ranges as "lo:hi".
 func (e Entry) Normalize() Entry {
 	v := strings.TrimSpace(e.Value)
 	switch e.Kind {
 	case EntryDomain, EntryDomainKeyword:
 		v = strings.ToLower(v)
+		if e.Kind == EntryDomain {
+			v = asciiHost(v)
+		}
 	case EntryDomainSuffix:
 		v = strings.ToLower(v)
 		v = strings.TrimPrefix(v, "+.")
 		v = strings.TrimPrefix(v, "*.")
 		v = strings.TrimPrefix(v, ".")
+		v = asciiHost(v)
 	case EntryIPCIDR:
 		if p, ok := NormalizeCIDR(v); ok {
 			v = p
@@ -580,7 +606,13 @@ type State struct {
 	Main Dest `json:"main"`
 	// Nodes holds choices about single nodes, by NodeID.Key().
 	Nodes map[string]NodePref `json:"nodes,omitempty"`
+	// Recent are the nodes last chosen as the main exit, newest first, for
+	// switching back to one quickly.
+	Recent []NodeID `json:"recent,omitempty"`
 }
+
+// MaxRecent is how many nodes are remembered as recently chosen.
+const MaxRecent = 6
 
 // NewState is the state of a new installation.
 func NewState() State {
@@ -608,6 +640,7 @@ func (s State) Clone() State {
 	for k, v := range s.Nodes {
 		c.Nodes[k] = v
 	}
+	c.Recent = append([]NodeID(nil), s.Recent...)
 	return c
 }
 

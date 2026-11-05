@@ -257,7 +257,9 @@ func (s *State) CopyItemToMine(itemID, planID string) (Item, error) {
 		return Item{}, ErrNotMine
 	}
 	it := row.Item.Clone()
-	it.ID, it.Anchor, it.Key = NewID("i"), "", ""
+	// The key stays: it is what keeps the name of a shipped item in the
+	// language the person reads.
+	it.ID, it.Anchor = NewID("i"), ""
 	for _, other := range target.Items {
 		if slices.ContainsFunc(other.Keys(), func(k string) bool { return slices.Contains(it.Keys(), k) }) {
 			return Item{}, ErrDuplicateName

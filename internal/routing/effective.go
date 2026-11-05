@@ -310,7 +310,22 @@ func (s *State) SetMain(d Dest) error {
 		return err
 	}
 	s.Main = d.Clone()
+	if d.Kind == DestNode && d.Node != nil {
+		s.remember(*d.Node)
+	}
 	return nil
+}
+
+// remember puts a node first among the recently chosen ones.
+func (s *State) remember(id NodeID) {
+	out := make([]NodeID, 0, MaxRecent)
+	out = append(out, id)
+	for _, r := range s.Recent {
+		if !r.Same(id) && len(out) < MaxRecent {
+			out = append(out, r)
+		}
+	}
+	s.Recent = out
 }
 
 // RestoreDefault returns the active plan's items and fallback to what the plan

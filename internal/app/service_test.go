@@ -25,6 +25,8 @@ import (
 	"eggbox/internal/library"
 	"eggbox/internal/routing"
 	"eggbox/internal/ruledata"
+	"eggbox/internal/rulefmt"
+	"eggbox/internal/ruleurl"
 	"eggbox/internal/subscription"
 	"eggbox/internal/testsupport/srs"
 )
@@ -113,6 +115,26 @@ type harness struct {
 	prov  *provider
 	rules *ruleServer
 	data  *ruledata.Manager
+	clock *clock
+}
+
+// clock is the time the service and the rule data share in tests: the real
+// time, moved ahead on request, so "a day later" costs nothing.
+type clock struct {
+	mu     sync.Mutex
+	offset time.Duration
+}
+
+func (c *clock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return time.Now().Add(c.offset)
+}
+
+func (c *clock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.offset += d
 }
 
 // ruleServer serves rule files: for the geosite and geoip names the plans ask
@@ -194,6 +216,14 @@ func (rs *ruleServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func newHarness(t *testing.T, mutate func(*app.Config)) *harness {
 	t.Helper()
+	return newHarnessWith(t, mutate, nil)
+}
+
+// newHarnessWith is newHarness with a say in the rule server before the
+// service starts looking for rule data.
+func newHarnessWith(t *testing.T, mutate func(*app.Config), prepare func(*ruleServer)) *harness {
+	t.Helper()
+	clk := &clock{}
 	agent := testkit.Start(t, testkit.Options{})
 	fl := &flaky{agent: agent}
 	client := agentclient.New(fl.dial, agentclient.Options{Version: "test-client", Backoff: func(int) time.Duration { return 20 * time.Millisecond }})
@@ -202,7 +232,7 @@ func newHarness(t *testing.T, mutate func(*app.Config)) *harness {
 	t.Cleanup(func() { ccancel(); client.Close() })
 
 	prov := newProvider(t, links("HK 01", "HK 02", "JP 01"))
-	lib, err := library.Open(t.TempDir(), library.Options{Secrets: library.NewMemorySecrets()})
+	lib, err := library.Open(t.TempDir(), library.Options{Secrets: library.NewMemorySecrets(), Now: clk.Now})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +249,7 @@ func newHarness(t *testing.T, mutate func(*app.Config)) *harness {
 		}
 		return canonical
 	}}
-	rules, err := ruledata.New(ruledata.Options{Dir: t.TempDir(), Mirrors: []ruledata.Mirror{mirror}})
+	rules, err := ruledata.New(ruledata.Options{Dir: t.TempDir(), Mirrors: []ruledata.Mirror{mirror}, Now: clk.Now})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,8 +258,11 @@ func newHarness(t *testing.T, mutate func(*app.Config)) *harness {
 		t.Fatal(err)
 	}
 
+	if prepare != nil {
+		prepare(rs)
+	}
 	cfg := app.Config{
-		Library: lib, Rules: rules, Agent: client, Version: "test", HTTPClient: prov.srv.Client(),
+		Library: lib, Rules: rules, Agent: client, Version: "test", HTTPClient: prov.srv.Client(), Clock: clk.Now,
 		// Never the public mirrors: tests must not reach the Internet.
 		Mirrors: func(string, string) []ruledata.Mirror { return []ruledata.Mirror{mirror} },
 	}
@@ -241,7 +274,7 @@ func newHarness(t *testing.T, mutate func(*app.Config)) *harness {
 	svc.Run(ctx)
 	t.Cleanup(func() { cancel(); svc.Close() })
 
-	h := &harness{t: t, svc: svc, lib: lib, agent: agent, net: fl, prov: prov, rules: rs, data: rules}
+	h := &harness{t: t, svc: svc, lib: lib, agent: agent, net: fl, prov: prov, rules: rs, data: rules, clock: clk}
 	h.waitFor("the link to become ready", func(s *app.Snapshot) bool { return s.Link.Ready() && s.Status != nil })
 	return h
 }
@@ -782,6 +815,64 @@ func TestExplainClassifiesErrors(t *testing.T) {
 		if got := app.Explain(c.err).Code; got != c.want {
 			t.Errorf("Explain(%v) = %q, want %q", c.err, got, c.want)
 		}
+	}
+}
+
+// What can go wrong with a person's routing choices is told in words of
+// their own, whichever way the error arrives: bare, or wrapped by the layers
+// it passed.
+func TestExplainClassifiesRoutingErrors(t *testing.T) {
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{routing.ErrDuplicateName, "item_duplicate_name"},
+		{routing.ErrNoName, "item_no_name"},
+		{routing.ErrLocked, "plan_locked"},
+		{routing.ErrNotMine, "plan_not_mine"},
+		{routing.ErrTooManyExceptions, "too_many_exceptions"},
+		{routing.ErrNoItem, "not_found"},
+		{routing.ErrNoException, "not_found"},
+		{routing.ErrNoPlan, "not_found"},
+		{routing.ErrNoSource, "not_found"},
+		{routing.ErrDuplicateSource, "source_duplicate"},
+		{routing.ErrLastSource, "source_last"},
+		{routing.ErrNotInline, "source_not_inline"},
+		{routing.ErrNoEntries, "entries_empty"},
+		{routing.ErrTooManyEntries, "entries_too_many"},
+		{app.ErrBadTarget, "bad_target"},
+		{app.ErrLooksLikeSubscription, "looks_like_subscription"},
+		{ruleurl.ErrAddress, "rule_bad_address"},
+		{ruledata.ErrTooLarge, "rule_too_large"},
+		{rulefmt.ErrEmpty, "rule_empty"},
+		{rulefmt.ErrUnrecognized, "rule_unreadable"},
+		{rulefmt.ErrMalformed, "rule_unreadable"},
+		{&ruledata.ParseError{Err: rulefmt.ErrUnrecognized, Body: []byte("x")}, "rule_unreadable"},
+		{ruledata.StatusError(404), "rule_http_status"},
+		// An entry that cannot be used, whatever the reason (the reason is for logs).
+		{routing.Entry{Kind: routing.EntryDomainSuffix, Value: "10.0.0.0/8"}.Valid(), "entry_invalid"},
+		{routing.Entry{Kind: routing.EntryPort, Value: "0"}.Valid(), "entry_invalid"},
+		{routing.Entry{Kind: routing.EntryIPCIDR, Value: "nope"}.Valid(), "entry_invalid"},
+		{routing.Entry{Kind: routing.EntryDomainRegex, Value: "(["}.Valid(), "entry_invalid"},
+		{routing.Entry{Kind: "weird", Value: "x"}.Valid(), "entry_invalid"},
+		{routing.Entry{Kind: routing.EntryDomain}.Valid(), "entry_invalid"},
+	}
+	for _, c := range cases {
+		if c.err == nil {
+			t.Errorf("a case for %q has no error", c.want)
+			continue
+		}
+		if got := app.Explain(c.err).Code; got != c.want {
+			t.Errorf("Explain(%v) = %q, want %q", c.err, got, c.want)
+		}
+		wrapped := fmt.Errorf("saving the plan: %w", fmt.Errorf("editing: %w", c.err))
+		if got := app.Explain(wrapped).Code; got != c.want {
+			t.Errorf("Explain(wrapped %v) = %q, want %q", c.err, got, c.want)
+		}
+	}
+	// The reason stays in the detail, for the logs; the interface shows words of its own.
+	if ex := app.Explain(routing.Entry{Kind: routing.EntryDomainSuffix, Value: "10.0.0.0/8"}.Valid()); ex.Code != "entry_invalid" || ex.Detail == "" {
+		t.Errorf("Explain(bad entry) = %+v", ex)
 	}
 }
 
