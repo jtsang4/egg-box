@@ -57,8 +57,13 @@ jobs:
           go vet -tags "$SBUI_TAGS" ./...
           go tool mygo vet
 
+      # The interface tests draw whole screens, which is slow under the race
+      # detector; the limit is there so that a slow runner is not a failure.
       - name: Tests (race detector)
-        run: go test -race -short -count=1 ./...
+        run: go test -race -short -timeout 30m -count=1 ./...
+
+      - name: Interface tests (every screen, both appearances)
+        run: go test -count=1 -timeout 15m ./internal/gui
 
       - name: Tests with the real engine
         run: go test -short -count=1 -tags "$SBUI_TAGS" ./internal/agent/engine/... ./internal/agent/e2e/...
@@ -72,7 +77,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Tests (including the Swift bridge and real XPC)
-        run: go test -race -short -count=1 ./...
+        run: go test -race -short -timeout 30m -count=1 ./...
       - name: Package (unsigned)
         run: packaging/macos/build.sh --arch universal
       - uses: actions/upload-artifact@v4
@@ -89,7 +94,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Tests
-        run: go test -short -count=1 ./...
+        run: go test -short -timeout 20m -count=1 ./...
       - name: Install NSIS
         run: choco install nsis -y --no-progress
       - name: Installer (unsigned)

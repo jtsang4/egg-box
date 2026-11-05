@@ -13,9 +13,22 @@ import (
 type shot struct {
 	name     string
 	w, h     int
+	lang     string
 	platform string
 	setup    func(*fixtureBackend, *Options)
 	run      func(h *harness)
+}
+
+// goTo clicks an entry of the sidebar by its name in the given language.
+func goTo(lang, key string) func(h *harness) {
+	return func(h *harness) { h.click(translate(lang, key)) }
+}
+
+// macSettings is what Settings shows on a Mac.
+func macSettings(be *fixtureBackend, o *Options) {
+	o.ServiceStartup = nil // macOS keeps that switch in System Settings
+	o.OpenServiceSettings = func() {}
+	o.RemoveService = func(context.Context) error { return nil }
 }
 
 func introduction(be *fixtureBackend, o *Options) {
@@ -52,14 +65,22 @@ var shots = []shot{
 	{name: "connections", run: func(h *harness) { h.click("Connections") }},
 	{name: "logs", run: func(h *harness) { h.click("Logs") }},
 	{name: "settings", h: 2700, run: func(h *harness) { h.click("Settings") }},
-	{name: "settings-macos", h: 2700, platform: "darwin", run: func(h *harness) { h.click("Settings") }, setup: func(be *fixtureBackend, o *Options) {
-		o.ServiceStartup = nil // macOS keeps that switch in System Settings
-		o.OpenServiceSettings = func() {}
-		o.RemoveService = func(context.Context) error { return nil }
-	}},
+	{name: "settings-macos", h: 2700, platform: "darwin", run: func(h *harness) { h.click("Settings") }, setup: macSettings},
 	{name: "welcome-1", setup: introduction},
 	{name: "welcome-2", setup: introduction, run: func(h *harness) { h.click("Continue") }},
 	{name: "welcome-3", setup: introduction, run: func(h *harness) { h.click("Continue"); h.click("Not now") }},
+
+	// The same screens in Chinese, where the words are shorter and the lines
+	// are set differently: this is where clipped or crowded text shows.
+	{name: "zh-dashboard", lang: "zh"},
+	{name: "zh-nodes", lang: "zh", run: goTo("zh", "nav.nodes")},
+	{name: "zh-subscriptions", lang: "zh", run: goTo("zh", "nav.subscriptions")},
+	{name: "zh-rules", lang: "zh", run: goTo("zh", "nav.rules")},
+	{name: "zh-connections", lang: "zh", run: goTo("zh", "nav.connections")},
+	{name: "zh-logs", lang: "zh", run: goTo("zh", "nav.logs")},
+	{name: "zh-settings-macos", lang: "zh", h: 2700, platform: "darwin", run: goTo("zh", "nav.settings"), setup: macSettings},
+	{name: "zh-welcome-1", lang: "zh", setup: introduction},
+	{name: "zh-failed-dashboard", lang: "zh", setup: failedConnection},
 }
 
 // TestShots renders the screens in both themes; with SBUI_SHOTS set the
@@ -82,7 +103,7 @@ func TestShots(t *testing.T) {
 				if hh == 0 {
 					hh = 860
 				}
-				h := newHarness(t, harnessOpt{dark: dark, w: w, h: hh, platform: s.platform, setup: s.setup})
+				h := newHarness(t, harnessOpt{dark: dark, w: w, h: hh, lang: s.lang, platform: s.platform, setup: s.setup})
 				if s.run != nil {
 					s.run(h)
 				}
