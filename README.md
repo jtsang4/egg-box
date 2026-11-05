@@ -99,18 +99,30 @@ refuses to run as root, and release binaries do not contain the development tran
 
 ```sh
 go vet ./... && go tool mygo vet
-go test -race -short ./...                                        # the quick suite
-go test ./...                                                     # everything, including screenshots
-go test -tags "eggbox_dev,$TAGS" ./internal/agent/engine/... ./internal/agent/e2e/... ./internal/configgen/...
+bash scripts/ci/backend-tests.sh -race -short -timeout 10m -count=1
+                                                                  # backend and native-platform behaviour
+go test -race -short -timeout 10m -count=1 ./internal/gui             # UI behaviour and concurrency
+go test -count=1 -timeout 10m -run '^(TestShots|TestPanelShots)$' ./internal/gui
+                                                                  # full-resolution, normal-motion screenshots
+go test -count=1 -timeout 10m -tags "eggbox_dev,$TAGS" ./internal/agent/engine/... ./internal/agent/e2e/... ./internal/configgen/...
                                                                   # with the real sing-box core
 ```
 
-CI also runs `staticcheck` for the three platforms, `shellcheck` on the installer scripts, `actionlint` on the workflows,
-and `govulncheck` (on every change and weekly): the service runs as root, so a dependency with a known vulnerability
-the code reaches is a failure.
+CI runs the GUI suite once on Linux when its Go import dependencies change. Backend and native-platform tests run
+on Linux, macOS and Windows; GUI-only changes avoid repeating unchanged backend tests on the native runners.
+The five cross-build targets also vet development builds; `staticcheck` covers each operating system. Compiler and
+analysis caches are isolated by workload and target, with module downloads shared. `shellcheck`, `actionlint` and
+module/format checks run before expensive platform jobs. Tests execute afresh, including the race and real-core tiers.
 
-The interface is tested without a window (`ui.NewTester`), including screenshots rendered in memory (`ui.Render`), so a
-change can be reviewed without opening anything: `EGGBOX_SHOTS=/some/dir go test ./internal/gui -run TestShots`.
+Documentation-only changes skip CI. The weekly schedule runs `govulncheck`; code changes also scan for reachable
+vulnerabilities. Installers are built when their scripts, native bridge, metadata, dependencies or icons change, on a
+manual CI run with **installers** enabled, and on release tags. CI artifacts expire after three days; release workflow
+transfer artifacts expire after one day. Only standard hosted runners are used.
+
+The interface is tested without a window (`ui.NewTester`). Interaction fixtures use reduced motion and half-resolution
+backing pixels at the full logical window size; normal-motion interactions have their own regression tests. The complete
+screenshot matrix uses native resolution and normal motion. To review it without opening a window:
+`EGGBOX_SHOTS=/some/dir go test ./internal/gui -run '^(TestShots|TestPanelShots)$'`.
 
 One end-to-end test runs the whole product path (service, agent, real sing-box core) against a **real subscription**,
 inside the sandbox, and checks every node can carry traffic. It is skipped unless you provide a link, and it prints

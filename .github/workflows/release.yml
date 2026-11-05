@@ -19,6 +19,9 @@ on:
 permissions:
   contents: write
 
+env:
+  GOFLAGS: -trimpath
+
 jobs:
   macos:
     runs-on: macos-latest
@@ -31,9 +34,9 @@ jobs:
       EGGBOX_INSTALLER_IDENTITY: ${{ secrets.EGGBOX_INSTALLER_IDENTITY }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: ./.github/actions/go
         with:
-          go-version-file: go.mod
+          cache-name: macos
 
       - name: Import the signing certificate
         if: env.EGGBOX_CERTIFICATE != ''
@@ -61,6 +64,8 @@ jobs:
           name: macos
           path: build/macos/*.pkg
           if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
 
   windows:
     runs-on: ubuntu-latest
@@ -69,9 +74,9 @@ jobs:
         arch: [amd64, arm64]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: ./.github/actions/go
         with:
-          go-version-file: go.mod
+          cache-name: cross-windows-${{ matrix.arch }}
       - name: Install NSIS
         run: sudo apt-get update -qq && sudo apt-get install -y -qq nsis
       - name: Build
@@ -83,6 +88,8 @@ jobs:
           name: windows-${{ matrix.arch }}
           path: build/windows/*.exe
           if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
 
   publish:
     needs: [macos, windows]

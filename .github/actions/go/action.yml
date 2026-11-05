@@ -1,0 +1,36 @@
+name: Go toolchain and caches
+description: Separate immutable module downloads from job-specific compiler caches.
+inputs:
+  cache-name:
+    description: Workload and target whose compiler outputs can be reused together.
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+        cache: false
+    - id: paths
+      shell: bash
+      run: |
+        {
+          printf 'modules=%s\n' "$(go env GOMODCACHE)"
+          printf 'build=%s\n' "$(go env GOCACHE)"
+          printf 'version=%s\n' "$(go env GOVERSION)"
+          printf 'analysis=%s/eggbox-staticcheck\n' "$RUNNER_TEMP"
+        } >> "$GITHUB_OUTPUT"
+        mkdir -p "$RUNNER_TEMP/eggbox-staticcheck"
+        printf 'STATICCHECK_CACHE=%s/eggbox-staticcheck\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+    - uses: actions/cache@v4
+      with:
+        path: ${{ steps.paths.outputs.modules }}
+        key: eggbox-modules-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}
+        restore-keys: eggbox-modules-v1-${{ runner.os }}-${{ runner.arch }}-
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ${{ steps.paths.outputs.build }}
+          ${{ steps.paths.outputs.analysis }}
+        key: eggbox-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-name }}-${{ steps.paths.outputs.version }}-${{ hashFiles('go.sum', '.github/actions/go/action.yml', '.github/workflows/ci.yml', '.github/workflows/release.yml') }}
+        restore-keys: eggbox-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-name }}-${{ steps.paths.outputs.version }}-
