@@ -125,6 +125,9 @@ func (a *App) startupSection(c *ui.Context) {
 		if a.opt.ServiceStartup != nil {
 			sep()
 			a.serviceBootRow(c)
+		} else if a.opt.OpenServiceSettings != nil {
+			sep()
+			a.serviceManagedRow(c)
 		}
 		if a.opt.SetLaunchAtLogin != nil {
 			sep()
@@ -189,6 +192,16 @@ func (a *App) serviceBootRow(c *ui.Context) {
 			}
 		})
 	}
+}
+
+// serviceManagedRow stands where the startup switch would, on a platform where
+// the system keeps that switch itself: it says where, and opens the page.
+func (a *App) serviceManagedRow(c *ui.Context) {
+	a.settingRow(c, a.t("settings.boot"), a.t("settings.boot.managed"), func() {
+		if a.btn(c, btnSpec{kind: btnSoft, label: a.t("settings.boot.open"), icon: "external"}).Clicked() {
+			a.opt.OpenServiceSettings()
+		}
+	})
 }
 
 // agentToggle is a switch bound to one of the service's own settings.

@@ -436,6 +436,8 @@ var catalogEN = map[string]string{
 	"settings.boot.desc.windows":    "The Windows service starts together with Windows, before anyone signs in.",
 	"settings.boot.desc.other":      "The service starts together with the system.",
 	"settings.boot.unknown":         "Unavailable",
+	"settings.boot.managed":         "macOS starts the service once you allow it, and keeps it running until you switch it off in System Settings › General › Login Items & Extensions.",
+	"settings.boot.open":            "Open Login Items",
 	"settings.login":                "Open Sing-Box UI at login",
 	"settings.login.desc":           "Start the app in the tray when you sign in.",
 	"settings.autoconnect":          "Connect automatically",

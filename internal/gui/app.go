@@ -47,6 +47,10 @@ type Options struct {
 	// ServiceStartup reads and changes whether the privileged service starts
 	// together with the computer; nil hides the choice.
 	ServiceStartup *ServiceStartup
+	// OpenServiceSettings opens the system page where the person switches the
+	// privileged service on or off, for platforms (macOS) where that is the
+	// only place to do it; nil hides the row.
+	OpenServiceSettings func()
 	// OpenURL opens a link in the browser; nil uses the context's.
 	OpenURL func(url string)
 	// Sync runs jobs inline, for tests.

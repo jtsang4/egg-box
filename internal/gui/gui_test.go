@@ -254,6 +254,30 @@ func TestServiceSwitchesReachTheService(t *testing.T) {
 	}
 }
 
+func TestServiceManagedBySystemSettingsOpensThem(t *testing.T) {
+	h := newHarness(t, harnessOpt{h: 2800, platform: "darwin", setup: func(be *fixtureBackend, o *Options) {
+		o.ServiceStartup = nil // macOS keeps this switch in System Settings
+		o.OpenServiceSettings = func() { be.record("open-service-settings") }
+	}})
+	h.click("Settings")
+	h.settle()
+	h.mustHave("Run the network service at startup", "Login Items")
+	h.click("Open Login Items")
+	h.settle()
+	if !h.be.took("open-service-settings") {
+		t.Fatalf("calls: %v", h.be.called())
+	}
+}
+
+func TestNoManagedServiceRowWhereTheSwitchIsOurs(t *testing.T) {
+	h := newHarness(t, harnessOpt{h: 2800, setup: func(be *fixtureBackend, o *Options) {
+		o.OpenServiceSettings = func() { be.record("open-service-settings") }
+	}})
+	h.click("Settings")
+	h.settle()
+	h.mustNotHave("Open Login Items")
+}
+
 func TestNetworkEditsApplyTogether(t *testing.T) {
 	h := newHarness(t, harnessOpt{h: 2800})
 	h.click("Settings")

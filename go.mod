@@ -4,6 +4,7 @@ go 1.27.3
 
 require (
 	github.com/Microsoft/go-winio v0.6.4
+	github.com/ebitengine/purego v0.11.1
 	github.com/egoist/mygo v0.7.4
 	github.com/sagernet/sing v0.9.7-0.20261023115459-5dc452e537bf
 	github.com/sagernet/sing-box v1.14.4
@@ -21,7 +22,6 @@ require (
 	github.com/caddyserver/zerossl v0.1.5 // indirect
 	github.com/database64128/netx-go v0.1.1 // indirect
 	github.com/database64128/tfo-go/v2 v2.3.2 // indirect
-	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/florianl/go-nfqueue/v2 v2.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.5 // indirect

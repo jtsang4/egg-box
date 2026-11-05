@@ -41,6 +41,10 @@ type desktop struct {
 	syncing atomic.Bool
 	lastOn  atomic.Int32 // the icon drawn: 0 none, 1 off, 2 on
 
+	// openServiceSettings opens the system page that switches the privileged
+	// service on or off, when the platform has one (macOS).
+	openServiceSettings func()
+
 	menu menuItems
 	lang string
 }
@@ -73,6 +77,7 @@ func (d *desktop) bootConfig() (boot.Config, error) {
 		cfg.Secrets = library.Chain{keychain{}, library.NewFileSecrets(filepath.Join(dir, "secrets.json"))}
 		ps := installedServices()
 		cfg.Dial, cfg.Authorize, cfg.ServiceStartup = ps.Dial, ps.Authorize, ps.ServiceStartup
+		d.openServiceSettings = ps.OpenServiceSettings
 	}
 	return cfg, nil
 }
@@ -148,6 +153,9 @@ func (d *desktop) guiOptions(cfg boot.Config) gui.Options {
 	}
 	if t := d.rt.ServiceStartup; t != nil {
 		o.ServiceStartup = &gui.ServiceStartup{Get: t.Get, Set: t.Set}
+	}
+	if d.openServiceSettings != nil {
+		o.OpenServiceSettings = func() { go d.openServiceSettings() }
 	}
 	if d.mode() == boot.Installed {
 		// Only the installed application is a login item: a demonstration or

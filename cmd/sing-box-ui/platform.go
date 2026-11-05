@@ -19,4 +19,7 @@ type platformServices struct {
 	// ServiceStartup is the service's start with the computer; nil when the
 	// platform has no such choice.
 	ServiceStartup *boot.Toggle
+	// OpenServiceSettings opens the system page where the service is switched
+	// on or off, on platforms where that is the only place; nil otherwise.
+	OpenServiceSettings func()
 }

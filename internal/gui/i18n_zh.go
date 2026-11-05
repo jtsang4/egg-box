@@ -435,6 +435,8 @@ var catalogZH = map[string]string{
 	"settings.boot.desc.windows":    "Windows 服务随系统启动，早于任何人登录。",
 	"settings.boot.desc.other":      "服务随系统一起启动。",
 	"settings.boot.unknown":         "无法读取",
+	"settings.boot.managed":         "你在系统中允许后，macOS 会自动启动这项服务，并一直保持运行，直到你在「系统设置 › 通用 › 登录项与扩展」中把它关闭。",
+	"settings.boot.open":            "打开登录项",
 	"settings.login":                "登录时打开 Sing-Box UI",
 	"settings.login.desc":           "登录系统后在托盘中启动应用。",
 	"settings.autoconnect":          "自动连接",
