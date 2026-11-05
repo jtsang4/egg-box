@@ -18,7 +18,7 @@ var dialFields = []string{
 }
 
 // structuralTypes make up a provider's groups, not its servers.
-var structuralTypes = map[string]bool{"selector": true, "urltest": true, "direct": true, "block": true, "dns": true}
+var structuralTypes = map[string]bool{"selector": true, "urltest": true, "preferred": true, "direct": true, "block": true, "dns": true}
 
 // parseSingBox extracts the servers of a sing-box configuration (or of a bare
 // array of outbounds). Everything around them is ignored.

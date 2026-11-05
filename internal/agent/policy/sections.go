@@ -17,7 +17,7 @@ func set(items ...string) map[string]bool {
 // Allow-lists. They mirror what internal/agent/engine/singbox registers; a
 // type missing from either place cannot run.
 var (
-	outboundTypes     = set("direct", "block", "selector", "urltest", "socks", "http", "shadowsocks", "snell", "vmess", "vless", "trojan", "shadowtls", "anytls")
+	outboundTypes     = set("direct", "block", "selector", "urltest", "preferred", "socks", "http", "shadowsocks", "snell", "vmess", "vless", "trojan", "shadowtls", "anytls")
 	outboundQUICTypes = set("hysteria", "hysteria2", "tuic")
 	endpointTypes     = set("wireguard")
 	dnsServerTypes    = set("udp", "tcp", "tls", "https", "hosts", "local", "fakeip")

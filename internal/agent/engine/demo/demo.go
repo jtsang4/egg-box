@@ -79,6 +79,9 @@ type group struct {
 	tag, typ string
 	selected string
 	members  []string
+	// fallbacks is, for a preferred group, the member that stands in for a
+	// member that does not answer.
+	fallbacks map[string]string
 }
 
 type conn struct {
@@ -129,10 +132,11 @@ func (e *Engine) SetLogSink(s engine.LogSink) {
 
 type rawConfig struct {
 	Outbounds []struct {
-		Type      string   `json:"type"`
-		Tag       string   `json:"tag"`
-		Outbounds []string `json:"outbounds"`
-		Default   string   `json:"default"`
+		Type      string            `json:"type"`
+		Tag       string            `json:"tag"`
+		Outbounds []string          `json:"outbounds"`
+		Default   string            `json:"default"`
+		Fallbacks map[string]string `json:"fallbacks"`
 	} `json:"outbounds"`
 	Endpoints []struct {
 		Type string `json:"type"`
@@ -196,6 +200,19 @@ func (e *Engine) Start(ctx context.Context, p engine.Prepared) error {
 	return nil
 }
 
+// effectiveLocked is what a group sends traffic to: its choice, or for a
+// preferred group whose choice does not answer, the member standing in.
+func (e *Engine) effectiveLocked(g *group) string {
+	if g.typ == "preferred" {
+		if alt, ok := g.fallbacks[g.selected]; ok {
+			if n := e.nodes[g.selected]; n != nil && n.down {
+				return alt
+			}
+		}
+	}
+	return g.selected
+}
+
 // build derives nodes and groups from a configuration.
 func (e *Engine) build(cfg *rawConfig) {
 	e.nodes = map[string]*node{}
@@ -211,8 +228,8 @@ func (e *Engine) build(cfg *rawConfig) {
 	}
 	for _, o := range cfg.Outbounds {
 		switch o.Type {
-		case "selector", "urltest":
-			g := &group{tag: o.Tag, typ: o.Type, members: append([]string(nil), o.Outbounds...)}
+		case "selector", "urltest", "preferred":
+			g := &group{tag: o.Tag, typ: o.Type, members: append([]string(nil), o.Outbounds...), fallbacks: o.Fallbacks}
 			if o.Default != "" && contains(g.members, o.Default) {
 				g.selected = o.Default
 			} else if len(g.members) > 0 {
@@ -392,7 +409,7 @@ func (e *Engine) logLocked(level, format string, args ...any) {
 func (e *Engine) snapshotLocked() *agentapi.Groups {
 	out := &agentapi.Groups{}
 	for _, g := range e.groups {
-		ag := &agentapi.Group{Tag: g.tag, Type: g.typ, Selectable: g.typ == "selector", Selected: g.selected}
+		ag := &agentapi.Group{Tag: g.tag, Type: g.typ, Selectable: g.typ == "selector" || g.typ == "preferred", Selected: e.effectiveLocked(g)}
 		for _, m := range g.members {
 			item := &agentapi.GroupItem{Tag: m}
 			switch {
@@ -460,7 +477,7 @@ func (e *Engine) SelectOutbound(group, outbound string) error {
 	if g == nil {
 		return fmt.Errorf("%w: group %s", engine.ErrNotFound, group)
 	}
-	if g.typ != "selector" {
+	if g.typ != "selector" && g.typ != "preferred" {
 		return fmt.Errorf("%w: %s is not a selector", engine.ErrInvalid, group)
 	}
 	if !contains(g.members, outbound) {

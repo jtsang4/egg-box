@@ -80,7 +80,7 @@ func (n *normalizer) outboundRefs(root map[string]any, outbounds, dnsServers map
 			n.mustExist(keyPath(path, "domain_resolver"), resolverTag(obj["domain_resolver"]), dnsServers, "DNS server")
 
 			typ, _ := obj["type"].(string)
-			if typ != "selector" && typ != "urltest" {
+			if typ != "selector" && typ != "urltest" && typ != "preferred" {
 				continue
 			}
 			members, _ := asArray(obj["outbounds"])
@@ -94,10 +94,32 @@ func (n *normalizer) outboundRefs(root map[string]any, outbounds, dnsServers map
 			if def, _ := obj["default"].(string); def != "" && !memberSet[def] {
 				n.errorf(keyPath(path, "default"), "reference_missing", "the default %q is not one of the group's outbounds", def)
 			}
+			if typ == "preferred" {
+				n.standIns(path, obj["fallbacks"], memberSet)
+			}
 		}
 	}
 	check("outbounds")
 	check("endpoints")
+}
+
+// standIns checks the stand-ins of a preferred group: each one is a member
+// that stands in for another member.
+func (n *normalizer) standIns(path string, v any, members map[string]bool) {
+	obj, ok := asObject(v)
+	if !ok {
+		return
+	}
+	for member, target := range obj {
+		fp := keyPath(keyPath(path, "fallbacks"), member)
+		if !members[member] {
+			n.errorf(fp, "reference_missing", "%q is not one of the group's outbounds", member)
+			continue
+		}
+		if s, _ := target.(string); !members[s] {
+			n.errorf(fp, "reference_missing", "the stand-in %v is not one of the group's outbounds", target)
+		}
+	}
 }
 
 func (n *normalizer) routeRefs(root map[string]any, outbounds, dnsServers map[string]bool) {

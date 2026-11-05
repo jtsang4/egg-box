@@ -658,11 +658,22 @@ func (e *Engine) WatchConnections(ctx context.Context, interval time.Duration) (
 	}, convertConnectionEvents), nil
 }
 
-// SelectOutbound switches a selector group.
+// SelectOutbound switches a selector group (a plain selector or a preferred
+// group: the daemon's own call only knows the first).
 func (e *Engine) SelectOutbound(group, outbound string) error {
 	s, err := e.running()
 	if err != nil {
 		return err
+	}
+	if inst := s.svc.Instance(); inst != nil && inst.Box() != nil {
+		if o, ok := inst.Box().Outbound().Outbound(group); ok {
+			if p, ok := o.(*urltestgroup.Preferred); ok {
+				if !p.SelectOutbound(outbound) {
+					return fmt.Errorf("%w: outbound not found in group: %s", engine.ErrNotFound, outbound)
+				}
+				return nil
+			}
+		}
 	}
 	_, err = s.svc.SelectOutbound(s.ctx, &daemon.SelectOutboundRequest{GroupTag: group, OutboundTag: outbound})
 	return mapErr(err)

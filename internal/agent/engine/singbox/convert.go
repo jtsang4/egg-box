@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"eggbox/internal/agent/engine"
+	"eggbox/internal/agent/engine/singbox/urltestgroup"
 	"eggbox/internal/agentapi"
 )
 
@@ -51,7 +52,8 @@ func (platformHandler) ConnectSSHAgent() (int32, error) { return 0, errors.New("
 func convertGroups(g *daemon.Groups) *agentapi.Groups {
 	out := &agentapi.Groups{}
 	for _, in := range g.GetGroup() {
-		group := &agentapi.Group{Tag: in.Tag, Type: in.Type, Selectable: in.Selectable, Selected: in.Selected}
+		// The daemon only calls a plain selector selectable; a preferred group is chosen from the same way.
+		group := &agentapi.Group{Tag: in.Tag, Type: in.Type, Selectable: in.Selectable || in.Type == urltestgroup.TypePreferred, Selected: in.Selected}
 		for _, it := range in.Items {
 			group.Items = append(group.Items, &agentapi.GroupItem{
 				Tag: it.Tag, Type: it.Type, DelayMs: it.UrlTestDelay, TestedUnix: it.UrlTestTime,

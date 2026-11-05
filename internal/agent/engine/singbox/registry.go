@@ -85,6 +85,7 @@ func OutboundRegistry() *outbound.Registry {
 	block.RegisterOutbound(registry)
 	group.RegisterSelector(registry)
 	urltestgroup.RegisterURLTest(registry)
+	urltestgroup.RegisterPreferred(registry)
 	socks.RegisterOutbound(registry)
 	http.RegisterOutbound(registry)
 	shadowsocks.RegisterOutbound(registry)

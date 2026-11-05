@@ -94,11 +94,11 @@ func (e *Engine) newConnLocked(now time.Time) *conn {
 		outbound = "Proxy"
 		chain = []string{"Proxy"}
 		if g := e.byTag["Proxy"]; g != nil && g.selected != "" {
-			leaf := g.selected
+			leaf := e.effectiveLocked(g)
 			chain = []string{leaf, "Proxy"}
 			if sub := e.byTag[leaf]; sub != nil && sub.selected != "" {
-				chain = []string{sub.selected, leaf, "Proxy"}
-				leaf = sub.selected
+				chain = []string{e.effectiveLocked(sub), leaf, "Proxy"}
+				leaf = e.effectiveLocked(sub)
 			}
 			outbound = leaf
 		}

@@ -34,7 +34,7 @@ const (
 	MaxConfigBytes   = 8 << 20
 	MaxResourceBytes = 16 << 20
 	MaxResourceTotal = 64 << 20
-	MaxResources     = 64
+	MaxResources     = 256
 )
 
 var resourceName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
