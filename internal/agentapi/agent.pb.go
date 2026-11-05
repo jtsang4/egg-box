@@ -2209,19 +2209,18 @@ func (x *WatchTrafficRequest) GetIntervalMs() uint32 {
 }
 
 type Traffic struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Uplink         int64                  `protobuf:"varint,1,opt,name=uplink,proto3" json:"uplink,omitempty"` // bytes during the last interval
-	Downlink       int64                  `protobuf:"varint,2,opt,name=downlink,proto3" json:"downlink,omitempty"`
-	UplinkTotal    int64                  `protobuf:"varint,3,opt,name=uplink_total,json=uplinkTotal,proto3" json:"uplink_total,omitempty"`
-	DownlinkTotal  int64                  `protobuf:"varint,4,opt,name=downlink_total,json=downlinkTotal,proto3" json:"downlink_total,omitempty"`
-	ConnectionsIn  int32                  `protobuf:"varint,5,opt,name=connections_in,json=connectionsIn,proto3" json:"connections_in,omitempty"`
-	ConnectionsOut int32                  `protobuf:"varint,6,opt,name=connections_out,json=connectionsOut,proto3" json:"connections_out,omitempty"`
-	Memory         uint64                 `protobuf:"varint,7,opt,name=memory,proto3" json:"memory,omitempty"`
-	Goroutines     int32                  `protobuf:"varint,8,opt,name=goroutines,proto3" json:"goroutines,omitempty"`
-	Available      bool                   `protobuf:"varint,9,opt,name=available,proto3" json:"available,omitempty"` // false while the core is not running
-	TimeUnixMs     int64                  `protobuf:"varint,10,opt,name=time_unix_ms,json=timeUnixMs,proto3" json:"time_unix_ms,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Uplink        int64                  `protobuf:"varint,1,opt,name=uplink,proto3" json:"uplink,omitempty"` // bytes during the last interval
+	Downlink      int64                  `protobuf:"varint,2,opt,name=downlink,proto3" json:"downlink,omitempty"`
+	UplinkTotal   int64                  `protobuf:"varint,3,opt,name=uplink_total,json=uplinkTotal,proto3" json:"uplink_total,omitempty"`
+	DownlinkTotal int64                  `protobuf:"varint,4,opt,name=downlink_total,json=downlinkTotal,proto3" json:"downlink_total,omitempty"`
+	Connections   int32                  `protobuf:"varint,5,opt,name=connections,proto3" json:"connections,omitempty"` // connections the core is currently tracking
+	Memory        uint64                 `protobuf:"varint,7,opt,name=memory,proto3" json:"memory,omitempty"`
+	Goroutines    int32                  `protobuf:"varint,8,opt,name=goroutines,proto3" json:"goroutines,omitempty"`
+	Available     bool                   `protobuf:"varint,9,opt,name=available,proto3" json:"available,omitempty"` // false while the core is not running
+	TimeUnixMs    int64                  `protobuf:"varint,10,opt,name=time_unix_ms,json=timeUnixMs,proto3" json:"time_unix_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Traffic) Reset() {
@@ -2282,16 +2281,9 @@ func (x *Traffic) GetDownlinkTotal() int64 {
 	return 0
 }
 
-func (x *Traffic) GetConnectionsIn() int32 {
+func (x *Traffic) GetConnections() int32 {
 	if x != nil {
-		return x.ConnectionsIn
-	}
-	return 0
-}
-
-func (x *Traffic) GetConnectionsOut() int32 {
-	if x != nil {
-		return x.ConnectionsOut
+		return x.Connections
 	}
 	return 0
 }
@@ -3158,14 +3150,13 @@ const file_agent_proto_rawDesc = "" +
 	"\x06groups\x18\x01 \x03(\v2\x19.singboxui.agent.v1.GroupR\x06groups\"6\n" +
 	"\x13WatchTrafficRequest\x12\x1f\n" +
 	"\vinterval_ms\x18\x01 \x01(\rR\n" +
-	"intervalMs\"\xcf\x02\n" +
+	"intervalMs\"\xb8\x02\n" +
 	"\aTraffic\x12\x16\n" +
 	"\x06uplink\x18\x01 \x01(\x03R\x06uplink\x12\x1a\n" +
 	"\bdownlink\x18\x02 \x01(\x03R\bdownlink\x12!\n" +
 	"\fuplink_total\x18\x03 \x01(\x03R\vuplinkTotal\x12%\n" +
-	"\x0edownlink_total\x18\x04 \x01(\x03R\rdownlinkTotal\x12%\n" +
-	"\x0econnections_in\x18\x05 \x01(\x05R\rconnectionsIn\x12'\n" +
-	"\x0fconnections_out\x18\x06 \x01(\x05R\x0econnectionsOut\x12\x16\n" +
+	"\x0edownlink_total\x18\x04 \x01(\x03R\rdownlinkTotal\x12 \n" +
+	"\vconnections\x18\x05 \x01(\x05R\vconnections\x12\x16\n" +
 	"\x06memory\x18\a \x01(\x04R\x06memory\x12\x1e\n" +
 	"\n" +
 	"goroutines\x18\b \x01(\x05R\n" +
@@ -3173,7 +3164,7 @@ const file_agent_proto_rawDesc = "" +
 	"\tavailable\x18\t \x01(\bR\tavailable\x12 \n" +
 	"\ftime_unix_ms\x18\n" +
 	" \x01(\x03R\n" +
-	"timeUnixMs\"G\n" +
+	"timeUnixMsJ\x04\b\x06\x10\aR\x0fconnections_out\"G\n" +
 	"\vProcessInfo\x12\x10\n" +
 	"\x03pid\x18\x01 \x01(\rR\x03pid\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x12\n" +

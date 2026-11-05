@@ -335,8 +335,9 @@ message Traffic {
   int64 downlink = 2;
   int64 uplink_total = 3;
   int64 downlink_total = 4;
-  int32 connections_in = 5;
-  int32 connections_out = 6;
+  int32 connections = 5;       // connections the core is currently tracking
+  reserved 6;
+  reserved "connections_out";
   uint64 memory = 7;
   int32 goroutines = 8;
   bool available = 9;          // false while the core is not running
