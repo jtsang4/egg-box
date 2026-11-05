@@ -37,6 +37,8 @@ func (d *desktop) newTray() {
 		return
 	}
 	t.OnClick(d.togglePanel)
+	// Ready before the first click, so that it opens at once.
+	d.newPanel()
 	t.OnRightClick(func() {
 		d.closePanel()
 		// The menu for this popup only, so that clicks keep toggling the
@@ -136,12 +138,13 @@ func (d *desktop) trayMenu() *mygo.Menu {
 
 // ---------------------------------------------------------------- the panel
 
-// togglePanel opens the panel next to the tray icon, or closes it.
-func (d *desktop) togglePanel() {
-	if d.panel != nil {
-		d.panel.Close()
-		return
-	}
+// newPanel makes the panel once, hidden; after that it is only shown and
+// hidden, as the menu bar's own panels are. Making a window, its GPU surface
+// and its first frame on every click made it open a beat late. A window made
+// hidden draws its first frame at once, and while hidden it draws nothing:
+// the redraws asked for wait until it shows, which then draws the state of
+// the moment.
+func (d *desktop) newPanel() {
 	panel := mygo.NewFlyout(mygo.FlyoutOptions{
 		Tray:      d.tray,
 		Placement: mygo.PlacementBottom,
@@ -150,9 +153,18 @@ func (d *desktop) togglePanel() {
 		Height:    gui.PanelHeight,
 		Focusable: true,
 		Shadow:    true,
+		Hidden:    true,
 		Content:   ui.View(d.app.PanelView),
 	})
 	d.panel = panel
+	// Dismissing it (a click elsewhere, Escape) hides it; only quitting
+	// closes it, which must not be refused.
+	panel.OnClose(func(e *mygo.CloseEvent) {
+		if !d.quitting {
+			e.PreventDefault()
+			panel.Hide()
+		}
+	})
 	panel.OnClosed(func() {
 		if d.panel == panel {
 			d.panel = nil
@@ -161,9 +173,24 @@ func (d *desktop) togglePanel() {
 	})
 }
 
+// togglePanel shows the panel next to the tray icon, or hides it.
+func (d *desktop) togglePanel() {
+	if d.panel == nil {
+		d.newPanel()
+	}
+	if d.panel.IsVisible() {
+		d.panel.Hide()
+		return
+	}
+	// Setting its size places it next to the icon again, which may have
+	// moved since (another display, other menu bar items).
+	d.panel.SetContentSize(gui.PanelWidth, gui.PanelHeight)
+	d.panel.Show()
+}
+
 func (d *desktop) closePanel() {
 	if d.panel != nil {
-		d.panel.Close()
+		d.panel.Hide()
 	}
 }
 

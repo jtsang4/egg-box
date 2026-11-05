@@ -31,7 +31,7 @@ type desktop struct {
 
 	win   *mygo.Window
 	tray  *mygo.Tray
-	panel *mygo.Window // the open tray panel, or nil
+	panel *mygo.Window // the tray panel, made once and then shown or hidden
 
 	// Everything above is read and changed on the main thread.
 	quitting bool
