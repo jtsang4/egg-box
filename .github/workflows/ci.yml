@@ -59,6 +59,7 @@ jobs:
         run: |
           go vet ./...
           go vet -tags "$SBUI_TAGS" ./...
+          go vet -tags "sbui_dev,$SBUI_TAGS" ./...
           go tool mygo vet
 
       # The interface tests draw whole screens, which is slow under the race
@@ -69,8 +70,12 @@ jobs:
       - name: Interface tests (every screen, both appearances)
         run: go test -count=1 -timeout 15m ./internal/gui
 
+      # The development agent (a simulated platform, a loopback proxy where the
+      # TUN would be) runs here with the real core, from the application's
+      # service to a connection through it. It never touches the network of the
+      # machine it runs on, and it is only built with the sbui_dev tag.
       - name: Tests with the real engine
-        run: go test -short -count=1 -tags "$SBUI_TAGS" ./internal/agent/engine/... ./internal/agent/e2e/...
+        run: go test -count=1 -tags "sbui_dev,$SBUI_TAGS" ./internal/agent/engine/... ./internal/agent/e2e/...
 
   # The platform layers run for real on their own platform.
   macos:
