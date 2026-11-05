@@ -9,6 +9,7 @@ require (
 	github.com/sagernet/sing v0.9.7-0.20261023115459-5dc452e537bf
 	github.com/sagernet/sing-box v1.14.4
 	go.yaml.in/yaml/v3 v3.0.6
+	golang.org/x/net v0.59.0
 	golang.org/x/sys v0.49.0
 	google.golang.org/grpc v1.79.1
 	google.golang.org/protobuf v1.36.11
@@ -86,7 +87,6 @@ require (
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/image v0.46.0 // indirect
 	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
