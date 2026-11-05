@@ -73,7 +73,18 @@ say "installer"
 mkdir -p "$out"
 setup="$out/EggBox-Setup-$version-$arch.exe"
 numeric="$(printf '%s' "$version" | sed -E 's/^([0-9]+)\.([0-9]+)\.([0-9]+).*/\1.\2.\3.0/')"
-makensis -V2 -DVERSION="$version" -DVERSION_NUMERIC="$numeric" -DARCH="$arch" -DAGENT="$work/agentd.exe" -DGUI="$gui" -DNOTICES="$work/THIRD-PARTY-NOTICES.txt" -DOUTFILE="$setup" \
+# NSIS's File expansion on Windows needs backslashes, including for paths
+# passed through Git Bash. Unix builds of NSIS use the paths unchanged.
+nsis_path() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$1"
+  else
+    printf '%s\n' "$1"
+  fi
+}
+makensis -V2 -DVERSION="$version" -DVERSION_NUMERIC="$numeric" -DARCH="$arch" \
+  -DAGENT="$(nsis_path "$work/agentd.exe")" -DGUI="$(nsis_path "$gui")" \
+  -DNOTICES="$(nsis_path "$work/THIRD-PARTY-NOTICES.txt")" -DOUTFILE="$(nsis_path "$setup")" \
   packaging/windows/installer.nsi
 
 say "built $setup"
