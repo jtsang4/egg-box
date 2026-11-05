@@ -3,11 +3,12 @@ module github.com/jtsang4/sing-box-ui
 go 1.27.3
 
 require (
+	github.com/Microsoft/go-winio v0.6.4
 	github.com/egoist/mygo v0.7.4
 	github.com/sagernet/sing v0.9.7-0.20261023115459-5dc452e537bf
 	github.com/sagernet/sing-box v1.14.4
 	go.yaml.in/yaml/v3 v3.0.6
-	golang.org/x/sys v0.48.0
+	golang.org/x/sys v0.49.0
 	google.golang.org/grpc v1.79.1
 	google.golang.org/protobuf v1.36.11
 )

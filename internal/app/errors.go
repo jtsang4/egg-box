@@ -12,6 +12,14 @@ import (
 	"github.com/jtsang4/sing-box-ui/internal/subscription"
 )
 
+// ErrAuthorizationDeclined means the person said no to the system's prompt
+// to set the service up. Nothing was changed.
+var ErrAuthorizationDeclined = errors.New("permission to set up the service was not given")
+
+// ErrServiceSetup means the service could not be set up or changed even
+// though the person agreed. The platform adds what it knows.
+var ErrServiceSetup = errors.New("the service could not be set up")
+
 // Issue is a problem the service found in a configuration.
 type Issue struct {
 	Path    string
@@ -76,6 +84,10 @@ func Explain(err error) Explanation {
 		return Explanation{Code: "bad_subscription", Detail: detail}
 	case errors.Is(err, agentclient.ErrNotReady):
 		return Explanation{Code: "agent_unreachable", Detail: detail}
+	case errors.Is(err, ErrAuthorizationDeclined):
+		return Explanation{Code: "authorization_declined", Detail: detail}
+	case errors.Is(err, ErrServiceSetup):
+		return Explanation{Code: "service_setup", Detail: detail}
 	case errors.Is(err, library.ErrNotFound):
 		return Explanation{Code: "not_found", Detail: detail}
 	case errors.Is(err, context.DeadlineExceeded):

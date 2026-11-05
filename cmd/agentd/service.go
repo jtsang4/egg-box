@@ -12,15 +12,16 @@ import (
 // run dispatches the command line of a release build.
 func run(args []string) int {
 	if len(args) == 0 {
-		usage(os.Stderr, "")
+		usage(os.Stderr, platformUsage)
 		return 2
 	}
-	switch args[0] {
-	case "version":
+	if args[0] == "version" {
 		fmt.Println(version.String())
 		return 0
-	default:
-		usage(os.Stderr, "")
-		return 2
 	}
+	if code, handled := runPlatform(args); handled {
+		return code
+	}
+	usage(os.Stderr, platformUsage)
+	return 2
 }

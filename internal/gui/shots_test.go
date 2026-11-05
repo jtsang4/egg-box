@@ -44,6 +44,9 @@ var shots = []shot{
 // TestShots renders the screens in both themes; with SBUI_SHOTS set the
 // images are written for review.
 func TestShots(t *testing.T) {
+	if testing.Short() {
+		t.Skip("renders every screen in both themes, which is too slow under the race detector")
+	}
 	for _, s := range shots {
 		for _, dark := range []bool{true, false} {
 			name := s.name + "-light"
