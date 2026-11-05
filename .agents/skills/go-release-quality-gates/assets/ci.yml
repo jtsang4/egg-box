@@ -1,0 +1,159 @@
+# A CI workflow for a cross-platform Go project: copy it to .github/workflows/ci.yml
+# and adapt the lines marked ADAPT. Every job and step answers a defect class that
+# the others cannot see; references/ci-gates.md says which.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # A dependency can turn out to be vulnerable without any change here.
+    - cron: "23 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # ADAPT: the build tags the release is built with. The same tags are checked
+  # here, so that a change that only breaks the release build is found before it.
+  GO_TAGS: ""
+  # ADAPT: tags that switch on development-only code. Vetted for every platform.
+  DEV_TAGS: dev
+  # Pinned, so that a new check cannot fail a change that did not cause it.
+  # Update on purpose, in a change of its own.
+  STATICCHECK_VERSION: v0.8.2
+  ACTIONLINT_VERSION: v1.7.12
+
+jobs:
+  # Everything that does not depend on the operating system, and the rules of
+  # the project.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # ADAPT or delete: a rule of the project, enforced where nobody can forget.
+      - name: No JavaScript or web front end
+        run: |
+          found="$(git ls-files | grep -E '\.(js|jsx|mjs|cjs|ts|tsx)$|(^|/)package(-lock)?\.json$|(^|/)node_modules/' || true)"
+          if [ -n "$found" ]; then
+            echo "JavaScript or a web front end has no place in this project:" >&2
+            echo "$found" >&2
+            exit 1
+          fi
+
+      - name: Formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt would change:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+
+      - name: Modules are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      # Installer and packaging scripts run as root on somebody else's computer.
+      # ADAPT: add the script paths that have no .sh suffix (an installer's
+      # preinstall and postinstall, for example). GNU xargs, as on this runner.
+      - name: Shell scripts
+        run: git ls-files -z '*.sh' | xargs -0 --no-run-if-empty shellcheck
+
+      # The workflows that build and publish; actionlint also hands the scripts
+      # inside them to shellcheck.
+      - name: Workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@"$ACTIONLINT_VERSION"
+
+      # Dead code, deprecated calls, mistakes vet does not see. Code behind
+      # GOOS and tag constraints is only analysed for the platform that selects
+      # it, so each platform is analysed as it builds.
+      - name: Static analysis
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@"$STATICCHECK_VERSION"
+          for target in linux/amd64 darwin/arm64 windows/amd64; do
+            echo "== $target"
+            CGO_ENABLED=0 GOOS="${target%/*}" GOARCH="${target#*/}" staticcheck -tags "$GO_TAGS" ./...
+          done
+
+      - name: Vet
+        run: |
+          go vet ./...
+          go vet -tags "$GO_TAGS" ./...
+          go vet -tags "$DEV_TAGS${GO_TAGS:+,$GO_TAGS}" ./...
+
+      # Slow tests (whole screens drawn) are slower still under the race
+      # detector: they honour -short here, and the step below runs them in full.
+      # The limit is there so that a slow runner is not a failure.
+      - name: Tests (race detector)
+        run: go test -race -short -timeout 30m -count=1 ./...
+
+      # ADAPT: the packages whose tests are slow and honour -short, without the
+      # race detector.
+      - name: Slow tests in full
+        run: go test -count=1 -timeout 15m ./internal/ui
+
+      # ADAPT: the packages whose tests need the release tags or the dev tags:
+      # an engine adapter, an end-to-end suite. A test tier that CI never runs is
+      # a tier that is not there.
+      - name: Tests with the real engine
+        run: go test -count=1 -tags "$DEV_TAGS${GO_TAGS:+,$GO_TAGS}" ./internal/engine/... ./internal/e2e/...
+
+  # What ships must not carry a known vulnerability that its code reaches. A new
+  # advisory can fail this without a change here, which is why it also runs
+  # every week. The tool is built with the toolchain the project uses.
+  vulnerabilities:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Known vulnerabilities in the code and what it calls
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest -tags "$GO_TAGS" ./...
+
+  # Platform code is only real on its platform: the runners are disposable.
+  platforms:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Tests on the platform itself
+        run: go test -short -timeout 30m -count=1 ./...
+
+  # Everything builds, and the dev tag still compiles, for every platform that
+  # is supported, from one machine.
+  cross:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [windows/amd64, windows/arm64, darwin/amd64, darwin/arm64, linux/amd64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build and vet
+        env:
+          CGO_ENABLED: "0"
+          TARGET: ${{ matrix.target }}
+        run: |
+          export GOOS="${TARGET%/*}" GOARCH="${TARGET#*/}"
+          go build -trimpath -tags "$GO_TAGS" ./...
+          go vet -tags "$DEV_TAGS${GO_TAGS:+,$GO_TAGS}" ./...

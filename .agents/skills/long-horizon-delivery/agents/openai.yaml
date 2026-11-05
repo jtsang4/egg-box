@@ -1,0 +1,4 @@
+interface:
+  display_name: "Long-Horizon Delivery"
+  short_description: "Deliver large goals with pinned requirements and audits"
+  default_prompt: "Use $long-horizon-delivery to plan, verify and audit this multi-stage goal until every requirement has evidence."

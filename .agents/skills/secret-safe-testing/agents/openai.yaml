@@ -1,0 +1,4 @@
+interface:
+  display_name: "Secret-Safe Testing"
+  short_description: "Test with real credentials without leaking them to git"
+  default_prompt: "Use $secret-safe-testing to set up guards and tests so real credentials, and anything derived from them, never reach the repository."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Go Release Quality Gates"
+  short_description: "CI, packaging and license gates for cross-platform Go"
+  default_prompt: "Use $go-release-quality-gates to set up or audit CI, packaging and licensing for this Go project."
