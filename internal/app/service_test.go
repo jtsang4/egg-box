@@ -429,6 +429,13 @@ func TestApplySkipsWhatDidNotChange(t *testing.T) {
 	if err != nil || first.Skipped || first.Revision == 0 {
 		t.Fatalf("%+v, %v", first, err)
 	}
+	// The service reports what it stored through its status stream, which
+	// reaches the application a moment after the call returns (on a slow
+	// machine, a long moment). An Apply asked before that cannot know the
+	// service has the configuration, and stores it again.
+	h.waitFor("the status to show the stored revision", func(s *app.Snapshot) bool {
+		return s.Status.GetHasConfig() && s.Status.GetStoredRevision() == first.Revision
+	})
 	second, err := h.svc.Apply(h.ctx())
 	if err != nil || !second.Skipped || second.Revision != first.Revision {
 		t.Fatalf("an unchanged library must not store a new revision: %+v, %v", second, err)

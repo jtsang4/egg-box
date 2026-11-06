@@ -2,6 +2,7 @@ package demo_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -59,14 +60,27 @@ func plan(t *testing.T, n int, mutate func(*configgen.Input)) engine.Prepared {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The agent's policy points every "res:" reference into its resource directory.
-	dir := t.TempDir()
+	// The agent's policy points every "res:" reference into its resource
+	// directory. This one has backslashes in its name: separators on Windows,
+	// ordinary characters elsewhere. Either way the path has to be escaped to
+	// stand in a JSON string, and a test that never meets such a path passes
+	// on the machines where that is forgotten (it failed on Windows alone).
+	dir := filepath.Join(t.TempDir(), `Users\runner\Temp`)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	for _, r := range out.Resources {
 		if err := os.WriteFile(filepath.Join(dir, r.Name), r.Data, 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	raw := strings.ReplaceAll(string(out.JSON), `"res:`, `"`+dir+`/`)
+	// "res:NAME" becomes "<dir>/NAME", the directory written as JSON writes it
+	// (the closing quote of the marshalled text is left off: NAME follows).
+	quoted, err := json.Marshal(dir + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := strings.ReplaceAll(string(out.JSON), `"res:`, string(quoted[:len(quoted)-1]))
 	return engine.Prepared{Revision: 1, JSON: []byte(raw), HasTun: true, TunTag: configgen.TagTun}
 }
 
