@@ -49,9 +49,10 @@ type dlgFrame struct {
 	icon     string
 	tone     tone
 	width    float32
-	// hero is artwork across the top of the panel; with a hero the standard
-	// header is only drawn when there is a title.
+	// hero is artwork across the top of the panel, heroH tall; with a hero the
+	// standard header is only drawn when there is a title.
 	hero    func()
+	heroH   float32
 	body    func()
 	buttons func()
 }
@@ -96,9 +97,19 @@ func (a *App) closeDialog() {
 // window around it, its header and its buttons.
 const dialogChrome = 220
 
+// dialogButtons is what the row of buttons under a body takes: 14, a button of
+// 38, and 20.
+const dialogButtons = 72
+
 // dialogBodyMax is the most the body of a dialog may take of a window of the
-// given height.
-func dialogBodyMax(winH float32) float32 {
+// given height. A hero stands in for the header and is far taller than it, so
+// what it and the buttons take goes first, from nearly the whole window: the
+// smallest window has no room for the margin the other dialogs keep, and what
+// is left is all the body can have.
+func dialogBodyMax(winH, heroH float32) float32 {
+	if heroH > 0 {
+		return max(160, winH*0.97-heroH-dialogButtons)
+	}
 	return max(160, winH*0.94-dialogChrome)
 }
 
@@ -149,7 +160,7 @@ func (a *App) dialogLayer(c *ui.Context) {
 			// What does not fit the window scrolls under its header, so that the
 			// buttons stay in sight however small the window is.
 			_, winH := c.Size()
-			ui.Scroll(c.Key("dlg-body")).TrackScroll(&a.dlgScroll).MaxHeight(dialogBodyMax(winH)).Children(func() {
+			ui.Scroll(c.Key("dlg-body")).TrackScroll(&a.dlgScroll).MaxHeight(dialogBodyMax(winH, f.heroH)).Children(func() {
 				ui.Column(c).Padding(10, 24, 8, 24).Gap(14).Children(f.body)
 			})
 			a.dlgFooter = ui.Rect{}

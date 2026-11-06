@@ -90,8 +90,12 @@ func (h *harness) countOf(s string) int {
 
 func settingsHarness(t *testing.T, o harnessOpt) *harness {
 	t.Helper()
+	// The window shows the whole page, as a click outside it lands on nothing.
+	// How far down a row is depends on the machine's fonts: with a Mac's the
+	// rule data rows sat a few pixels inside a window of 2000, and with the
+	// wider ones of the Linux that CI runs on they were outside it.
 	if o.h == 0 {
-		o.h = 2000
+		o.h = 3200
 	}
 	h := newHarness(t, o)
 	if o.lang == "zh" {

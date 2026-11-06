@@ -1,9 +1,12 @@
 package gui
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/egoist/mygo/ui"
 
 	"eggbox/internal/catalog"
 	"eggbox/internal/library"
@@ -238,5 +241,43 @@ func TestEveryDialogFitsTheSmallestWindow(t *testing.T) {
 			}
 			h.shut()
 		}
+	}
+}
+
+// tallHeroDialog is a dialog with a hero and more to say than any window holds.
+type tallHeroDialog struct{}
+
+func (tallHeroDialog) frame(a *App, c *ui.Context) dlgFrame {
+	return dlgFrame{
+		width: 560,
+		hero:  func() { ui.Box(c).Height(welcomeHeroH) },
+		heroH: welcomeHeroH,
+		body: func() {
+			for i := range 40 {
+				a.txt(c, fmt.Sprintf("Line %d of a body that is far too tall", i+1), 13.5, 400, a.pl.Text2)
+			}
+		},
+		buttons: func() { a.btn(c, btnSpec{kind: btnPrimary, label: "Done"}) },
+	}
+}
+
+// A hero is far taller than a header, and what it takes the body gives up: the
+// buttons stay in the panel and the panel in the window, whatever the width of
+// the letters of the machine's font makes of the body's height. (The first-run
+// introduction overflowed by a few pixels with the wide fonts of Linux, where
+// the sweep above saw it, while a Mac's fonts leave it room.)
+func TestADialogWithAHeroKeepsItsButtonsInTheSmallestWindow(t *testing.T) {
+	h := newHarness(t, harnessOpt{w: MinWindowWidth, h: MinWindowHeight})
+	h.app.openDialog(tallHeroDialog{})
+	h.settle()
+	b, foot := h.app.dlgBounds, h.app.dlgFooter
+	if b.H == 0 || foot.H == 0 {
+		t.Fatal("the dialog was not measured")
+	}
+	if b.Y < 0 || b.Y+b.H > MinWindowHeight {
+		t.Errorf("the panel is %.0f tall at %.0f and does not fit a window %d tall", b.H, b.Y, MinWindowHeight)
+	}
+	if foot.Y+foot.H > b.Y+b.H+0.5 {
+		t.Errorf("the buttons end at %.0f, below the panel's end at %.0f", foot.Y+foot.H, b.Y+b.H)
 	}
 }

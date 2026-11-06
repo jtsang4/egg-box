@@ -16,7 +16,11 @@ type onboardState struct {
 	err     error
 }
 
-const welcomeSteps = 3
+const (
+	welcomeSteps = 3
+	// welcomeHeroH is the height of the artwork over the steps.
+	welcomeHeroH = 212
+)
 
 // maybeWelcome opens the introduction the first time the application runs.
 func (a *App) maybeWelcome() {
@@ -53,6 +57,7 @@ func (d *welcomeDialog) frame(a *App, c *ui.Context) dlgFrame {
 	return dlgFrame{
 		width: 560,
 		hero:  func() { a.welcomeHero(c, step) },
+		heroH: welcomeHeroH,
 		body: func() {
 			// The steps share a height, so that the panel does not jump.
 			ui.Column(c).MinHeight(268).Gap(14).Children(func() {
@@ -74,7 +79,7 @@ func (d *welcomeDialog) frame(a *App, c *ui.Context) dlgFrame {
 // and the progress of the steps beneath it.
 func (a *App) welcomeHero(c *ui.Context, step int) {
 	p := a.pl
-	h := ui.Column(c.Key("welcome-hero")).Height(212).Justify(ui.Center).AlignItems(ui.Center).Gap(18).Clip()
+	h := ui.Column(c.Key("welcome-hero")).Height(welcomeHeroH).Justify(ui.Center).AlignItems(ui.Center).Gap(18).Clip()
 	h.Draw(func(pt *ui.Painter, r ui.Rect) {
 		// The artwork is still: decoration does not keep the window redrawing.
 		t := 0.0
