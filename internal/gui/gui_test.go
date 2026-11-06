@@ -67,6 +67,36 @@ func TestConnectionsPageWatchesOnlyWhileShown(t *testing.T) {
 	}
 }
 
+// The window closed to the tray is destroyed; nothing it alone shows may go on
+// streaming meanwhile, and it takes up again when the window is made again.
+func TestClosedWindowWatchesNothing(t *testing.T) {
+	h := newHarness(t, harnessOpt{})
+	watching := func() bool {
+		h.be.mu.Lock()
+		defer h.be.mu.Unlock()
+		return h.be.watching
+	}
+	h.click("Connections")
+	if !watching() {
+		t.Fatalf("opening Connections should start watching: %v", h.be.called())
+	}
+	h.app.WindowClosed()
+	if watching() {
+		t.Fatalf("closing the window should stop watching: %v", h.be.called())
+	}
+	h.app.Navigate("logs")
+	h.app.Navigate("connections") // from the tray menu, before the window shows
+	if watching() {
+		t.Fatalf("no window, no watching: %v", h.be.called())
+	}
+	h.app.Attach(nil) // the window made again, on the page it left
+	h.settle()
+	if !watching() {
+		t.Fatalf("the window back on Connections should watch again: %v", h.be.called())
+	}
+	h.mustHave("active connections")
+}
+
 func TestConnectAndDisconnect(t *testing.T) {
 	h := newHarness(t, harnessOpt{})
 	h.mustHave("PROTECTED", "Disconnect")

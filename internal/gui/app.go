@@ -107,8 +107,12 @@ const (
 type App struct {
 	opt Options
 	be  Backend
-	win *mygo.Window
-	svc atomic.Pointer[ui.Services] // the main window's persistent services: redraws from any goroutine
+	// win is the main window while there is one: closed to the tray, it is
+	// gone until it is opened again. Jobs read it from their goroutines.
+	win atomic.Pointer[mygo.Window]
+	// closed is set, on the main thread, while the window is closed.
+	closed bool
+	svc    atomic.Pointer[ui.Services] // the main window's persistent services: redraws from any goroutine
 	// psvc is the tray panel's, while it is open.
 	psvc atomic.Pointer[ui.Services]
 
@@ -201,8 +205,32 @@ func New(opt Options) *App {
 }
 
 // Attach tells the App which window it draws, so that other goroutines can
-// ask it to redraw.
-func (a *App) Attach(win *mygo.Window) { a.win = win }
+// ask it to redraw. The window may be made again after WindowClosed; the page
+// it opens on follows its streams again. Call it on the main thread.
+func (a *App) Attach(win *mygo.Window) {
+	a.win.Store(win)
+	a.svc.Store(nil) // the new window's own, taken on its first frame
+	a.closed = false
+	a.watchPage()
+}
+
+// WindowClosed tells the App its main window is gone (closed to the tray):
+// the streams only its pages show stop, and redraws go to the panel alone.
+// Call it on the main thread.
+func (a *App) WindowClosed() {
+	a.win.Store(nil)
+	a.svc.Store(nil)
+	a.closed = true
+	a.watchPage()
+}
+
+// watchPage follows what the page on screen needs from the backend: the
+// connection table costs something only while it shows.
+func (a *App) watchPage() {
+	if a.be != nil {
+		a.be.WatchConnections(a.page == pageConnections && !a.closed)
+	}
+}
 
 // Close detaches from the backend.
 func (a *App) Close() {
@@ -225,11 +253,19 @@ func (a *App) invalidate() {
 
 // post runs fn on the main thread.
 func (a *App) post(fn func()) {
-	if a.win == nil || a.opt.Sync {
+	if a.opt.Sync {
 		fn()
 		return
 	}
-	a.win.Update(fn)
+	if w := a.win.Load(); w != nil {
+		w.Update(fn)
+		return
+	}
+	// No window (closed to the tray): the panel draws from the same state.
+	mygo.RunOnMain(func() {
+		fn()
+		a.again()
+	})
 }
 
 // job runs fn off the main thread and then done on it. A job is identified
@@ -374,6 +410,5 @@ func (a *App) goTo(p page) {
 	}
 	a.again()
 	a.pageFrom, a.page, a.pageAt = a.page, p, a.now
-	// The connection table only costs something while it is on screen.
-	a.be.WatchConnections(p == pageConnections)
+	a.watchPage()
 }

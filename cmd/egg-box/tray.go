@@ -204,7 +204,7 @@ func (d *desktop) notify(title, body string) {
 		return
 	}
 	n := mygo.NewNotification(mygo.NotificationOptions{ID: brand.AppID + ".event", Title: title, Body: body})
-	n.OnClick(func() { d.showWindow() })
+	n.OnClick(func() { mygo.RunOnMain(d.showWindow) })
 	go func() {
 		if err := n.Show(); err != nil {
 			log.Printf("notification: %v", err)

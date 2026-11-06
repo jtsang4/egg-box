@@ -104,7 +104,11 @@ func (d *desktop) ready() {
 
 	d.app = gui.New(d.guiOptions(cfg))
 	d.newTray()
-	d.newWindow()
+	// Started into the tray (at login, --background), there is no window
+	// until somebody opens it.
+	if d.tray == nil || !(d.o.background || mygo.App.WasOpenedAtLogin()) {
+		d.newWindow()
+	}
 	d.buildMenu()
 	d.syncTray()
 	d.devReady()
@@ -230,8 +234,10 @@ func (d *desktop) onLanguage(lang string) {
 // saveFile asks where to keep a file and writes it (for the diagnostics
 // export and the log). It blocks on the dialog, so it runs in a job.
 func (d *desktop) saveFile(name string, data []byte) (string, error) {
+	var parent *mygo.Window
+	mygo.RunOnMain(func() { parent = d.win }) // the window comes and goes on the main thread
 	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
-		Parent:            d.win,
+		Parent:            parent,
 		Title:             brand.DisplayName,
 		DefaultPath:       name,
 		CreateDirectories: true,
@@ -244,13 +250,17 @@ func (d *desktop) saveFile(name string, data []byte) (string, error) {
 
 // -------------------------------------------------------------- the window
 
+// newWindow makes the main window and shows it. Closed to the tray, the
+// window is destroyed rather than hidden: a hidden one keeps its last frame,
+// its surface and the tree of its interface, about 20 MB, for as long as the
+// application runs in the tray, which is most of the time. It is made again
+// when it is opened; the App keeps the page and everything the user did.
 func (d *desktop) newWindow() {
 	w, h := 1200, 780
 	if d.o.width > 0 && d.o.height > 0 {
 		w, h = d.o.width, d.o.height
 	}
-	background := d.o.background || mygo.App.WasOpenedAtLogin()
-	d.win = mygo.NewWindow(mygo.WindowOptions{
+	win := mygo.NewWindow(mygo.WindowOptions{
 		Title:           brand.DisplayName,
 		Width:           w,
 		Height:          h,
@@ -259,14 +269,28 @@ func (d *desktop) newWindow() {
 		StateKey:        d.stateKey(),
 		TitleBarStyle:   mygo.TitleBarHidden,
 		BackgroundColor: "light-dark(#EDF2FB, #060A15)",
-		Hidden:          background && d.tray != nil,
 		Content:         ui.View(d.app.View),
 	})
-	d.app.Attach(d.win)
-	d.win.OnClose(func(e *mygo.CloseEvent) {
-		if !d.quitting && d.tray != nil && d.app.CloseToTray() {
+	d.win = win
+	d.app.Attach(win)
+	win.OnClose(func(e *mygo.CloseEvent) {
+		switch {
+		case d.quitting || d.tray == nil:
+			// Without a tray, closing the last window quits (OnWindowAllClosed).
+		case d.app.CloseToTray():
+			// A menu bar application: nothing in the Dock while only the tray shows.
+			mygo.App.Dock.Hide()
+		default:
+			// The tray panel is a window too, so closing this one alone would
+			// not end the application.
 			e.PreventDefault()
-			d.hideWindow()
+			mygo.App.Quit()
+		}
+	})
+	win.OnClosed(func() {
+		if d.win == win {
+			d.win = nil
+			d.app.WindowClosed()
 		}
 	})
 }
@@ -281,19 +305,16 @@ func (d *desktop) stateKey() string {
 }
 
 func (d *desktop) showWindow() {
-	if d.win == nil {
+	if d.app == nil {
 		return
 	}
 	mygo.App.Dock.Show()
+	if d.win == nil {
+		d.newWindow()
+	}
 	if d.win.IsMinimized() {
 		d.win.Restore()
 	}
 	d.win.Show()
 	d.win.Focus()
-}
-
-func (d *desktop) hideWindow() {
-	d.win.Hide()
-	// A menu bar application: nothing in the Dock while only the tray shows.
-	mygo.App.Dock.Hide()
 }

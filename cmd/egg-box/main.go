@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 
 	"github.com/egoist/mygo"
 
@@ -15,6 +16,14 @@ import (
 )
 
 func main() {
+	// The interface keeps little alive (about 40 MB, half of it the glyph
+	// atlas) and allocates little once it runs: a collection at half the live
+	// heap instead of all of it costs no measurable CPU and keeps 15 to 50 MB
+	// less in the process for as long as it sits in the tray. GOGC still
+	// decides when it is set.
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(50)
+	}
 	o, err := parseArgs(os.Args[1:])
 	if err != nil {
 		fatal("%v", err)
