@@ -619,20 +619,32 @@ func carryExtras(ov *Overlay, it Item, from Row) {
 
 // SaveAsMine keeps the effective plan as a plan of the user's own and
 // switches to it.
-func (s *State) SaveAsMine(name string) (*Plan, error) {
+func (s *State) SaveAsMine(name string) (*Plan, error) { return s.NewPlan(name, s.ActiveID()) }
+
+// NewPlan makes a plan of the user's own and switches to it: a copy of the plan
+// from as the person sees it (their choices and items included), or, when from
+// is "", one with no items, where everything but the exceptions goes the way
+// of the fallback until items are added.
+func (s *State) NewPlan(name, from string) (*Plan, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, ErrNoName
 	}
-	v := s.View()
-	p := &Plan{ID: NewID("p"), Kind: PlanMine, Name: name, Fallback: v.Fallback.Clone(), Origin: v.Plan.Name}
-	if v.Plan.Kind == PlanMine {
-		p.Origin = v.Plan.Origin
-	}
-	for _, r := range v.Rows {
-		it := r.Item.Clone()
-		it.Anchor = ""
-		p.Items = append(p.Items, it)
+	p := &Plan{ID: NewID("p"), Kind: PlanMine, Name: name, Fallback: Follow()}
+	if from != "" {
+		if s.PlanByID(from) == nil {
+			return nil, ErrNoPlan
+		}
+		v := s.ViewOf(from)
+		p.Fallback, p.Origin = v.Fallback.Clone(), v.Plan.Name
+		if v.Plan.Kind == PlanMine {
+			p.Origin = v.Plan.Origin
+		}
+		for _, r := range v.Rows {
+			it := r.Item.Clone()
+			it.Anchor = ""
+			p.Items = append(p.Items, it)
+		}
 	}
 	s.Plans = append(s.Plans, p)
 	s.Active = p.ID

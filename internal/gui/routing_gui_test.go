@@ -455,7 +455,7 @@ func TestRoutingPlansAreSwitchedAndDeleted(t *testing.T) {
 	h.mustHave("12 items · Travel")
 
 	h.click("More")
-	h.pick("Delete a plan of mine", "Travel")
+	h.pick("Delete")
 	h.mustHave("Delete “Travel”?")
 	h.click("Delete")
 	st := h.state()
@@ -468,6 +468,54 @@ func TestRoutingPlansAreSwitchedAndDeleted(t *testing.T) {
 		}
 	}
 	h.mustHave("12 items · Recommended")
+}
+
+// A plan of one's own can start from nothing, from the plan in force or from
+// any other plan; one's own plan is copied from its menu.
+func TestRoutingNewPlanStartsFromNothingOrACopy(t *testing.T) {
+	h := routingHarness(t, harnessOpt{})
+	// The list of plans ends with the way to a new one.
+	h.click("Recommended")
+	h.pick("New")
+	h.mustHave("New plan", "Name", "Start from", "A copy of a plan", "Nothing",
+		"No items: apart from your exceptions and the local network, all traffic goes the way of “Everything else”. Add items as you need them.")
+	h.ui.Key(ui.Cmd, ui.KeyA)
+	h.typeText("Scratch")
+	h.enter()
+	h.settle()
+	pl := h.state().ActivePlan()
+	if pl.Kind != routing.PlanMine || pl.Name != "Scratch" || len(pl.Items) != 0 {
+		t.Fatalf("the new plan: %+v", pl)
+	}
+	h.mustHave("0 items · Scratch", "No items yet", "Your own plan. Only you change it.")
+
+	// A copy of another plan, chosen in the dialog, without switching to it first.
+	h.click("Scratch")
+	h.pick("New")
+	h.ui.Key(ui.Cmd, ui.KeyA)
+	h.typeText("Mine too")
+	h.click("A copy of a plan")
+	h.mustHave("Plan to copy")
+	h.chooseInDialog("Scratch", "Aurora")
+	h.submitDialog("Create")
+	pl = h.state().ActivePlan()
+	if pl.Name != "Mine too" || len(pl.Items) != len(h.state().PlanByID(routing.SubPlanID("sub-aurora")).Items) {
+		t.Fatalf("the copy of Aurora Cloud's plan: %q with %d items", pl.Name, len(pl.Items))
+	}
+
+	// One's own plan is copied from its menu, as it is.
+	h.click("More")
+	h.mustHave("Rename…", "Duplicate…", "Delete this plan")
+	h.mustNotHave("Save as my plan…")
+	h.pick("Duplicate")
+	h.mustHave("New plan", "Plan to copy")
+	h.ui.Key(ui.Cmd, ui.KeyA)
+	h.typeText("Mine three")
+	h.enter()
+	h.settle()
+	if cp := h.state().ActivePlan(); cp.Name != "Mine three" || len(cp.Items) != len(pl.Items) {
+		t.Fatalf("the duplicate: %q with %d items", cp.Name, len(cp.Items))
+	}
 }
 
 func TestRoutingRestoresThePlansChoices(t *testing.T) {

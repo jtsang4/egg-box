@@ -769,3 +769,36 @@ func TestRecentNodesAreTheLastChosenAsMain(t *testing.T) {
 		t.Error("refreshing a clone changed the original")
 	}
 }
+
+func TestNewPlanStartsEmptyOrAsACopyOfAnyPlan(t *testing.T) {
+	s := NewState()
+	if err := s.SetFallback(Direct()); err != nil {
+		t.Fatal(err)
+	}
+	// From nothing: no items, everything else follows the main exit.
+	empty, err := s.NewPlan(" Scratch ", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.ActiveID() != empty.ID || empty.Name != "Scratch" || len(empty.Items) != 0 || empty.Fallback.Kind != DestFollow || empty.Origin != "" {
+		t.Fatalf("the empty plan: %+v", empty)
+	}
+	if _, err := s.AddItem(Item{Name: "Office", Dest: Direct(), Enabled: true, Sources: []Source{InlineSource([]Entry{{Kind: EntryDomainSuffix, Value: "corp.example"}})}}, ""); err != nil {
+		t.Fatalf("an item in the empty plan: %v", err)
+	}
+	// A copy of a plan that is not the one in force takes it as the person
+	// left it: the fallback they chose goes with it.
+	cp, err := s.NewPlan("Copy", BuiltinID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.ActiveID() != cp.ID || len(cp.Items) != len(Builtin().Items) || cp.Fallback.Kind != DestDirect || cp.Origin != Builtin().Name {
+		t.Fatalf("the copy: %d items, fallback %s, origin %q", len(cp.Items), cp.Fallback.Kind, cp.Origin)
+	}
+	if _, err := s.NewPlan("", ""); !errors.Is(err, ErrNoName) {
+		t.Errorf("no name: %v", err)
+	}
+	if _, err := s.NewPlan("X", "p-gone"); !errors.Is(err, ErrNoPlan) {
+		t.Errorf("a plan that is not there: %v", err)
+	}
+}

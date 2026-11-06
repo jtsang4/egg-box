@@ -89,28 +89,36 @@ func (a *App) planButton(c *ui.Context) {
 		ui.Icon(c, icon("chevron-down")).Size(15, 15).TextColor(p.Text3)
 	})
 	b.PopoverMenuButton(func(m *ui.Menu) {
-		for _, pl := range a.allPlans() {
+		// The plans by who keeps them (the application, a subscription, the
+		// person), then the way to a plan of one's own.
+		var kind routing.PlanKind
+		for i, pl := range a.allPlans() {
+			if i > 0 && pl.Kind != kind {
+				m.Separator()
+			}
+			kind = pl.Kind
 			id := pl.ID
 			if m.Item(a.planName(pl)).Radio(id == v.Plan.ID).Chosen() && id != v.Plan.ID {
 				a.editRouting(func(s *routing.State) error { return s.Switch(id) }, nil)
 			}
 		}
+		m.Separator()
+		if m.Item(a.t("plan.new")).Chosen() {
+			a.openNewPlan("")
+		}
 	})
 }
 
-// planMenu has what can be done with the plan in force and with the person's own.
+// planMenu has what can be done with the plan in force: a plan kept up to date
+// elsewhere can be made one's own or have its choices undone; one's own can
+// be renamed, copied and deleted.
 func (a *App) planMenu() func(m *ui.Menu) {
 	return func(m *ui.Menu) {
 		v := a.rv()
-		mine := v.Plan.Kind == routing.PlanMine
-		if !mine {
+		if v.Plan.Kind != routing.PlanMine {
 			if m.Item(a.t("plan.save_as")).Chosen() {
 				a.openPlanName(false)
 			}
-		} else if m.Item(a.t("plan.rename")).Chosen() {
-			a.openPlanName(true)
-		}
-		if !mine {
 			overridden := v.FallbackOverridden
 			for _, r := range v.Rows {
 				overridden = overridden || r.Overridden
@@ -120,24 +128,19 @@ func (a *App) planMenu() func(m *ui.Menu) {
 					a.editRouting(func(s *routing.State) error { return s.RestoreDefault() }, nil)
 				})
 			}
+			return
 		}
-		var own []*routing.Plan
-		for _, pl := range a.rt().Plans {
-			if pl.Kind == routing.PlanMine {
-				own = append(own, pl)
-			}
+		if m.Item(a.t("plan.rename")).Chosen() {
+			a.openPlanName(true)
 		}
-		if len(own) > 0 {
-			m.Separator()
-			m.Submenu(a.t("plan.delete"), func(sm *ui.Menu) {
-				for _, pl := range own {
-					id, name := pl.ID, pl.Name
-					if sm.Item(name).Chosen() {
-						a.confirm(a.t("plan.delete.title", "name", name), a.t("plan.delete.body"), a.t("common.delete"), true, func() {
-							a.editRouting(func(s *routing.State) error { return s.DeletePlan(id) }, nil)
-						})
-					}
-				}
+		if m.Item(a.t("plan.duplicate")).Chosen() {
+			a.openNewPlan(v.Plan.ID)
+		}
+		m.Separator()
+		id, name := v.Plan.ID, v.Plan.Name
+		if m.Item(a.t("plan.delete")).Chosen() {
+			a.confirm(a.t("plan.delete.title", "name", name), a.t("plan.delete.body"), a.t("common.delete"), true, func() {
+				a.editRouting(func(s *routing.State) error { return s.DeletePlan(id) }, nil)
 			})
 		}
 	}
