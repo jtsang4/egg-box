@@ -79,7 +79,7 @@ func (d *desktop) bootConfig() (boot.Config, error) {
 		cfg.DataDir = dir
 		cfg.Secrets = library.Chain{keychain{}, library.NewFileSecrets(filepath.Join(dir, "secrets.json"))}
 		ps := installedServices()
-		cfg.Dial, cfg.Authorize, cfg.Reregister, cfg.ServiceStartup = ps.Dial, ps.Authorize, ps.Reregister, ps.ServiceStartup
+		cfg.Dial, cfg.Authorize, cfg.ServiceStartup = ps.Dial, ps.Authorize, ps.ServiceStartup
 		d.openServiceSettings = ps.OpenServiceSettings
 		d.removeService = ps.RemoveService
 	}
