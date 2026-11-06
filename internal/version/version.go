@@ -4,7 +4,7 @@ package version
 
 // Version is the application and agent version. The GUI and the agent of one
 // installation always share it.
-var Version = "0.9.0-dev"
+var Version = "0.9.1-dev"
 
 // Commit is the source revision, when known.
 var Commit = ""
