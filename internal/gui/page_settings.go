@@ -330,6 +330,16 @@ func (a *App) prefsDirty() bool {
 func (a *App) networkSection(c *ui.Context) {
 	st := &a.sett
 	a.section(c, "sliders", a.t("settings.network"), a.t("settings.network.desc"), func() {
+		tun := !a.prefs.TunDisabled
+		if a.toggleRow(c, "set-tun", a.t("settings.tun"), a.t("settings.tun.desc", "port", strconv.Itoa(a.proxyPort())), &tun, false) {
+			p := a.prefs
+			p.TunDisabled = !tun
+			if p.TunDisabled && p.MixedPort == 0 {
+				p.MixedPort = configgen.DefaultMixedPort
+			}
+			a.savePrefs(p)
+		}
+		a.rowDivider(c)
 		lan := a.prefs.LANDirect
 		if a.toggleRow(c, "set-lan", a.t("settings.lan"), a.t("settings.lan.desc"), &lan, false) {
 			p := a.prefs
@@ -401,6 +411,15 @@ func (a *App) networkSection(c *ui.Context) {
 			a.networkApply(c)
 		})
 	})
+}
+
+// proxyPort is the local proxy port the core opens with the stored
+// preferences: the chosen one, or the default when TUN is off without one.
+func (a *App) proxyPort() int {
+	if a.prefs.MixedPort == 0 && a.prefs.TunDisabled {
+		return configgen.DefaultMixedPort
+	}
+	return a.prefs.MixedPort
 }
 
 // networkApply shows the apply and reset buttons while there is a pending edit.

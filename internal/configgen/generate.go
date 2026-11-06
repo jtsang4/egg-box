@@ -310,8 +310,10 @@ func (g *generator) generate() (*Output, error) {
 	out.Layout = layout
 
 	// ---- assemble
-	tun := map[string]any{"type": "tun", "tag": TagTun, "mtu": prefs.MTU, "stack": prefs.TunStack}
-	inbounds := []any{tun}
+	var inbounds []any
+	if !prefs.TunDisabled {
+		inbounds = append(inbounds, map[string]any{"type": "tun", "tag": TagTun, "mtu": prefs.MTU, "stack": prefs.TunStack})
+	}
 	if prefs.MixedPort > 0 {
 		inbounds = append(inbounds, map[string]any{"type": "mixed", "tag": tagMixed, "listen": "127.0.0.1", "listen_port": prefs.MixedPort})
 	}

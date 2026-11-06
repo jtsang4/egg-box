@@ -1186,3 +1186,50 @@ func hasWarning(out *configgen.Output, code string) bool {
 	}
 	return false
 }
+
+func TestTunCanBeTurnedOff(t *testing.T) {
+	inbounds := func(out *configgen.Output) map[string]map[string]any {
+		var doc struct {
+			Inbounds []map[string]any `json:"inbounds"`
+		}
+		if err := json.Unmarshal(out.JSON, &doc); err != nil {
+			t.Fatal(err)
+		}
+		m := map[string]map[string]any{}
+		for _, in := range doc.Inbounds {
+			m[in["type"].(string)] = in
+		}
+		return m
+	}
+
+	on := generate(t, baseInput(t))
+	if got := inbounds(on); got["tun"] == nil || got["mixed"] != nil {
+		t.Fatalf("by default: inbounds %v, want only a TUN", got)
+	}
+	if !accept(t, on).HasTun {
+		t.Error("by default the agent should see a TUN")
+	}
+
+	in := baseInput(t)
+	in.Prefs.TunDisabled = true
+	off := generate(t, in)
+	got := inbounds(off)
+	if got["tun"] != nil {
+		t.Fatalf("TUN off still has a TUN inbound: %s", off.JSON)
+	}
+	mixed := got["mixed"]
+	if mixed == nil || mixed["listen"] != "127.0.0.1" || mixed["listen_port"] != float64(configgen.DefaultMixedPort) {
+		t.Fatalf("TUN off without a port should open the local proxy on 127.0.0.1:%d, got %v", configgen.DefaultMixedPort, mixed)
+	}
+	if res := accept(t, off); res.HasTun {
+		t.Error("TUN off: the agent should not see a TUN, or it would change the machine's routes and DNS")
+	}
+	if _, ok := configgen.Switches(on, off); ok {
+		t.Error("turning TUN off needs the core to start again")
+	}
+
+	in.Prefs.MixedPort = 1080
+	if p := inbounds(generate(t, in))["mixed"]; p == nil || p["listen_port"] != float64(1080) {
+		t.Errorf("a chosen port is kept with TUN off, got %v", p)
+	}
+}

@@ -1,7 +1,7 @@
 // Package configgen writes the sing-box configuration the privileged agent
 // runs, from the user's nodes, routing plan and preferences.
 //
-// The agent accepts only a narrow dialect (see internal/agent/policy): one TUN
+// The agent accepts only a narrow dialect (see internal/agent/policy): at most one TUN
 // inbound whose addressing the agent owns, loopback listeners, no management
 // APIs, rule sets only as submitted resources. This package produces exactly
 // that dialect, so a generated configuration is accepted without surprises,
@@ -53,9 +53,15 @@ type Prefs struct {
 	// the rest, through the proxy. Each is "1.1.1.1", "tls://host", "https://host/path"...
 	DomesticDNS string `json:"domesticDns"`
 	RemoteDNS   string `json:"remoteDns"`
+	// TunDisabled runs the core without a TUN adapter: nothing on the machine
+	// changes and only the local HTTP/SOCKS proxy (MixedPort) carries traffic,
+	// for the programs pointed at it. Stored as "disabled" so preferences saved
+	// before the switch existed keep TUN on.
+	TunDisabled bool   `json:"tunDisabled"`
 	TunStack    string `json:"tunStack"`
 	MTU         int    `json:"mtu"`
-	// MixedPort opens a local HTTP/SOCKS proxy on 127.0.0.1 when non-zero.
+	// MixedPort opens a local HTTP/SOCKS proxy on 127.0.0.1 when non-zero. It
+	// is always open when TunDisabled is set (DefaultMixedPort if zero).
 	MixedPort int `json:"mixedPort"`
 	// TestURL, TestIntervalMin and ToleranceMs configure the automatic fastest-node groups.
 	TestURL         string `json:"testUrl"`
@@ -65,6 +71,10 @@ type Prefs struct {
 	// connections that arrive as bare addresses (always on in TUN mode).
 	Sniff bool `json:"sniff"`
 }
+
+// DefaultMixedPort is the local proxy port used when TUN is off and no port
+// was chosen.
+const DefaultMixedPort = 7890
 
 // DefaultPrefs are the settings a new installation starts with.
 func DefaultPrefs() Prefs {
@@ -118,6 +128,10 @@ func (p Prefs) Normalize() (Prefs, []string) {
 	if p.MixedPort < 0 || p.MixedPort > 65535 {
 		notes = append(notes, "the local proxy port is out of range")
 		p.MixedPort = 0
+	}
+	if p.TunDisabled && p.MixedPort == 0 {
+		// Without a TUN the local proxy is the only way in.
+		p.MixedPort = DefaultMixedPort
 	}
 	if u, err := url.Parse(p.TestURL); p.TestURL == "" || err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		if p.TestURL != "" {

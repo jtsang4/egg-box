@@ -42,8 +42,9 @@ agentd (Windows Service / macOS LaunchDaemon)  ──▶  embedded sing-box core
   built-in directory of the well-known projects or added by link (GitHub pages and mirror prefixes are understood). The
   application downloads them, converts them and hands the agent local files only: the agent never goes to the network.
   Changing where an item goes is a selection in the running core, not a restart.
-- **Connection.** One-click connect with a real TUN adapter; reconnects when the network changes; recovers from an
-  unexpected core exit; optional auto-connect. Live speed charts, the connection list (close one or all), logs.
+- **Connection.** One-click connect with a real TUN adapter, or with TUN off (Settings → Network): then only a local
+  HTTP/SOCKS proxy runs and the system's routes and DNS are left alone. Reconnects when the network changes; recovers
+  from an unexpected core exit; optional auto-connect. Live speed charts, the connection list (close one or all), logs.
 - **Desktop.** Menu bar / tray panel, notifications, launch at login, keep running in the tray, light and dark
   appearance, English and 简体中文.
 - **Support.** A redacted diagnostic report (versions, status, recent errors; never links, passwords or node details).
