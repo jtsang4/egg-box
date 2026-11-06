@@ -21,6 +21,7 @@ import (
 type Control interface {
 	ServiceStatus(plist string) bridge.ServiceStatus
 	Register(plist string) error
+	Unregister(plist string) error
 	OpenLoginItems()
 }
 
@@ -91,4 +92,21 @@ func Authorize(ctx context.Context, c Control, plist string, t Timing) error {
 		}
 		state = c.ServiceStatus(plist)
 	}
+}
+
+// Reregister takes the registration away, makes it again and follows it
+// through approval as Authorize does. With a registration macOS keeps the code
+// requirement the service must meet to be started. A build signed ad hoc has no
+// team to be named by, only the hash of its code, which every build changes:
+// after an upgrade launchd refuses to start the new service ("spawn failed")
+// while the registration still says it is enabled. Registering anew records
+// the requirement of the code now installed.
+func Reregister(ctx context.Context, c Control, plist string, t Timing) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := c.Unregister(plist); err != nil && c.ServiceStatus(plist) == bridge.ServiceEnabled {
+		return fmt.Errorf("%w: %w", app.ErrServiceSetup, err)
+	}
+	return Authorize(ctx, c, plist, t)
 }

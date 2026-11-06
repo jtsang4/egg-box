@@ -20,6 +20,7 @@ type fake struct {
 	looks    int
 	regErr   error
 	regs     int
+	unregs   int
 	opened   int
 }
 
@@ -34,7 +35,13 @@ func (f *fake) ServiceStatus(string) bridge.ServiceStatus {
 	return f.statuses[i]
 }
 func (f *fake) Register(string) error { f.mu.Lock(); defer f.mu.Unlock(); f.regs++; return f.regErr }
-func (f *fake) OpenLoginItems()       { f.mu.Lock(); defer f.mu.Unlock(); f.opened++ }
+func (f *fake) Unregister(string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.unregs++
+	return nil
+}
+func (f *fake) OpenLoginItems() { f.mu.Lock(); defer f.mu.Unlock(); f.opened++ }
 
 var quick = Timing{Poll: time.Millisecond, Patience: 80 * time.Millisecond}
 
@@ -180,5 +187,17 @@ func TestADeadlineIsTheSameAsGivingUp(t *testing.T) {
 	err := Authorize(ctx, f, "x.plist", Timing{Poll: 5 * time.Millisecond, Patience: time.Minute})
 	if !errors.Is(err, app.ErrAuthorizationDeclined) {
 		t.Errorf("got %v", err)
+	}
+}
+
+// An enabled registration whose service does not start (an ad hoc build
+// upgraded in place) is made again, and the person is shown where to allow it.
+func TestReregisterRegistersAnewAndAsksForApproval(t *testing.T) {
+	f := &fake{statuses: []bridge.ServiceStatus{bridge.ServiceNotRegistered, bridge.ServiceRequiresApproval, bridge.ServiceRequiresApproval, bridge.ServiceEnabled}}
+	if err := Reregister(context.Background(), f, "x.plist", quick); err != nil {
+		t.Fatal(err)
+	}
+	if f.unregs != 1 || f.regs != 1 || f.opened != 1 {
+		t.Errorf("unregistered %d, registered %d, opened settings %d times; want 1 each", f.unregs, f.regs, f.opened)
 	}
 }

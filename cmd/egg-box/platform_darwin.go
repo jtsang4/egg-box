@@ -64,6 +64,13 @@ func installedServices() platformServices {
 			}
 			return service.Authorize(ctx, b, macsys.DaemonPlist, service.DefaultTiming)
 		},
+		Reregister: func(ctx context.Context) error {
+			b, err := load()
+			if err != nil {
+				return fmt.Errorf("%w: run the application installed from its installer (%v)", app.ErrServiceSetup, err)
+			}
+			return service.Reregister(ctx, b, macsys.DaemonPlist, service.DefaultTiming)
+		},
 		OpenServiceSettings: func() {
 			if b, err := load(); err == nil {
 				b.OpenLoginItems()

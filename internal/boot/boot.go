@@ -76,6 +76,10 @@ type Config struct {
 	Resolve func(ctx context.Context, host string) ([]netip.Addr, error)
 	// Authorize asks the system to allow the privileged service (Installed).
 	Authorize func(ctx context.Context) error
+	// Reregister registers the service anew and asks for it to be allowed,
+	// for a service the system says is allowed and does not start; nil where
+	// there is no such registration.
+	Reregister func(ctx context.Context) error
 	// ServiceStartup reads and changes the service's start with the computer.
 	ServiceStartup *Toggle
 	// Version is the application's version.
@@ -107,10 +111,11 @@ type Runtime struct {
 	// platform has such a thing.
 	ServiceStartup *Toggle
 
-	authorize func(ctx context.Context) error
-	cancel    context.CancelFunc
-	closers   []func() // run last to first
-	once      sync.Once
+	authorize  func(ctx context.Context) error
+	reregister func(ctx context.Context) error
+	cancel     context.CancelFunc
+	closers    []func() // run last to first
+	once       sync.Once
 }
 
 // Authorize asks the system to allow the privileged service. It returns nil
@@ -122,14 +127,15 @@ func (r *Runtime) Authorize(ctx context.Context) error {
 	r.Service.RecordServiceLog("info", "Requesting authorization for the background service")
 	err := r.authorize(ctx)
 	if err == nil {
-		readyCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		defer cancel()
-		if waitErr := r.Agent.WaitReady(readyCtx); waitErr != nil {
-			cause := r.Agent.Link().Err
-			if cause == nil {
-				cause = waitErr
+		err = r.waitReady(ctx)
+		if err != nil && r.reregister != nil && ctx.Err() == nil {
+			// Allowed and silent: the system may refuse to start the service
+			// it has, as after an upgrade of a build signed ad hoc. Registering
+			// it anew lets the system take the service now installed.
+			r.Service.RecordServiceLog("warn", "The background service is allowed but does not answer ("+err.Error()+"); registering it again")
+			if err = r.reregister(ctx); err == nil {
+				err = r.waitReady(ctx)
 			}
-			err = fmt.Errorf("%w: the background service was approved but could not be reached: %v", app.ErrServiceSetup, cause)
 		}
 	}
 	if err != nil {
@@ -137,6 +143,20 @@ func (r *Runtime) Authorize(ctx context.Context) error {
 		return err
 	}
 	r.Service.RecordServiceLog("info", "The background service is authorized and reachable")
+	return nil
+}
+
+// waitReady waits a while for the service to answer once it is allowed.
+func (r *Runtime) waitReady(ctx context.Context) error {
+	readyCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if waitErr := r.Agent.WaitReady(readyCtx); waitErr != nil {
+		cause := r.Agent.Link().Err
+		if cause == nil {
+			cause = waitErr
+		}
+		return fmt.Errorf("%w: the background service was approved but could not be reached: %v", app.ErrServiceSetup, cause)
+	}
 	return nil
 }
 
@@ -152,7 +172,7 @@ func Start(ctx context.Context, cfg Config) (*Runtime, error) {
 	if cfg.Version == "" {
 		cfg.Version = "dev"
 	}
-	rt := &Runtime{Mode: cfg.Mode, Version: cfg.Version, authorize: cfg.Authorize, ServiceStartup: cfg.ServiceStartup}
+	rt := &Runtime{Mode: cfg.Mode, Version: cfg.Version, authorize: cfg.Authorize, reregister: cfg.Reregister, ServiceStartup: cfg.ServiceStartup}
 	ok := false
 	defer func() {
 		if !ok {

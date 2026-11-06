@@ -16,6 +16,10 @@ type platformServices struct {
 	// Authorize asks the system to allow the service; nil when the installer
 	// already did.
 	Authorize func(ctx context.Context) error
+	// Reregister registers the service anew and asks for it to be allowed,
+	// when the system says it is allowed and it does not start; nil where
+	// there is no registration to make again.
+	Reregister func(ctx context.Context) error
 	// ServiceStartup is the service's start with the computer; nil when the
 	// platform has no such choice.
 	ServiceStartup *boot.Toggle
