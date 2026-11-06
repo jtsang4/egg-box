@@ -550,14 +550,23 @@ var catalogZH = map[string]string{
 	"dest.node.gone.tip": "已经没有订阅提供这个节点了，现在临时使用同地区的其他节点。请重新选择。",
 
 	// node page banners
-	"banner.dismiss":    "知道了",
-	"banner.repick":     "重新选择",
-	"banner.gone":       "你为“{for}”指定的节点“{node}”已经不在任何订阅里，现在临时使用同地区的节点。",
-	"banner.gone.using": "你为“{for}”指定的节点“{node}”已经不在任何订阅里，现在临时使用“{using}”。",
-	"banner.stand_in":   "你为“{for}”指定的节点“{node}”暂时没有响应，现在临时使用“{using}”。",
-	"owner.main":        "主出口",
-	"owner.exception":   "例外 {value}",
-	"owner.unknown":     "某个分流项",
+	"banner.dismiss": "知道了",
+	"banner.repick":  "重新选择",
+	"banner.gone":    "你为“{for}”指定的节点“{node}”已经不在任何订阅里，现在临时使用同地区的节点。",
+
+	"proxy.dead":               "{services} 设置的系统代理 {endpoint} 已经不可用，通常是之前用过的代理软件退出后留下的。在关闭它之前，浏览器等使用系统代理的应用都无法上网。",
+	"proxy.dead.idle":          "{services} 设置的系统代理 {endpoint} 已经不可用。切换到这些网络后，浏览器等使用系统代理的应用将无法上网，关闭它即可避免。",
+	"proxy.foreign":            "{services} 设置的系统代理 {endpoint} 由另一个软件提供。浏览器等使用系统代理的应用会先经过那个软件，访问效果可能与 EggBox 的分流规则不一致。",
+	"proxy.copy":               "复制修复命令",
+	"proxy.copied":             "已复制命令，粘贴到“终端”中运行即可关闭这些系统代理。",
+	"proxy.open":               "打开网络设置",
+	"proxy.list.sep":           "、",
+	"notice.system_proxy_dead": "系统代理 {endpoint} 已经不可用，浏览器等应用可能无法上网",
+	"banner.gone.using":        "你为“{for}”指定的节点“{node}”已经不在任何订阅里，现在临时使用“{using}”。",
+	"banner.stand_in":          "你为“{for}”指定的节点“{node}”暂时没有响应，现在临时使用“{using}”。",
+	"owner.main":               "主出口",
+	"owner.exception":          "例外 {value}",
+	"owner.unknown":            "某个分流项",
 
 	// nodes
 	"nodes.all_subs":             "全部订阅",

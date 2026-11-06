@@ -56,6 +56,9 @@ type Options struct {
 	// platforms where the application itself can (macOS); elsewhere the
 	// uninstaller does it. nil hides the action.
 	RemoveService func(ctx context.Context) error
+	// OpenProxySettings opens the system page where the system proxy is
+	// changed, offered beside a warning about one; nil hides the button.
+	OpenProxySettings func()
 	// OpenURL opens a link in the browser; nil uses the context's.
 	OpenURL func(url string)
 	// OpenNotices shows the licenses of the software the application is built
@@ -175,6 +178,9 @@ type App struct {
 	sett settingsState
 	boot onboardState
 	rte  routingState
+	// proxyDismissed are the system proxy warnings the person closed, until
+	// the application is restarted.
+	proxyDismissed map[string]bool
 
 	pending atomic.Bool
 

@@ -35,6 +35,7 @@ import (
 	"eggbox/internal/demodata"
 	"eggbox/internal/library"
 	"eggbox/internal/ruledata"
+	"eggbox/internal/sysproxy"
 )
 
 // Mode is how the application runs.
@@ -78,6 +79,9 @@ type Config struct {
 	Authorize func(ctx context.Context) error
 	// ServiceStartup reads and changes the service's start with the computer.
 	ServiceStartup *Toggle
+	// SystemProxies reads the system's manual proxy settings (Installed, on
+	// platforms that have a reader); see app.Config.
+	SystemProxies func() ([]sysproxy.Setting, error)
 	// Version is the application's version.
 	Version string
 	// Fresh starts the demonstration as a first run: an empty library and a
@@ -259,6 +263,7 @@ func Start(ctx context.Context, cfg Config) (*Runtime, error) {
 	svc := app.New(app.Config{
 		Library: lib, Rules: rd, Agent: client, Version: cfg.Version,
 		Clock: cfg.Now, HTTPClient: httpc, Notify: cfg.OnChange, Mirrors: mirrors, Resolve: cfg.Resolve,
+		SystemProxies: cfg.SystemProxies,
 	})
 	rt.Service = svc
 

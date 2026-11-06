@@ -44,6 +44,9 @@ type desktop struct {
 	// openServiceSettings opens the system page that switches the privileged
 	// service on or off, when the platform has one (macOS).
 	openServiceSettings func()
+	// openProxySettings opens the system page of the proxy settings, when the
+	// platform has one (macOS).
+	openProxySettings func()
 	// removeService takes the privileged service out of the system, when the
 	// platform lets the application do it (macOS).
 	removeService func(ctx context.Context) error
@@ -80,7 +83,9 @@ func (d *desktop) bootConfig() (boot.Config, error) {
 		cfg.Secrets = library.Chain{keychain{}, library.NewFileSecrets(filepath.Join(dir, "secrets.json"))}
 		ps := installedServices()
 		cfg.Dial, cfg.Authorize, cfg.ServiceStartup = ps.Dial, ps.Authorize, ps.ServiceStartup
+		cfg.SystemProxies = ps.SystemProxies
 		d.openServiceSettings = ps.OpenServiceSettings
+		d.openProxySettings = ps.OpenProxySettings
 		d.removeService = ps.RemoveService
 	}
 	return cfg, nil
@@ -166,6 +171,9 @@ func (d *desktop) guiOptions(cfg boot.Config) gui.Options {
 		o.OpenServiceSettings = func() { go d.openServiceSettings() }
 	}
 	o.RemoveService = d.removeService
+	if d.openProxySettings != nil {
+		o.OpenProxySettings = func() { go d.openProxySettings() }
+	}
 	if path := noticesPath(); path != "" {
 		o.OpenNotices = func() {
 			go func() {

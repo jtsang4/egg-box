@@ -4,6 +4,7 @@ package bridge
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"eggbox/internal/sysproxy"
 )
 
 var (
@@ -346,5 +349,25 @@ func TestUserName(t *testing.T) {
 	}
 	if name, ok := b.UserName(4000000000); ok {
 		t.Errorf("a user that does not exist is called %q", name)
+	}
+}
+
+// Reading the proxy settings changes nothing and needs no privileges, so the
+// real machine's are read; only their shape is checked.
+func TestSystemProxiesReportsTheServices(t *testing.T) {
+	b := load(t)
+	data, err := b.SystemProxies()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report struct {
+		Primary  *string           `json:"primary"`
+		Services []json.RawMessage `json:"services"`
+	}
+	if err := json.Unmarshal(data, &report); err != nil || report.Primary == nil || report.Services == nil {
+		t.Fatalf("the report is not the expected JSON (%v)", err)
+	}
+	if _, err := sysproxy.ParseDarwin(data); err != nil {
+		t.Fatal(err)
 	}
 }

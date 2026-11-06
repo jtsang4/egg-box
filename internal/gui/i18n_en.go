@@ -556,9 +556,18 @@ var catalogEN = map[string]string{
 	"banner.gone":       "The node “{node}” you chose for “{for}” is no longer in any subscription. A nearby node is used meanwhile.",
 	"banner.gone.using": "The node “{node}” you chose for “{for}” is no longer in any subscription. “{using}” is used meanwhile.",
 	"banner.stand_in":   "The node “{node}” you chose for “{for}” is not answering. “{using}” is used meanwhile.",
-	"owner.main":        "Main exit",
-	"owner.exception":   "Exception {value}",
-	"owner.unknown":     "an item",
+
+	"proxy.dead":               "The system proxy for {services} is {endpoint}, which is no longer available — usually left behind by a proxy app that has quit. Browsers and other apps that use the system proxy can’t go online until it’s turned off.",
+	"proxy.dead.idle":          "The system proxy for {services} is {endpoint}, which is no longer available. On that network, browsers and other apps that use the system proxy won’t go online until it’s turned off.",
+	"proxy.foreign":            "The system proxy for {services} is {endpoint}, provided by another app. Browsers and other apps that use the system proxy go through that app first, so EggBox’s rules may not apply to them as expected.",
+	"proxy.copy":               "Copy fix commands",
+	"proxy.copied":             "Commands copied. Paste them into Terminal to turn these system proxies off.",
+	"proxy.open":               "Open Network Settings",
+	"proxy.list.sep":           ", ",
+	"notice.system_proxy_dead": "The system proxy {endpoint} is no longer available — browsers and other apps may not go online",
+	"owner.main":               "Main exit",
+	"owner.exception":          "Exception {value}",
+	"owner.unknown":            "an item",
 
 	// nodes
 	"nodes.all_subs":             "All subscriptions",

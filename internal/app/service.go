@@ -25,6 +25,7 @@ import (
 	"eggbox/internal/ruledata"
 	"eggbox/internal/rulefmt"
 	"eggbox/internal/subscription"
+	"eggbox/internal/sysproxy"
 )
 
 // Config wires a Service to its parts.
@@ -53,6 +54,16 @@ type Config struct {
 	// Resolve looks a host name up for the test URL dialog; nil asks the
 	// system. Tests supply their own so that no name leaves the machine.
 	Resolve func(ctx context.Context, host string) ([]netip.Addr, error)
+	// SystemProxies reads the system's manual proxy settings, so that one
+	// another program left behind is found while connected; nil leaves the
+	// system proxy alone (platforms without a reader, demonstrations, tests).
+	SystemProxies func() ([]sysproxy.Setting, error)
+	// ProbeProxy says whether something listens on a local port; nil tries
+	// to connect to it.
+	ProbeProxy sysproxy.Listening
+	// ProxyCheckEvery is how often the settings are looked at while
+	// connected (default 30 seconds).
+	ProxyCheckEvery time.Duration
 }
 
 // Service is safe for concurrent use.
@@ -208,6 +219,7 @@ func (s *Service) Run(ctx context.Context) {
 	spawn(func() { s.trafficClock(ctx) })
 	spawn(func() { s.schedule(ctx) })
 	spawn(func() { s.planLoop(ctx) })
+	spawn(func() { s.watchSystemProxy(ctx) })
 	s.kickPlan()
 }
 

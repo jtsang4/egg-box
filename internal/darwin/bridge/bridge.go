@@ -87,6 +87,7 @@ type Bridge struct {
 	dnsRemove func(key string, err *byte, capacity int32) int32
 
 	selfTeam func(out *byte, capacity int32) int32
+	proxies  func(out *byte, capacity int32) int32
 	userName func(uid uint32, out *byte, capacity int32) int32
 
 	consoleUser  func() int64
@@ -131,6 +132,7 @@ func Load(path string) (*Bridge, error) {
 		"eggbox_dns_token":            &b.dnsToken,
 		"eggbox_dns_remove":           &b.dnsRemove,
 		"eggbox_self_team":            &b.selfTeam,
+		"eggbox_system_proxies":       &b.proxies,
 		"eggbox_user_name":            &b.userName,
 		"eggbox_console_user":         &b.consoleUser,
 		"eggbox_watch_console":        &b.watchConsole,
@@ -423,6 +425,27 @@ func (b *Bridge) RemoveResolver(key string) error {
 		return errors.New(eb.text())
 	}
 	return nil
+}
+
+// ------------------------------------------------------------------ proxies
+
+// SystemProxies reads the manual proxy settings of the network services, as
+// the JSON report sysproxy.ParseDarwin reads. It changes nothing and needs no
+// privileges.
+func (b *Bridge) SystemProxies() ([]byte, error) {
+	size := int32(16 << 10)
+	for range 3 {
+		out := make([]byte, size)
+		n := b.proxies(&out[0], size)
+		switch {
+		case n >= 0:
+			return out[:n], nil
+		case n == -1:
+			return nil, errors.New("the system proxy settings cannot be read")
+		}
+		size = -n
+	}
+	return nil, errors.New("the system proxy settings keep growing")
 }
 
 // ------------------------------------------------------------------ signing

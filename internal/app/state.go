@@ -7,6 +7,7 @@ import (
 	"eggbox/internal/agentclient"
 	"eggbox/internal/plancompile"
 	"eggbox/internal/routing"
+	"eggbox/internal/sysproxy"
 )
 
 // Phase is where the connection stands, for the interface.
@@ -278,6 +279,11 @@ type Snapshot struct {
 	// Exits tells where traffic of the main exit ("main"), the fallback
 	// ("fallback") and each item (by id) ends up right now.
 	Exits map[string]ExitInfo
+	// ProxyIssues are the system proxy settings that point at a local port
+	// that is not this application's, found while connected: the ones that
+	// lead nowhere cut off every program that uses the system proxy. The
+	// most pressing comes first.
+	ProxyIssues []sysproxy.Issue
 }
 
 // ItemState is what became of an item when the plan was compiled.

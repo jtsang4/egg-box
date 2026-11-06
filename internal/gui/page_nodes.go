@@ -323,15 +323,12 @@ func ownerKeyOf(kind plancompile.OwnerKind, id string) string {
 }
 
 func (a *App) nodeBanners(c *ui.Context) {
-	p := a.pl
 	for _, b := range a.banners() {
 		if a.node.dismissed[b.key] {
 			continue
 		}
 		b := b
-		ui.Row(c.Key("banner-"+b.key)).Gap(12).Padding(12, 14, 12, 16).Radius(radiusCard-4).Background(p.Warn.Alpha(0.1)).Border(1, p.Warn.Alpha(0.26)).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, icon("alert")).Size(16, 16).TextColor(p.Warn).Shrink(0)
-			a.txt(c, b.text, 13, 500, p.Text).Grow(1).Basis(0).LineHeight(1.45)
+		a.alertBanner(c, "banner-"+b.key, toneWarn, b.text, false, func() {
 			if a.btn(c, btnSpec{kind: btnSecondary, small: true, label: a.t("banner.repick")}).Clicked() {
 				b.repick()
 			}
@@ -340,6 +337,37 @@ func (a *App) nodeBanners(c *ui.Context) {
 			}
 		})
 	}
+}
+
+// alertBanner is a tinted strip with an icon, a sentence and the actions it
+// offers, for something the person should know about a page. stacked puts the
+// actions on a line of their own under the sentence, for a long sentence or
+// several actions, which would otherwise squeeze the text in a small window.
+func (a *App) alertBanner(c *ui.Context, key string, t tone, text string, stacked bool, actions func()) {
+	p := a.pl
+	col, glyph := a.toneColor(t), "alert"
+	if t == toneBlue {
+		col, glyph = p.Blue, "info"
+	}
+	strip := ui.Row(c.Key(key)).Gap(12).Padding(12, 14, 12, 16).Radius(radiusCard-4).Background(col.Alpha(0.1)).Border(1, col.Alpha(0.26))
+	if !stacked {
+		strip.AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, icon(glyph)).Size(16, 16).TextColor(a.toneColor(t)).Shrink(0)
+			a.txt(c, text, 13, 500, p.Text).Grow(1).Basis(0).LineHeight(1.45)
+			actions()
+		})
+		return
+	}
+	strip.AlignItems(ui.Start).Children(func() {
+		// Level with the first line of the text.
+		ui.Row(c).Padding(2, 0, 0, 0).Shrink(0).Children(func() {
+			ui.Icon(c, icon(glyph)).Size(16, 16).TextColor(a.toneColor(t))
+		})
+		ui.Column(c).Grow(1).Basis(0).Gap(10).Children(func() {
+			a.txt(c, text, 13, 500, p.Text).LineHeight(1.45)
+			ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(actions)
+		})
+	})
 }
 
 // ------------------------------------------------------------- main strip

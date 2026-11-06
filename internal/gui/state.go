@@ -12,6 +12,7 @@ func (a *App) initState() {
 	a.initConns()
 	a.initLogs()
 	a.initRouting()
+	a.proxyDismissed = map[string]bool{}
 }
 
 // scrollFor returns the scroll state of a page, so that each page keeps its

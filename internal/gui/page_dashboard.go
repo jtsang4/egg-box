@@ -16,6 +16,7 @@ import (
 // flows through it.
 func (a *App) dashboardPage(c *ui.Context) {
 	a.pageFrame(c, a.t("dash.title"), a.dashSubtitle(), func() { a.modeSwitch(c) }, func() {
+		a.proxyBanners(c)
 		a.hero(c)
 		a.statRow(c)
 		ui.Row(c).Gap(18).AlignItems(ui.Stretch).Children(func() {

@@ -57,6 +57,8 @@ var shots = []shot{
 	{name: "failed-dashboard", setup: failedConnection},
 	{name: "dashboard"},
 	{name: "dashboard-off", setup: func(be *fixtureBackend, _ *Options) { be.snap = be.disconnectedSnapshot() }},
+	{name: "dashboard-proxy", setup: proxyLeftBehind},
+	{name: "small-dashboard-proxy", w: MinWindowWidth, h: MinWindowHeight, setup: proxyLeftBehind},
 	{name: "nodes", run: func(h *harness) { h.click("Nodes") }},
 	{name: "subscriptions", run: func(h *harness) { h.click("Subscriptions") }},
 	{name: "subscription-add", run: func(h *harness) { h.click("Subscriptions"); h.click("Add subscription") }},
@@ -73,6 +75,7 @@ var shots = []shot{
 	// The same screens in Chinese, where the words are shorter and the lines
 	// are set differently: this is where clipped or crowded text shows.
 	{name: "zh-dashboard", lang: "zh"},
+	{name: "zh-dashboard-proxy", lang: "zh", setup: proxyLeftBehind},
 	{name: "zh-nodes", lang: "zh", run: goTo("zh", "nav.nodes")},
 	{name: "zh-subscriptions", lang: "zh", run: goTo("zh", "nav.subscriptions")},
 	{name: "zh-routing", lang: "zh", run: goTo("zh", "nav.routing")},

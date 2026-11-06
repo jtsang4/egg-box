@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"sync"
@@ -15,6 +16,9 @@ import (
 	"eggbox/internal/darwin/bridge"
 	"eggbox/internal/darwin/service"
 	"eggbox/internal/macsys"
+	"eggbox/internal/sysproxy"
+
+	"github.com/egoist/mygo"
 )
 
 // installedServices wires the application to the macOS service. The bridge
@@ -78,6 +82,24 @@ func installedServices() platformServices {
 				return err
 			}
 			return b.Unregister(macsys.DaemonPlist)
+		},
+		SystemProxies: func() ([]sysproxy.Setting, error) {
+			b, err := load()
+			if err != nil {
+				return nil, err
+			}
+			data, err := b.SystemProxies()
+			if err != nil {
+				return nil, err
+			}
+			return sysproxy.ParseDarwin(data)
+		},
+		// The proxies are in the Details of each network service there; the
+		// page has no address of its own.
+		OpenProxySettings: func() {
+			if err := mygo.Shell.OpenExternal("x-apple.systempreferences:com.apple.Network-Settings.extension"); err != nil {
+				log.Printf("open the network settings: %v", err)
+			}
 		},
 	}
 }

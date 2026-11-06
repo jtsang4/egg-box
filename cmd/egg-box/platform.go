@@ -5,6 +5,7 @@ import (
 
 	"eggbox/internal/agentclient"
 	"eggbox/internal/boot"
+	"eggbox/internal/sysproxy"
 )
 
 // platformServices is what differs between operating systems when the
@@ -25,4 +26,11 @@ type platformServices struct {
 	// RemoveService takes the service out of the system, on platforms where
 	// the application can do that itself; nil otherwise.
 	RemoveService func(ctx context.Context) error
+	// SystemProxies reads the system's manual proxy settings, so that one
+	// another program left behind can be pointed out; nil where there is no
+	// reader.
+	SystemProxies func() ([]sysproxy.Setting, error)
+	// OpenProxySettings opens the system page where those settings are
+	// changed; nil where there is none to open.
+	OpenProxySettings func()
 }
