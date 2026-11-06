@@ -50,6 +50,11 @@ func main() {
 		}
 		mygo.App.OnSecondInstance(func([]string, string) { mygo.RunOnMain(d.showWindow) })
 	}
+	// Opening the application again while it runs (from Finder, Spotlight,
+	// Raycast or the Dock) starts no second process on macOS: the system
+	// asks the running one to reopen. Closed to the tray, that brings the
+	// window back, connected or not.
+	mygo.App.OnActivate(func(bool) { d.showWindow() })
 	// The tray keeps the application alive when its window is closed; without
 	// a tray the window is the application.
 	mygo.App.OnWindowAllClosed(func() {

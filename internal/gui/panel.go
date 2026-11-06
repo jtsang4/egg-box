@@ -38,16 +38,28 @@ func (a *App) PanelView(c *ui.Context) {
 	a.panelSurface(root)
 	root.Children(func() {
 		a.panelHeader(c)
-		a.panelHero(c)
-		if ph.Online() {
-			a.panelLive(c)
-		} else {
-			a.panelIdle(c)
-		}
-		ui.Spacer(c)
+		// The body scrolls between a header and a footer that stay put: a
+		// connection with several recent nodes, or a long error, makes it
+		// taller than the panel, and the footer's way to the window and its
+		// settings must never be pushed out of reach.
+		body := ui.Scroll(c.Key("panel-body")).Grow(1).Basis(0).MinHeight(0)
+		body.TrackScroll(&a.pscroll).Children(func() {
+			a.panelHero(c)
+			if ph.Online() {
+				a.panelLive(c)
+			} else {
+				a.panelIdle(c)
+			}
+			ui.Box(c).Height(12)
+		})
 		a.panelFooter(c)
 	})
 }
+
+// PanelOpening tells the App the panel is about to show: it opens at its
+// top, on the connection, wherever it was scrolled to last time. Call it on
+// the main thread.
+func (a *App) PanelOpening() { a.pscroll = ui.ScrollState{} }
 
 // PanelClosed tells the App that the panel is gone, so that nothing tries to
 // redraw it.

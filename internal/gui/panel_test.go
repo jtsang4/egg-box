@@ -2,7 +2,10 @@ package gui
 
 import (
 	"context"
+	"strings"
 	"testing"
+
+	"github.com/egoist/mygo/ui"
 
 	"eggbox/internal/app"
 	"eggbox/internal/library"
@@ -162,6 +165,89 @@ func TestPanelFooter(t *testing.T) {
 	h.click("Quit EggBox")
 	if !h.be.took("quit") {
 		t.Fatalf("quitting: %v", h.be.called())
+	}
+}
+
+// TestPanelFooterStaysInReach: however tall the body grows (a connection with
+// several nodes to switch to, a long error, the other language), the footer
+// with the way to the window and its settings stays whole where it is in the
+// quietest panel, and works. It once slid out of the panel as soon as the
+// connection had a few recent nodes, which left no way back to the window but
+// disconnecting first.
+func TestPanelFooterStaysInReach(t *testing.T) {
+	recent := func(be *fixtureBackend, o *Options) {
+		chosenLately("Osaka 01", "Tokyo 02", "Taipei 01")(be, o)
+		be.arrange(func(st *routing.State) {
+			n, _ := be.node("Seoul 01")
+			if err := st.SetMain(routing.ToNode(n.ID())); err != nil {
+				panic(err)
+			}
+		})
+	}
+	longError := func(be *fixtureBackend, o *Options) {
+		failedConnection(be, o)
+		be.snap.Status.LastError = strings.Repeat("the core could not start: the outbound handshake timed out; ", 4)
+	}
+	// Find reports what is visible of a control, so a footer pushed half out
+	// of the panel shows as a smaller box, not a missing one.
+	where := map[string]ui.Rect{}
+	for _, lang := range []string{"en", "zh"} {
+		h := newHarness(t, harnessOpt{panel: true, lang: lang, setup: emptyLibrary})
+		open := map[string]string{"en": "Open EggBox", "zh": "打开 EggBox"}[lang]
+		r, ok := h.ui.Find(open)
+		if !ok || r.Y+r.H > PanelHeight {
+			t.Fatalf("%s: the quietest panel has no whole %q: %+v %v", lang, open, r, ok)
+		}
+		where[lang] = r
+	}
+	cases := []struct {
+		name, lang     string
+		setup          func(*fixtureBackend, *Options)
+		open, settings string
+	}{
+		{"connected", "en", recent, "Open EggBox", "Settings"},
+		{"connected-zh", "zh", recent, "打开 EggBox", "设置"},
+		{"failed", "en", longError, "Open EggBox", "Settings"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, harnessOpt{panel: true, lang: tc.lang, setup: tc.setup})
+			if r, ok := h.ui.Find(tc.open); !ok || r != where[tc.lang] {
+				t.Fatalf("%q is at %+v (found %v), not whole where it belongs (%+v)", tc.open, r, ok, where[tc.lang])
+			}
+			h.click(tc.settings)
+			if !h.be.took("show-window") || !h.be.took("close-panel") || h.app.page != pageSettings {
+				t.Fatalf("settings from the panel: page %v, calls %v", h.app.page, h.be.called())
+			}
+		})
+	}
+}
+
+// TestPanelOpensAtTop: scrolled down to the nodes and closed, the panel opens
+// again on the connection, at its top.
+func TestPanelOpensAtTop(t *testing.T) {
+	h := panelHarness(t, false, func(be *fixtureBackend, o *Options) {
+		chosenLately("Osaka 01", "Tokyo 02", "Taipei 01")(be, o)
+		be.arrange(func(st *routing.State) {
+			n, _ := be.node("Seoul 01")
+			if err := st.SetMain(routing.ToNode(n.ID())); err != nil {
+				panic(err)
+			}
+		})
+	})
+	top, ok := h.ui.Find("PROTECTED")
+	if !ok {
+		t.Fatalf("no status; have %s", h.digest())
+	}
+	h.ui.Wheel(PanelWidth/2, PanelHeight/2, 0, 400)
+	h.settle()
+	if r, ok := h.ui.Find("PROTECTED"); ok && r.Y >= top.Y {
+		t.Fatalf("the body did not scroll: status at %+v, was %+v", r, top)
+	}
+	h.app.PanelOpening()
+	h.settle()
+	if r, ok := h.ui.Find("PROTECTED"); !ok || r != top {
+		t.Fatalf("opened again, the status is at %+v (found %v), not at the top (%+v)", r, ok, top)
 	}
 }
 

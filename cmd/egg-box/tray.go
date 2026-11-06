@@ -185,6 +185,7 @@ func (d *desktop) togglePanel() {
 	// Setting its size places it next to the icon again, which may have
 	// moved since (another display, other menu bar items).
 	d.panel.SetContentSize(gui.PanelWidth, gui.PanelHeight)
+	d.app.PanelOpening()
 	d.panel.Show()
 }
 

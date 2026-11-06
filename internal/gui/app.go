@@ -115,6 +115,8 @@ type App struct {
 	svc    atomic.Pointer[ui.Services] // the main window's persistent services: redraws from any goroutine
 	// psvc is the tray panel's, while it is open.
 	psvc atomic.Pointer[ui.Services]
+	// pscroll is how far the panel's body is scrolled.
+	pscroll ui.ScrollState
 
 	// Resolved at the start of every frame.
 	snap      *app.Snapshot
