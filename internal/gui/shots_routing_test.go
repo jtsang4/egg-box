@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"strings"
 	"testing"
 
 	"eggbox/internal/catalog"
@@ -67,6 +68,57 @@ func init() {
 			h.app.pickNodeFor("Telegram", routing.Follow(), true, func(routing.Dest) {})
 		})})
 		add(shot{name: "dlg-region-picker", run: onRouting(func(h *harness) { h.app.openRegionPicker(h.app.liveNodes()[0]) })})
+	}
+}
+
+// The routing screens where the window is small, large and set the way
+// Windows sets it (its buttons sit at the right of the title bar, where the page
+// keeps its own buttons).
+func init() {
+	onRouting := func(open func(h *harness)) func(h *harness) {
+		return func(h *harness) {
+			h.click(h.app.t("nav.routing"))
+			h.settle()
+			if open != nil {
+				open(h)
+				h.settle()
+			}
+		}
+	}
+	for _, lang := range []string{"", "zh"} {
+		prefix := ""
+		if lang == "zh" {
+			prefix = "zh-"
+		}
+		add := func(s shot) {
+			s.name, s.lang = prefix+s.name, lang
+			shots = append(shots, s)
+		}
+		add(shot{name: "windows-routing", platform: "windows", h: 1300, setup: crowd, run: onRouting(nil)})
+		add(shot{name: "windows-nodes", platform: "windows", h: 900, setup: crowd, run: func(h *harness) { h.click(h.app.t("nav.nodes")); h.settle() }})
+		add(shot{name: "windows-dlg-additem", platform: "windows", h: 900, run: onRouting(func(h *harness) { h.app.openAddItem() })})
+		add(shot{name: "windows-dlg-test-url", platform: "windows", run: onRouting(func(h *harness) { h.app.openTestURL("https://registry.npmjs.org/left-pad") })})
+		add(shot{name: "small-routing", w: 960, h: 640, setup: crowd, run: onRouting(nil)})
+		add(shot{name: "small-nodes", w: 960, h: 640, setup: crowd, run: func(h *harness) { h.click(h.app.t("nav.nodes")); h.settle() }})
+		// Every dialog that is tall enough to matter, in the smallest window the
+		// application allows.
+		for _, name := range []string{
+			"batch, pasted", "add item, catalog", "add item, confirm", "add item, write", "choose a node",
+			"add a subscription", "item of one's own", "item whose update failed", "test an address, with one", "welcome",
+		} {
+			name := name
+			add(shot{name: "small-dlg-" + strings.NewReplacer(" ", "-", ",", "", "'", "").Replace(name), w: 960, h: 640, setup: crowd,
+				run: onRouting(func(h *harness) {
+					for _, tc := range h.dialogCases() {
+						if tc.name == name {
+							tc.open()
+							return
+						}
+					}
+					panic("no dialog " + name)
+				})})
+		}
+		add(shot{name: "large-routing", w: 1920, h: 1080, setup: crowd, run: onRouting(nil)})
 	}
 }
 

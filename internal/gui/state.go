@@ -59,6 +59,7 @@ type dlgFrame struct {
 // openDialog shows a dialog in place of whatever was open.
 func (a *App) openDialog(d dialog) {
 	a.dlgStack = nil
+	a.dlgScroll = ui.ScrollState{}
 	a.dlg = d
 	a.dlgOpen = true
 	a.again()
@@ -70,6 +71,7 @@ func (a *App) pushDialog(d dialog) {
 	if a.dlg != nil {
 		a.dlgStack = append(a.dlgStack, a.dlg)
 	}
+	a.dlgScroll = ui.ScrollState{}
 	a.dlg = d
 	a.dlgOpen = true
 	a.again()
@@ -79,6 +81,7 @@ func (a *App) pushDialog(d dialog) {
 // is one.
 func (a *App) closeDialog() {
 	if n := len(a.dlgStack); n > 0 {
+		a.dlgScroll = ui.ScrollState{}
 		a.dlg, a.dlgStack = a.dlgStack[n-1], a.dlgStack[:n-1]
 		a.dlgOpen = true
 		a.again()
@@ -89,6 +92,16 @@ func (a *App) closeDialog() {
 	a.again()
 }
 
+// dialogChrome is what a dialog needs besides its body: the margin of the
+// window around it, its header and its buttons.
+const dialogChrome = 220
+
+// dialogBodyMax is the most the body of a dialog may take of a window of the
+// given height.
+func dialogBodyMax(winH float32) float32 {
+	return max(160, winH*0.94-dialogChrome)
+}
+
 // dialogLayer draws the open dialog over the window.
 func (a *App) dialogLayer(c *ui.Context) {
 	if a.dlg == nil {
@@ -97,6 +110,7 @@ func (a *App) dialogLayer(c *ui.Context) {
 	p := a.pl
 	ui.DialogBase(c, &a.dlgOpen, func(backdrop, panel ui.Element) {
 		f := a.dlg.frame(a, c)
+		a.dlgBounds = panel.Bounds()
 		backdrop.Background(ui.RGBA(3, 7, 20, boolOr[float32](p.Dark, 0.62, 0.38)))
 		w := f.width
 		if w == 0 {
@@ -132,9 +146,17 @@ func (a *App) dialogLayer(c *ui.Context) {
 					}
 				})
 			}
-			ui.Column(c).Padding(10, 24, 8, 24).Gap(14).Children(f.body)
+			// What does not fit the window scrolls under its header, so that the
+			// buttons stay in sight however small the window is.
+			_, winH := c.Size()
+			ui.Scroll(c.Key("dlg-body")).TrackScroll(&a.dlgScroll).MaxHeight(dialogBodyMax(winH)).Children(func() {
+				ui.Column(c).Padding(10, 24, 8, 24).Gap(14).Children(f.body)
+			})
+			a.dlgFooter = ui.Rect{}
 			if f.buttons != nil {
-				ui.Row(c).Padding(14, 24, 20, 24).Gap(10).Justify(ui.End).AlignItems(ui.Center).Children(f.buttons)
+				foot := ui.Row(c).Padding(14, 24, 20, 24).Gap(10).Justify(ui.End).AlignItems(ui.Center)
+				foot.Children(f.buttons)
+				a.dlgFooter = foot.Bounds()
 			}
 		})
 	})

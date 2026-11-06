@@ -331,7 +331,9 @@ func (a *App) itemRow(c *ui.Context, i int, row routing.Row, n int) {
 		open.Children(func() {
 			a.iconTile(c, boolOr(it.Icon != "", it.Icon, "route"), boolOr(on, toneBlue, toneNeutral), 38)
 			ui.Column(c).Grow(1).Basis(0).Gap(4).Children(func() {
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				// A narrow window puts the chips on a line of their own rather
+				// than cutting the name down to a few letters.
+				ui.Row(c).GapX(8).GapY(4).Wrap().AlignItems(ui.Center).Children(func() {
 					a.txt(c, name, 14, 650, boolOr(on, p.Text, p.Text3)).SingleLine().Shrink(1)
 					if row.Origin == routing.OriginOverlay {
 						a.chip(c, a.t("item.yours"), toneNeutral, "").Shrink(0)

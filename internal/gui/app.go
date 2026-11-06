@@ -83,6 +83,12 @@ type Options struct {
 	Quit       func()
 }
 
+// The smallest the window can be made; every screen and dialog has to work in it.
+const (
+	MinWindowWidth  = 960
+	MinWindowHeight = 640
+)
+
 // page is a destination of the sidebar.
 type page int
 
@@ -129,10 +135,16 @@ type App struct {
 	seenNotice uint64
 	started    bool
 
-	scrolls  []ui.ScrollState
-	nodes    []nodeEntry
-	live     []routing.LiveNode
-	nodesVer uint64
+	scrolls []ui.ScrollState
+	// dlgScroll is how far the open dialog's body is scrolled; dlgBounds and
+	// dlgFooter are where its panel and its buttons were drawn the last time
+	// (for the tests).
+	dlgScroll ui.ScrollState
+	dlgBounds ui.Rect
+	dlgFooter ui.Rect
+	nodes     []nodeEntry
+	live      []routing.LiveNode
+	nodesVer  uint64
 	// withLive is nodes with the core's measurements applied, kept for the
 	// snapshot and library version it was made from.
 	withLive     []nodeEntry

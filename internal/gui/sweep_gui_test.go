@@ -131,63 +131,73 @@ func TestNoRawKeysOrPlaceholdersInTheTrayPanel(t *testing.T) {
 	}
 }
 
+// dialogCase is a dialog and the way to open it.
+type dialogCase struct {
+	name string
+	open func()
+}
+
+// dialogCases are all the dialogs of the application, each in a state where it
+// has something to show.
+func (h *harness) dialogCases() []dialogCase {
+	h.t.Helper()
+	a := h.app
+	ex := h.state().Exceptions[0]
+	subs := h.be.Subscriptions()
+	first := h.state().ActivePlan().Items[0]
+	nodes := a.liveNodes()
+
+	write := newAddDialog("")
+	write.tab = 3
+	link := newAddDialog("")
+	link.tab = 1
+	plans := newAddDialog("")
+	plans.tab = 2
+	confirm := newAddDialog("")
+	if es := catalog.Entries(); len(es) > 0 {
+		confirm.pickEntry(a, es[len(es)-1])
+	}
+	more := newAddDialog(first.ID)
+
+	return []dialogCase{
+		{"add exception", func() { a.openException(nil) }},
+		{"edit exception", func() { a.openException(&ex) }},
+		{"exception for a connection", func() {
+			a.openExceptionFor(routing.Entry{Kind: routing.EntryDomainSuffix, Value: "npmjs.org"}, routing.Direct())
+		}},
+		{"batch, empty", func() { a.openBatchException("") }},
+		{"batch, pasted", func() { a.openBatchException(pastedList) }},
+		{"test an address", func() { a.openTestURL("") }},
+		{"test an address, with one", func() { a.openTestURL("https://registry.npmjs.org/left-pad") }},
+		{"add item, catalog", func() { a.openAddItem() }},
+		{"add item, link", func() { a.openDialog(link) }},
+		{"add item, plans", func() { a.openDialog(plans) }},
+		{"add item, write", func() { a.openDialog(write) }},
+		{"add item, confirm", func() { a.openDialog(confirm) }},
+		{"add source", func() { a.openDialog(more) }},
+		{"item of a plan", func() { a.openItem("b-ai") }},
+		{"item waiting for its rules", func() { a.openItem("b-ads") }},
+		{"item whose update failed", func() { a.openItem("b-telegram") }},
+		{"item that is off", func() { a.openItem("b-social") }},
+		{"item of one's own", func() { a.openItem(h.lastItem().ID) }},
+		{"save the plan", func() { a.openPlanName(false) }},
+		{"rename the plan", func() { a.openPlanName(true) }},
+		{"choose a node", func() { a.pickNodeFor("x", routing.Follow(), true, func(routing.Dest) {}) }},
+		{"choose a region", func() { a.openRegionPicker(nodes[0]) }},
+		{"add a subscription", func() { a.openAddSubscription() }},
+		{"edit a subscription", func() { a.openEditSubscription(subs[0]) }},
+		{"import nodes", func() { a.openImport() }},
+		{"welcome", func() { a.openWelcome() }},
+	}
+}
+
 func TestNoRawKeysOrPlaceholdersInDialogs(t *testing.T) {
 	for _, lang := range []string{"en", "zh"} {
 		h := newHarness(t, harnessOpt{lang: lang, h: 1800, setup: crowd})
 		h.click(h.app.t("nav.routing"))
 		h.settle()
 		a := h.app
-		ex := h.state().Exceptions[0]
-		subs := h.be.Subscriptions()
-		first := h.state().ActivePlan().Items[0]
-		nodes := a.liveNodes()
-
-		write := newAddDialog("")
-		write.tab = 3
-		link := newAddDialog("")
-		link.tab = 1
-		plans := newAddDialog("")
-		plans.tab = 2
-		confirm := newAddDialog("")
-		if es := catalog.Entries(); len(es) > 0 {
-			confirm.pickEntry(a, es[len(es)-1])
-		}
-		more := newAddDialog(first.ID)
-
-		cases := []struct {
-			name string
-			open func()
-		}{
-			{"add exception", func() { a.openException(nil) }},
-			{"edit exception", func() { a.openException(&ex) }},
-			{"exception for a connection", func() {
-				a.openExceptionFor(routing.Entry{Kind: routing.EntryDomainSuffix, Value: "npmjs.org"}, routing.Direct())
-			}},
-			{"batch, empty", func() { a.openBatchException("") }},
-			{"batch, pasted", func() { a.openBatchException(pastedList) }},
-			{"test an address", func() { a.openTestURL("") }},
-			{"test an address, with one", func() { a.openTestURL("https://registry.npmjs.org/left-pad") }},
-			{"add item, catalog", func() { a.openAddItem() }},
-			{"add item, link", func() { a.openDialog(link) }},
-			{"add item, plans", func() { a.openDialog(plans) }},
-			{"add item, write", func() { a.openDialog(write) }},
-			{"add item, confirm", func() { a.openDialog(confirm) }},
-			{"add source", func() { a.openDialog(more) }},
-			{"item of a plan", func() { a.openItem("b-ai") }},
-			{"item waiting for its rules", func() { a.openItem("b-ads") }},
-			{"item whose update failed", func() { a.openItem("b-telegram") }},
-			{"item that is off", func() { a.openItem("b-social") }},
-			{"item of one's own", func() { a.openItem(h.lastItem().ID) }},
-			{"save the plan", func() { a.openPlanName(false) }},
-			{"rename the plan", func() { a.openPlanName(true) }},
-			{"choose a node", func() { a.pickNodeFor("x", routing.Follow(), true, func(routing.Dest) {}) }},
-			{"choose a region", func() { a.openRegionPicker(nodes[0]) }},
-			{"add a subscription", func() { a.openAddSubscription() }},
-			{"edit a subscription", func() { a.openEditSubscription(subs[0]) }},
-			{"import nodes", func() { a.openImport() }},
-			{"welcome", func() { a.openWelcome() }},
-		}
-		for _, tc := range cases {
+		for _, tc := range h.dialogCases() {
 			tc.open()
 			h.settle()
 			if !a.dlgOpen {
@@ -198,6 +208,36 @@ func TestNoRawKeysOrPlaceholdersInDialogs(t *testing.T) {
 				t.Errorf("zh: the dialog %q has no Chinese on it", tc.name)
 			}
 			h.shut()
+		}
+	}
+}
+
+// Where the window is as small as it can be made, every dialog is still all
+// in it: what does not fit scrolls, under a header that stays and above buttons
+// that stay.
+func TestEveryDialogFitsTheSmallestWindow(t *testing.T) {
+	for _, platform := range []string{"darwin", "windows"} {
+		for _, lang := range []string{"en", "zh"} {
+			h := newHarness(t, harnessOpt{lang: lang, platform: platform, w: MinWindowWidth, h: MinWindowHeight, setup: crowd})
+			h.click(h.app.t("nav.routing"))
+			h.settle()
+			for _, tc := range h.dialogCases() {
+				tc.open()
+				h.settle()
+				b, foot := h.app.dlgBounds, h.app.dlgFooter
+				switch {
+				case b.H == 0:
+					t.Errorf("%s %s: the dialog %q was not measured", platform, lang, tc.name)
+				case b.X < 0 || b.Y < 0 || b.X+b.W > MinWindowWidth || b.Y+b.H > MinWindowHeight:
+					t.Errorf("%s %s: the dialog %q is %.0f x %.0f at (%.0f, %.0f) and does not fit %d x %d",
+						platform, lang, tc.name, b.W, b.H, b.X, b.Y, MinWindowWidth, MinWindowHeight)
+				case foot.H > 0 && foot.Y+foot.H > b.Y+b.H+0.5:
+					// The panel gives way to the window; what it holds spills over its edge.
+					t.Errorf("%s %s: the buttons of the dialog %q end at %.0f, below its panel's end at %.0f",
+						platform, lang, tc.name, foot.Y+foot.H, b.Y+b.H)
+				}
+				h.shut()
+			}
 		}
 	}
 }
