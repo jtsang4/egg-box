@@ -26,12 +26,22 @@ agentd (Windows Service / macOS LaunchDaemon)  ──▶  embedded sing-box core
   local imports (pasted links, files). Formats: sing-box JSON, Clash YAML, plain or base64 share links. Protocols: VLESS
   (including Reality), VMess, Trojan, Shadowsocks, Hysteria2, TUIC, AnyTLS, WireGuard, SOCKS and HTTP. Links are
   credentials: they live in the system keychain, never in an ordinary file, a log or a diagnostic report.
-- **Nodes.** Grouped by region, latency tests, an "Auto" choice that follows the fastest node, per-region fastest groups.
-  Latency is the round trip of a request on a connection already open through the node (what mihomo calls "unified
-  delay"), so it compares with other clients; the handshakes of a new connection are not counted.
-- **Routing.** Rule, Global and Direct modes; presets (mainland China direct, proxy everything, proxy only foreign
-  sites); ad blocking; your own rules (domain, suffix, keyword, regex, IP range, port, process) that win over the
-  preset; rule data (geosite / geoip) fetched from a mirror you choose and refreshed on a schedule.
+- **Nodes.** Grouped by region, latency tests, a main exit that is "Automatic" (the fastest node), the fastest node of a
+  region, or one node. Latency is the round trip of a request on a connection already open through the node (what mihomo
+  calls "unified delay"), so it compares with other clients; the handshakes of a new connection are not counted. A node
+  is known by its subscription and its name, so a provider rotating a password does not lose the choice; when a node
+  chosen by hand is down or gone, the fastest node of its region stands in and the screen says so.
+- **Routing.** Rule, Global and Direct modes. In Rule mode a *plan* decides: an ordered list of items ("AI services",
+  "Streaming", "China sites", ...), each with a destination (the main exit, the fastest node of a region, one node, direct
+  or blocked), a switch and one or more rule sources. EggBox ships a recommended plan; a subscription that comes with its
+  own groups and rules (sing-box JSON or Clash YAML) brings its plan along, and one plan is in force at a time; a plan of
+  your own can be saved from either. Exceptions (domain, suffix, keyword, regex, IP range, port, process) come first,
+  whatever plan is in force; they are made in the page, pasted as a list (Clash syntax included), or from a connection or
+  the answer of **Test a URL**, which says where an address goes and why. Rule sources are community rule sets in any
+  common format (sing-box `.srs` and JSON, Clash and Surge lists, plain lists, AdGuard filters, hosts files), found in a
+  built-in directory of the well-known projects or added by link (GitHub pages and mirror prefixes are understood). The
+  application downloads them, converts them and hands the agent local files only: the agent never goes to the network.
+  Changing where an item goes is a selection in the running core, not a restart.
 - **Connection.** One-click connect with a real TUN adapter; reconnects when the network changes; recovers from an
   unexpected core exit; optional auto-connect. Live speed charts, the connection list (close one or all), logs.
 - **Desktop.** Menu bar / tray panel, notifications, launch at login, keep running in the tray, light and dark
@@ -104,7 +114,7 @@ go vet ./... && go tool mygo vet
 bash scripts/ci/backend-tests.sh -race -short -timeout 10m -count=1
                                                                   # backend and native-platform behaviour
 go test -race -short -timeout 10m -count=1 ./internal/gui             # UI behaviour and concurrency
-go test -count=1 -timeout 10m -run '^(TestShots|TestPanelShots)$' ./internal/gui
+go test -count=1 -timeout 10m -run '^(TestShots|TestPanelShots)' ./internal/gui
                                                                   # full-resolution, normal-motion screenshots
 go test -count=1 -timeout 10m -tags "eggbox_dev,$TAGS" ./internal/agent/engine/... ./internal/agent/e2e/... ./internal/configgen/...
                                                                   # with the real sing-box core
@@ -125,7 +135,15 @@ Silicon executables.
 The interface is tested without a window (`ui.NewTester`). Interaction fixtures use reduced motion and half-resolution
 backing pixels at the full logical window size; normal-motion interactions have their own regression tests. The complete
 screenshot matrix uses native resolution and normal motion. To review it without opening a window:
-`EGGBOX_SHOTS=/some/dir go test ./internal/gui -run '^(TestShots|TestPanelShots)$'`.
+`EGGBOX_SHOTS=/some/dir go test ./internal/gui -run '^(TestShots|TestPanelShots)'`.
+
+The routing is checked against the real core as well: a test builds plans, asks the **Test a URL** logic where a set of
+names and addresses go, sends real requests through the sandbox's loopback proxy to loopback "exits" and compares which
+exit carried each one (and what the connection list said decided it) with the prediction; it does so for hand-made
+plans, for the plans of providers in both formats, for exceptions, for selections made while running, and for a node that
+stops and comes back. With `EGGBOX_E2E_NETWORK=1` the rule data is the public data of the well-known projects, with the
+exits still on loopback; `EGGBOX_LIVE_RULES=1 go test ./internal/catalog -run Live` reads one rule set from each project
+of the directory and checks that jsDelivr serves the data when GitHub does not.
 
 One end-to-end test runs the whole product path (service, agent, real sing-box core) against a **real subscription**,
 inside the sandbox, and checks every node can carry traffic. It is skipped unless you provide a link, and it prints
@@ -134,6 +152,11 @@ only counts, protocol names and failure classes, never the link or any node deta
 ```sh
 EGGBOX_TEST_SUBSCRIPTION_URL='…'   # or EGGBOX_TEST_SUBSCRIPTION_FILE=/path/to/a/file/holding/the/link
 go test -tags "eggbox_dev,$TAGS" -run RealSubscription -v ./internal/agent/e2e
+
+# The plan a provider publishes, in its sing-box and in its Clash form, read into the same items and run in the core
+EGGBOX_TEST_SINGBOX_LINK_FILE=… EGGBOX_TEST_CLASH_LINK_FILE=… go test -run RealSubscriptionPlans -v ./internal/planimport
+EGGBOX_E2E_NETWORK=1 EGGBOX_TEST_SINGBOX_LINK_FILE=… EGGBOX_TEST_CLASH_LINK_FILE=… \
+  go test -tags "eggbox_dev,$TAGS" -run RealProvidersPlan -v ./internal/agent/e2e
 ```
 
 Keep such links out of the repository: not in code, fixtures, docs, scripts or commit messages. Fixtures and demo data
@@ -179,10 +202,14 @@ listed in the release workflow; without them the installers are not fit to hand 
 | `internal/app` | application logic between the interface and the agent: operations, refresh schedule, state |
 | `internal/boot` | assembles the application for the installed, development and demonstration modes |
 | `internal/gui` | the native UI: tokens, widgets, pages, dialogs, localisation (`i18n_en.go`, `i18n_zh.go`) |
-| `internal/library` | persistent state: subscriptions, nodes, preferences, rules (secrets go to the keychain) |
+| `internal/library` | persistent state: subscriptions, nodes, preferences, routing (secrets go to the keychain) |
 | `internal/subscription` | parses what providers hand out into nodes |
+| `internal/routing` | the routing model: plans, items, destinations, exceptions, node identity and what the person chose |
+| `internal/planimport`, `internal/plancompile` | a provider's groups and rules into a plan; a plan and its rule data into what the core is given |
+| `internal/rulefmt`, `internal/ruleurl`, `internal/ruledata`, `internal/catalog` | rule-set formats (read, convert, match), addresses and mirrors, download and storage, the built-in directory |
 | `internal/configgen` | writes the sing-box configuration the agent accepts |
-| `internal/ruledata`, `internal/redact`, `internal/brand`, `internal/version` | rule sets, redaction of diagnostics, names and identifiers, version |
+| `internal/demodata` | the invented world of the demonstration |
+| `internal/redact`, `internal/brand`, `internal/version` | redaction of diagnostics, names and identifiers, version |
 | `internal/darwin`, `internal/macsys`, `internal/winsys` | platform services behind the GUI and the agent |
 | `native/macos` | the Swift bridge (SMAppService, XPC, SCDynamicStore) |
 | `packaging` | macOS `.pkg` and Windows installer, uninstaller, scripts |
@@ -200,6 +227,13 @@ to be exercised on the real thing before a release is handed to people:
 | macOS | the `SMAppService` approval flow with a Developer ID signed and notarized app; XPC code-signing requirement against the installed bundle; a real TUN, routes and the `SCDynamicStore` resolver; sleep / wake and network switching; coexistence with other VPNs; upgrade over an older version and uninstall residue; Intel Macs |
 | Windows | everything that needs Windows: service install and start, UAC, the named-pipe ACL and client verification, Wintun, route and DNS changes, sleep / wake, the session (WTS) logic, the Credential Manager, the NSIS installer run (it is compiled, not run), Windows 10 and 11, ARM64 |
 | Release | code signing, notarization and the release workflow's signing path |
+
+Two limits of the routing follow from the core, not from the application. A connection that is being dialled to a node at
+the moment the node goes down fails once (sing-box ties the dial to the node's own outbound); the next ones use the stand-in
+of the same region. And a stand-in gives the connection back to a node that has recovered after the next health check, about
+a minute while traffic flows. Where a plan or an exception has address ranges, the core resolves every name that no earlier
+rule decided, so that the ranges can be matched, and refuses the connection when the name does not resolve; **Test a URL**
+says so when that applies.
 
 The Windows code compiles for amd64 and arm64 and its pure parts (ACL construction, owner policy, trust rules) are unit
 tested; that is not a substitute for running it.

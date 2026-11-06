@@ -162,6 +162,10 @@ const (
 	WhyLAN
 	// WhyMode: the Global or Direct mode.
 	WhyMode
+	// WhyUnresolved: the plan asks where a name leads, and the name leads
+	// nowhere, so the core turns the connection away (only a test of an
+	// address says so: such a connection is not in the list).
+	WhyUnresolved
 )
 
 // Why is the reason a connection took the route it did, in the person's terms

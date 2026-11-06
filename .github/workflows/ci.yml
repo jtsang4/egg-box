@@ -79,16 +79,16 @@ jobs:
   gui:
     needs: check
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/go
         with:
           cache-name: gui
       - name: Interaction tests (race detector)
-        run: go test -race -short -timeout 10m -count=1 ./internal/gui
+        run: go test -race -short -timeout 20m -count=1 ./internal/gui
       - name: Full-resolution screenshots (normal motion, both appearances)
-        run: go test -count=1 -timeout 10m -run '^(TestShots|TestPanelShots)$' ./internal/gui
+        run: go test -count=1 -timeout 10m -run '^(TestShots|TestPanelShots)' ./internal/gui
 
   # The schedule scans for new advisories, without rebuilding unchanged apps.
   vulnerabilities:

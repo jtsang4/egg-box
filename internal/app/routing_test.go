@@ -354,7 +354,8 @@ func TestAScheduledRefreshThatOnlyChangesThePlanReachesTheCore(t *testing.T) {
 
 // A name no item lists is looked up, and where it leads can decide: the
 // address part of an item (a service's published ranges) comes after every
-// name in the plan, and a name nobody can look up falls to the fallback.
+// name in the plan. A name nobody can look up is turned away, as the core does
+// where the plan has rules about addresses.
 func TestAnAddressTheNameLeadsToDecidesWhenNoNameDoes(t *testing.T) {
 	h := newHarness(t, nil)
 	h.addSubscription()
@@ -377,9 +378,57 @@ func TestAnAddressTheNameLeadsToDecidesWhenNoNameDoes(t *testing.T) {
 	if res.Why.ID != "b-streaming" || len(res.Addrs) != 2 {
 		t.Errorf("the item earlier in the plan decides, whatever the order of the addresses: %+v", res)
 	}
+
+	// The plan has rules about addresses, so the core looks every name up
+	// that no name decided, and turns away the one that leads nowhere.
+	res = h.testURL("nobody-knows.unlisted.example", func(r *app.TestURLResult) bool { return r.Why.Kind == app.WhyUnresolved })
+	if !res.Resolved || res.ResolveErr == "" || len(res.Addrs) != 0 || res.Dest.Kind != routing.DestReject || res.Source != nil {
+		t.Errorf("a name nobody can look up is refused and says why: %+v", res)
+	}
+	// A name an item lists needs no lookup; so it is never refused for lack of one.
+	res = h.testURL("chat.category-ai-cn.example", func(r *app.TestURLResult) bool { return r.Why.Kind == app.WhyItem })
+	if res.Resolved || res.Why.ID != "b-ai" {
+		t.Errorf("a listed name: %+v", res)
+	}
+	// An exception about a name is asked before the lookup, whatever the name leads to.
+	var host, addr routing.Exception
+	h.edit(func(st *routing.State) (err error) {
+		if host, err = st.AddException(routing.Exception{Kind: routing.EntryDomain, Value: "nobody-knows.unlisted.example", Dest: routing.Direct(), Enabled: true}); err != nil {
+			return err
+		}
+		addr, err = st.AddException(routing.Exception{Kind: routing.EntryIPCIDR, Value: "192.0.2.0/24", Dest: routing.Reject(), Enabled: true})
+		return err
+	})
+	res = h.testURL("nobody-knows.unlisted.example", func(r *app.TestURLResult) bool { return r.Why.Kind == app.WhyException })
+	if res.Why.ID != host.ID || res.Resolved {
+		t.Errorf("an exception about the name decides before any lookup: %+v", res)
+	}
+	// The exception about an address brings the lookup forward, before the names of the items.
+	res = h.testURL("chat.category-ai-cn.example", func(r *app.TestURLResult) bool { return r.Why.Kind == app.WhyUnresolved })
+	if !res.Resolved || res.ResolveErr == "" {
+		t.Errorf("a listed name the exception about an address needs looked up: %+v", res)
+	}
+	h.dns.set("chat.category-ai-cn.example", "198.51.100.40")
+	res = h.testURL("chat.category-ai-cn.example", func(r *app.TestURLResult) bool { return r.Why.Kind == app.WhyItem })
+	if res.Why.ID != "b-ai" || !res.Resolved || res.ResolveErr != "" {
+		t.Errorf("the same name, once it leads somewhere: %+v", res)
+	}
+	h.edit(func(st *routing.State) error { return st.DeleteException(addr.ID) })
+
+	// Where no item has a rule about addresses nothing is looked up: the name
+	// that leads nowhere goes to the fallback, as the core sends it.
+	h.edit(func(st *routing.State) error {
+		for _, row := range st.View().Rows {
+			if err := st.SetItemEnabled(row.Item.ID, row.Item.ID == "b-ai"); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	h.edit(func(st *routing.State) error { return st.DeleteException(host.ID) })
 	res = h.testURL("nobody-knows.unlisted.example", func(r *app.TestURLResult) bool { return r.Why.Kind == app.WhyFallback })
-	if !res.Resolved || res.ResolveErr != "no answer" || len(res.Addrs) != 0 {
-		t.Errorf("a name nobody can look up says so and falls back: %+v", res)
+	if res.Resolved || res.ResolveErr != "" {
+		t.Errorf("no rule asks where a name leads, so none is looked up: %+v", res)
 	}
 }
 

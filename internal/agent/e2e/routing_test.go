@@ -705,6 +705,63 @@ func TestTheCoreFollowsThePlanTheWayTheTestURLSaysItWill(t *testing.T) {
 	})
 }
 
+// Where the plan asks about addresses the core looks a name up first, and
+// turns the connection away when it cannot: the dialog has to say so, and has
+// to say the opposite where the plan has no such rule (nothing is looked up
+// then, and a name that leads nowhere goes where its host name says).
+func TestTheCoreTurnsAwayANameThatLeadsNowhereOnlyWhereThePlanAsksAboutAddresses(t *testing.T) {
+	w := newWorld(t)
+	directPort := portOf(t, w.direct)
+	w.dns.know("x.unlisted.example", "203.0.113.150") // leads nowhere the plan knows
+	// "gone.unlisted.example" and "named.unlisted.example" are not known to the name server.
+	w.connect()
+	jp1, hk1 := "exit-Japan 01", "exit-Hong Kong 01"
+	w.edit(func(st *routing.State) error { return st.SetMain(routing.ToNode(w.nodeID("Japan 01"))) })
+	until(t, "the main exit to be Japan 01", 20*time.Second, func() bool {
+		return w.probe("203.0.113.200", directPort).body == jp1
+	})
+
+	// The shipped plan publishes address ranges, so every name is looked up.
+	w.check("x.unlisted.example", directPort, expect{app.WhyFallback, "", []string{jp1}, "a name that leads nowhere the plan knows"})
+	w.check("gone.unlisted.example", directPort, expect{app.WhyUnresolved, "", nil, "a name nobody can look up"})
+
+	// No item on: no rule about addresses, so no lookup.
+	w.edit(func(st *routing.State) error {
+		for _, row := range st.View().Rows {
+			if err := st.SetItemEnabled(row.Item.ID, false); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	until(t, "the plan to ask about no address", 20*time.Second, func() bool {
+		return w.probe("gone.unlisted.example", directPort).body == jp1
+	})
+	w.check("gone.unlisted.example", directPort, expect{app.WhyFallback, "", []string{jp1}, "nothing asks where a name leads, so none is looked up"})
+
+	// An exception about a range asks again, after the exceptions before it.
+	var host, rng routing.Exception
+	w.edit(func(st *routing.State) (err error) {
+		if host, err = st.AddException(routing.Exception{Kind: routing.EntryDomain, Value: "named.unlisted.example", Dest: routing.ToNode(w.nodeID("Hong Kong 01")), Enabled: true}); err != nil {
+			return err
+		}
+		rng, err = st.AddException(routing.Exception{Kind: routing.EntryIPCIDR, Value: "192.0.2.0/24", Dest: routing.ToNode(w.nodeID("Japan 02")), Enabled: true})
+		return err
+	})
+	until(t, "the exception about a range to be in force", 20*time.Second, func() bool {
+		return w.probe("gone.unlisted.example", directPort).err != nil
+	})
+	w.check("gone.unlisted.example", directPort, expect{app.WhyUnresolved, "", nil, "the exception about a range needs the name looked up"})
+	w.check("named.unlisted.example", directPort, expect{app.WhyException, host.ID, []string{hk1}, "an exception about the name itself comes before the lookup"})
+	w.check("x.unlisted.example", directPort, expect{app.WhyFallback, "", []string{jp1}, "a name that leads out of the range goes on"})
+
+	w.edit(func(st *routing.State) error { return st.DeleteException(rng.ID) })
+	until(t, "the exception about a range to be gone", 20*time.Second, func() bool {
+		return w.probe("gone.unlisted.example", directPort).body == jp1
+	})
+	w.check("gone.unlisted.example", directPort, expect{app.WhyFallback, "", []string{jp1}, "the lookup is gone with the exception that needed it"})
+}
+
 // selected is what a group of the running core has chosen right now.
 func selected(svc *app.Service, group string) string {
 	for _, g := range svc.Snapshot().Groups {

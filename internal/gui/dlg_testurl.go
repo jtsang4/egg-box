@@ -120,6 +120,8 @@ func (a *App) whyText(w app.Why) string {
 		return a.t("why.lan")
 	case app.WhyMode:
 		return a.t("why.mode")
+	case app.WhyUnresolved:
+		return a.t("why.unresolved")
 	}
 	return a.t("why.unknown")
 }

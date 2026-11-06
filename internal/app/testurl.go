@@ -123,6 +123,12 @@ type matcherKey struct {
 // of every item, then (after looking the name up) the address part, then the
 // fallback. It needs no connection; with one, it also says which node the
 // traffic uses now.
+//
+// The core looks a name up once, where the first rule about addresses is, and
+// turns the connection away when the name cannot be looked up: that is what
+// the answer says then, a block that no rule of the plan wrote. Where the plan
+// has no rule about addresses, no name is looked up and one that leads
+// nowhere goes where its host name says, or to the fallback.
 func (s *Service) TestURL(ctx context.Context, raw string) (*TestURLResult, error) {
 	t, err := parseTarget(raw)
 	if err != nil {
@@ -185,6 +191,11 @@ func (s *Service) TestURL(ctx context.Context, raw string) (*TestURLResult, erro
 		return res, nil
 	}
 
+	// A name that cannot be looked up where the plan needs its address.
+	refused := func() (*TestURLResult, error) {
+		return finish(Why{Kind: WhyUnresolved}, routing.Reject(), "")
+	}
+
 	// The local network.
 	if s.lib.Prefs().LANDirect {
 		private := false
@@ -213,7 +224,9 @@ func (s *Service) TestURL(ctx context.Context, raw string) (*TestURLResult, erro
 			continue
 		}
 		if rulefmt.Inspect([]option.HeadlessRule{rule}).Addr {
-			resolve()
+			if resolve(); res.ResolveErr != "" {
+				return refused()
+			}
 		}
 		m, err := rulefmt.NewMatcher([]option.HeadlessRule{rule})
 		if err != nil {
@@ -245,8 +258,15 @@ func (s *Service) TestURL(ctx context.Context, raw string) (*TestURLResult, erro
 		}
 	}
 
-	// Then the address part, once the name is looked up.
-	resolve()
+	// Then the address part, once the name is looked up (if any item has one).
+	for _, row := range view.Rows {
+		if rules, ok := v.res.Rules[row.Item.ID]; ok && len(rules.IP) > 0 {
+			if resolve(); res.ResolveErr != "" {
+				return refused()
+			}
+			break
+		}
+	}
 	for _, row := range view.Rows {
 		rules, ok := v.res.Rules[row.Item.ID]
 		if !ok || len(rules.IP) == 0 {

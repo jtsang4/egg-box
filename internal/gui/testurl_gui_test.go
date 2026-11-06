@@ -114,6 +114,31 @@ func TestTestURLAnIPAddressOffersTheAddress(t *testing.T) {
 	}
 }
 
+// A name that leads nowhere is turned away where the plan has rules about
+// addresses; the answer says so, and why, in either language.
+func TestTestURLSaysWhenANameLeadsNowhereAndIsRefused(t *testing.T) {
+	for _, tc := range []struct {
+		lang  string
+		click string
+		want  []string
+	}{
+		{"en", "Test a URL", []string{"The name could not be looked up, so the connection is refused", "Block",
+			"Some rules are about addresses, so every name no rule lists is looked up first"}},
+		{"zh", "测试网址", []string{"这个域名解析不出地址，连接会被拒绝", "拦截", "有些规则是按 IP 地址匹配的"}},
+	} {
+		t.Run(tc.lang, func(t *testing.T) {
+			h := routingHarness(t, harnessOpt{lang: tc.lang})
+			h.click(tc.click)
+			h.typeText("gone.nowhere.example")
+			h.enter()
+			h.settle()
+			h.mustHave(append([]string{"gone.nowhere.example"}, tc.want...)...)
+			h.mustNotHave("No item above matches", "Looked up:", "解析到：")
+			h.leaks("the answer to a refused name (" + tc.lang + ")")
+		})
+	}
+}
+
 func TestTestURLSaysWhenWhatWasTypedIsNoAddress(t *testing.T) {
 	h := routingHarness(t, harnessOpt{})
 	h.click("Test a URL")

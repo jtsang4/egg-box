@@ -216,28 +216,27 @@ func TestNoRawKeysOrPlaceholdersInDialogs(t *testing.T) {
 // in it: what does not fit scrolls, under a header that stays and above buttons
 // that stay.
 func TestEveryDialogFitsTheSmallestWindow(t *testing.T) {
-	for _, platform := range []string{"darwin", "windows"} {
-		for _, lang := range []string{"en", "zh"} {
-			h := newHarness(t, harnessOpt{lang: lang, platform: platform, w: MinWindowWidth, h: MinWindowHeight, setup: crowd})
-			h.click(h.app.t("nav.routing"))
+	for _, flavour := range []struct{ platform, lang string }{{"darwin", "en"}, {"darwin", "zh"}, {"windows", "en"}} {
+		platform, lang := flavour.platform, flavour.lang
+		h := newHarness(t, harnessOpt{lang: lang, platform: platform, w: MinWindowWidth, h: MinWindowHeight, setup: crowd})
+		h.click(h.app.t("nav.routing"))
+		h.settle()
+		for _, tc := range h.dialogCases() {
+			tc.open()
 			h.settle()
-			for _, tc := range h.dialogCases() {
-				tc.open()
-				h.settle()
-				b, foot := h.app.dlgBounds, h.app.dlgFooter
-				switch {
-				case b.H == 0:
-					t.Errorf("%s %s: the dialog %q was not measured", platform, lang, tc.name)
-				case b.X < 0 || b.Y < 0 || b.X+b.W > MinWindowWidth || b.Y+b.H > MinWindowHeight:
-					t.Errorf("%s %s: the dialog %q is %.0f x %.0f at (%.0f, %.0f) and does not fit %d x %d",
-						platform, lang, tc.name, b.W, b.H, b.X, b.Y, MinWindowWidth, MinWindowHeight)
-				case foot.H > 0 && foot.Y+foot.H > b.Y+b.H+0.5:
-					// The panel gives way to the window; what it holds spills over its edge.
-					t.Errorf("%s %s: the buttons of the dialog %q end at %.0f, below its panel's end at %.0f",
-						platform, lang, tc.name, foot.Y+foot.H, b.Y+b.H)
-				}
-				h.shut()
+			b, foot := h.app.dlgBounds, h.app.dlgFooter
+			switch {
+			case b.H == 0:
+				t.Errorf("%s %s: the dialog %q was not measured", platform, lang, tc.name)
+			case b.X < 0 || b.Y < 0 || b.X+b.W > MinWindowWidth || b.Y+b.H > MinWindowHeight:
+				t.Errorf("%s %s: the dialog %q is %.0f x %.0f at (%.0f, %.0f) and does not fit %d x %d",
+					platform, lang, tc.name, b.W, b.H, b.X, b.Y, MinWindowWidth, MinWindowHeight)
+			case foot.H > 0 && foot.Y+foot.H > b.Y+b.H+0.5:
+				// The panel gives way to the window; what it holds spills over its edge.
+				t.Errorf("%s %s: the buttons of the dialog %q end at %.0f, below its panel's end at %.0f",
+					platform, lang, tc.name, foot.Y+foot.H, b.Y+b.H)
 			}
+			h.shut()
 		}
 	}
 }

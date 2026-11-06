@@ -44,6 +44,7 @@ func init() {
 		})})
 		add(shot{name: "dlg-batch-preview", setup: streamingInSingapore, run: onRouting(func(h *harness) { h.app.openBatchException(pastedList) })})
 		add(shot{name: "dlg-test-url", run: onRouting(func(h *harness) { h.app.openTestURL("https://registry.npmjs.org/left-pad") })})
+		add(shot{name: "dlg-test-url-refused", run: onRouting(func(h *harness) { h.app.openTestURL("gone.nowhere.example") })})
 		add(shot{name: "dlg-additem-catalog", h: 900, run: onRouting(func(h *harness) { h.app.openAddItem() })})
 		add(shot{name: "dlg-additem-link", run: onRouting(func(h *harness) {
 			d := newAddDialog("")

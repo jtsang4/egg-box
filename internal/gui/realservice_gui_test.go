@@ -45,9 +45,6 @@ func (h *harness) eventually(what string, ok func() bool) {
 }
 
 func TestTheScreensWorkOnTheRealService(t *testing.T) {
-	if testing.Short() {
-		t.Skip("starts the demonstration world")
-	}
 	h, rt := realService(t, harnessOpt{h: 1500})
 	a := h.app
 

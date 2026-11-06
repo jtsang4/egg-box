@@ -813,6 +813,14 @@ func (f *fixtureBackend) TestURL(ctx context.Context, raw string) (*app.TestURLR
 			}
 		}
 	}
+	// A name nobody can look up: the plan has rules about addresses, so the
+	// core turns it away (the fixture's one such name is under nowhere.example).
+	if strings.HasSuffix(host, ".nowhere.example") {
+		res.Resolved, res.ResolveErr = true, "no answer"
+		res.Why = app.Why{Kind: app.WhyUnresolved}
+		finish(routing.Reject(), "")
+		return res, nil
+	}
 	res.Why = app.Why{Kind: app.WhyFallback}
 	finish(view.Fallback, "fallback")
 	return res, nil

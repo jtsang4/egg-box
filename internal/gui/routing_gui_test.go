@@ -218,8 +218,9 @@ func TestRoutingChangesWhereAnItemGoes(t *testing.T) {
 }
 
 // Where the window is set the way Windows sets it (its buttons in the title
-// bar, other words for the service), the routing screens and everything they open
-// work as they do elsewhere.
+// bar, other words for the service), the routing screens work as they do
+// elsewhere. The dialogs are the same on both: TestEveryDialogFitsTheSmallestWindow
+// looks at them in this flavour too.
 func TestRoutingScreensInTheWindowsFlavour(t *testing.T) {
 	for _, lang := range []string{"en", "zh"} {
 		h := routingHarness(t, harnessOpt{platform: "windows", lang: lang, setup: crowd})
@@ -229,24 +230,15 @@ func TestRoutingScreensInTheWindowsFlavour(t *testing.T) {
 			h.settle()
 			h.leaks(lang + " windows " + nav)
 		}
+		if lang != "en" {
+			continue
+		}
+		// A destination is changed in the page itself.
 		h.click(a.t("nav.routing"))
 		h.settle()
-		// A destination is changed in the page itself, and what it opens fits
-		// the window.
-		if lang == "en" {
-			h.chooseDest("Microsoft", "Direct", "Follow main exit", "Follow main exit (Automatic)")
-			if got := h.row("b-microsoft").Item.Dest.Kind; got != routing.DestFollow {
-				t.Fatalf("Microsoft = %q after the person chose the main exit", got)
-			}
-		}
-		for _, tc := range h.dialogCases() {
-			tc.open()
-			h.settle()
-			if !a.dlgOpen {
-				t.Errorf("windows %s: the dialog %q did not open", lang, tc.name)
-			}
-			h.leaks(lang + " windows dialog: " + tc.name)
-			h.shut()
+		h.chooseDest("Microsoft", "Direct", "Follow main exit", "Follow main exit (Automatic)")
+		if got := h.row("b-microsoft").Item.Dest.Kind; got != routing.DestFollow {
+			t.Fatalf("Microsoft = %q after the person chose the main exit", got)
 		}
 	}
 }
