@@ -1,5 +1,5 @@
 // Command notices writes the notices that travel with a build: the license of
-// every module compiled into the programs, and of the Go standard library.
+// EggBox, every dependency compiled into the programs, and the Go standard library.
 // Nearly all of those licenses require whoever hands the program on to keep
 // them with it, so the installers carry the file this writes.
 //
@@ -106,8 +106,8 @@ func group(covers map[string]string) []entry {
 func render(product string, entries []entry, notes []string) string {
 	var b strings.Builder
 	rule := strings.Repeat("=", 78)
-	fmt.Fprintf(&b, "%s is built from the software below. Each part is distributed under its own\n", product)
-	b.WriteString("license, which is reproduced here.\n")
+	fmt.Fprintf(&b, "%s is distributed under the GNU General Public License version 3 or later.\n", product)
+	b.WriteString("Its license and the licenses of its dependencies are reproduced below.\n")
 	for _, n := range notes {
 		b.WriteString("\n" + n + "\n")
 	}
@@ -124,7 +124,7 @@ func render(product string, entries []entry, notes []string) string {
 
 // goList lists the modules the programs are built from for one target.
 func goList(goos, goarch, tags string, pkgs []string) ([]module, error) {
-	args := []string{"list", "-deps", "-f", `{{if .Module}}{{.Module.Path}}{{"\t"}}{{.Module.Version}}{{"\t"}}{{.Module.Dir}}{{"\t"}}{{.Module.Main}}{{end}}`}
+	args := []string{"list", "-deps", "-f", `{{if .Module}}{{.Module.Path}}{{"\t"}}{{.Module.Version}}{{"\t"}}{{.Module.Dir}}{{end}}`}
 	if tags != "" {
 		args = append(args, "-tags", tags)
 	}
@@ -140,7 +140,7 @@ func goList(goos, goarch, tags string, pkgs []string) ([]module, error) {
 	var mods []module
 	for _, line := range strings.Split(string(out), "\n") {
 		f := strings.Split(line, "\t")
-		if len(f) != 4 || f[3] == "true" {
+		if len(f) != 3 {
 			continue
 		}
 		mods = append(mods, module{Path: f[0], Version: f[1], Dir: f[2]})
@@ -228,7 +228,7 @@ func run(product, goos string, goarchs []string, tags, out string, pkgs []string
 			missing = append(missing, m.Path+" "+m.Version)
 			continue
 		}
-		covers[m.Path+" "+m.Version] = text
+		covers[strings.TrimSpace(m.Path+" "+m.Version)] = text
 	}
 	if len(missing) > 0 {
 		sort.Strings(missing)

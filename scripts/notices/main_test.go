@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -73,13 +74,37 @@ func TestRenderNamesEveryModuleAndKeepsTheText(t *testing.T) {
 	out := render("Product", []entry{
 		{Covers: []string{"example.com/a v1.0.0", "example.com/b v2.0.0"}, Text: "Permission is hereby granted"},
 	}, []string{"A note."})
-	for _, want := range []string{"Product is built from", "A note.", "example.com/a v1.0.0", "example.com/b v2.0.0", "Permission is hereby granted"} {
+	for _, want := range []string{"Product is distributed under the GNU General Public License version 3 or later.", "A note.", "example.com/a v1.0.0", "example.com/b v2.0.0", "Permission is hereby granted"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output misses %q:\n%s", want, out)
 		}
 	}
 	if !strings.HasSuffix(out, "\n") {
 		t.Error("the file does not end with a newline")
+	}
+}
+
+func TestRunIncludesProjectLicense(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "notices.txt")
+	if err := run("EggBox", runtime.GOOS, []string{runtime.GOARCH}, "", out, []string{"."}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(b)
+	for _, want := range []string{
+		"SPDX-License-Identifier: GPL-3.0-or-later",
+		"Copyright (C) 2026 EggBox contributors",
+		"https://github.com/jtsang4/egg-box",
+		"Version 3, 29 June 2007",
+		"END OF TERMS AND CONDITIONS",
+		"The Go standard library ",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("generated notices miss %q", want)
+		}
 	}
 }
 

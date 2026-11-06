@@ -241,7 +241,11 @@ tested; that is not a substitute for running it.
 
 ## Licensing
 
+EggBox is licensed under the [GNU General Public License, version 3 or later](LICENSE) (`GPL-3.0-or-later`).
+Source code for each release is available from the [matching version tag](https://github.com/jtsang4/egg-box/tags).
+
 EggBox embeds [sing-box](https://github.com/SagerNet/sing-box), which is GPL-3.0-or-later with an added condition
 restricting use of its name or implied association without prior consent. EggBox is an independent product.
-The combined program must be distributed under GPL-compatible terms; this repository has no license file yet.
 `internal/agent/engine/singbox/urltestgroup` is adapted from sing-box's URL test group and carries its notice.
+Installers include the GPL text and the copyright and license notices for EggBox and its dependencies in
+`THIRD-PARTY-NOTICES.txt`.
