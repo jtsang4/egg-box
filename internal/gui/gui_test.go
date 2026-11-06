@@ -429,7 +429,12 @@ func TestConnectionsFilterAndClose(t *testing.T) {
 	h.click("Close all")
 	h.settle()
 	h.mustHave("Close every connection?")
-	h.click("Close all")
+	// The dialog's button bears the name of the page's, which it covers.
+	h.submitDialog("Close all")
+	if !h.be.took("close-all") {
+		t.Fatalf("confirming did not close the connections: %v", h.be.called())
+	}
+	h.mustNotHave("Close every connection?")
 }
 
 func TestIntroductionIsShownOnce(t *testing.T) {
