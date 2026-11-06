@@ -696,7 +696,12 @@ func TestCheckNeedsTheRuleSets(t *testing.T) {
 		t.Fatalf("it started: %v", err)
 	}
 	// A reference the policy did not resolve is a mistake worth saying out loud.
-	unresolved := engine.Prepared{JSON: []byte(strings.ReplaceAll(string(p.JSON), `"path": "`+filepath.Dir(firstPath(t, p.JSON))+"/", `"path": "res:`)), HasTun: true}
+	// The paths are cut as the JSON text they are in, where a Windows path has
+	// its backslashes doubled: the path functions of the machine would take them
+	// for separators and collapse them, and the text would no longer be found.
+	first := firstPath(t, p.JSON)
+	dir := first[:strings.LastIndex(first, "/")+1]
+	unresolved := engine.Prepared{JSON: []byte(strings.ReplaceAll(string(p.JSON), `"path": "`+dir, `"path": "res:`)), HasTun: true}
 	if err := e.Check(context.Background(), unresolved); err == nil || !strings.Contains(err.Error(), "res:") {
 		t.Fatalf("an unresolved reference: %v", err)
 	}
