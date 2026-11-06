@@ -19,13 +19,48 @@
 #
 #   EGGBOX_VERSION          the version; default: the one in mygo.json
 #   EGGBOX_COMMIT           the source revision; default: git's
-#   EGGBOX_SIGN_IDENTITY    codesign identity for the code; "-" (the default) signs
-#                         ad hoc, which is enough to try the build here and is
-#                         not enough to ship: a Developer ID is.
+#   EGGBOX_SIGN_IDENTITY    codesign identity for the code; "-" signs ad hoc, which
+#                         is enough to try the build here and is not enough to
+#                         ship: a Developer ID is. Unset, the one Developer ID
+#                         Application or Apple Development identity of the
+#                         keychain signs; with several the build stops and asks;
+#                         with none it signs ad hoc.
 #   EGGBOX_INSTALLER_IDENTITY  identity that signs the .pkg; unsigned when unset.
 #
 # Nothing here installs anything or registers anything with the system.
 set -euo pipefail
+
+# pick_identity prints who signs the code. The signer must stay the same from
+# one version to the next: macOS keeps the launch constraint the service was
+# registered with, and a build of another signer installed over it (an ad hoc
+# build over a team's, above all) is refused at every start ("Launch Constraint
+# Violation"), a state that only `sfltool resetbtm` clears, along with every
+# other application's background items. So a forgotten EGGBOX_SIGN_IDENTITY
+# must not quietly turn into an ad hoc build when the keychain can sign.
+pick_identity() {
+  if [ -n "${EGGBOX_SIGN_IDENTITY:-}" ]; then
+    printf '%s\n' "$EGGBOX_SIGN_IDENTITY"
+    return
+  fi
+  local found
+  found="$(security find-identity -v -p codesigning 2>/dev/null \
+    | sed -nE 's/^ *[0-9]+\) [0-9A-F]{40} "((Developer ID Application|Apple Development): .*)"$/\1/p' | sort -u)"
+  case "$(printf '%s' "$found" | grep -c . || true)" in
+    0)
+      echo "warning: no signing identity in the keychain: signing ad hoc. Such a build cannot be installed over one signed by a team, nor the other way round, without breaking the service." >&2
+      echo "-" ;;
+    1)
+      echo "==> signing with the keychain's identity: $found (EGGBOX_SIGN_IDENTITY overrides it)" >&2
+      printf '%s\n' "$found" ;;
+    *)
+      {
+        echo "The keychain holds several signing identities; name the one every version is signed with:"
+        printf '%s\n' "$found" | while IFS= read -r i; do echo "  EGGBOX_SIGN_IDENTITY=\"$i\""; done
+        echo "(EGGBOX_SIGN_IDENTITY=- signs ad hoc, on purpose.)"
+      } >&2
+      return 1 ;;
+  esac
+}
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$root"
@@ -57,7 +92,7 @@ if [ "$version" != "$config_version" ]; then
   exit 1
 fi
 commit="${EGGBOX_COMMIT:-$(git rev-parse --short=9 HEAD 2>/dev/null || true)}"
-identity="${EGGBOX_SIGN_IDENTITY:--}"
+identity="$(pick_identity)"
 out="${EGGBOX_OUT:-$root/build/macos}"
 work="$out/work"
 app_id=org.eggbox.app

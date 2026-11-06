@@ -171,8 +171,11 @@ into every binary, and leave their output in `build/` (git-ignored).
 ```sh
 # macOS (on a Mac): universal EggBox.app and EggBox-<version>.pkg
 packaging/macos/build.sh [--arch universal|arm64|x86_64] [--no-pkg]
-#   EGGBOX_SIGN_IDENTITY / EGGBOX_INSTALLER_IDENTITY: Developer ID identities. The default is an ad hoc signature, which
-#   is enough to build and inspect the package; whether macOS accepts the service of an ad-hoc app is not verified
+#   EGGBOX_SIGN_IDENTITY / EGGBOX_INSTALLER_IDENTITY: Developer ID identities. Unset, the code is signed by the
+#   keychain's one Developer ID Application or Apple Development identity (with several, the build asks which), and
+#   ad hoc only when there is none or when EGGBOX_SIGN_IDENTITY=-. Every version must keep the same signer: macOS
+#   refuses to start the service of a build installed over one of another signer (ad hoc over a team above all), and
+#   only `sudo sfltool resetbtm`, which drops every application's login and background items, undoes that
 
 # Windows (from any machine with NSIS; makensis): EggBox-Setup-<version>-<arch>.exe
 packaging/windows/build.sh --arch amd64|arm64
