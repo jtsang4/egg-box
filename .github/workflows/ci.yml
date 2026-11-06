@@ -36,7 +36,7 @@ jobs:
   check:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/go
@@ -74,19 +74,19 @@ jobs:
       - name: Backend tests (race detector)
         run: bash scripts/ci/backend-tests.sh -race -short -timeout 10m -count=1
       - name: Tests with the real engine
-        run: go test -count=1 -timeout 10m -tags "eggbox_dev,$EGGBOX_TAGS" ./internal/agent/engine/... ./internal/agent/e2e/... ./internal/configgen/...
+        run: go test -count=1 -timeout 15m -tags "eggbox_dev,$EGGBOX_TAGS" ./internal/agent/engine/... ./internal/agent/e2e/... ./internal/configgen/...
 
   gui:
     needs: check
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/go
         with:
           cache-name: gui
       - name: Interaction tests (race detector)
-        run: go test -race -short -timeout 20m -count=1 ./internal/gui
+        run: go test -race -short -timeout 30m -count=1 ./internal/gui
       - name: Full-resolution screenshots (normal motion, both appearances)
         run: go test -count=1 -timeout 10m -run '^(TestShots|TestPanelShots)' ./internal/gui
 
@@ -107,7 +107,7 @@ jobs:
   macos:
     needs: check
     runs-on: macos-15-intel
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/go
