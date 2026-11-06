@@ -27,7 +27,7 @@ func routingHarness(t *testing.T, o harnessOpt) *harness {
 }
 
 // state is what the person has chosen so far.
-func (h *harness) state() routing.State { return h.be.Routing() }
+func (h *harness) state() routing.State { return h.app.be.Routing() }
 
 // row is an item of the plan in force.
 func (h *harness) row(id string) routing.Row {
@@ -215,6 +215,40 @@ func TestRoutingChangesWhereAnItemGoes(t *testing.T) {
 		t.Fatalf("AI services = %+v", d)
 	}
 	h.mustHave("Japan · auto")
+}
+
+// Where the window is set the way Windows sets it (its buttons in the title
+// bar, other words for the service), the routing screens and everything they open
+// work as they do elsewhere.
+func TestRoutingScreensInTheWindowsFlavour(t *testing.T) {
+	for _, lang := range []string{"en", "zh"} {
+		h := routingHarness(t, harnessOpt{platform: "windows", lang: lang, setup: crowd})
+		a := h.app
+		for _, nav := range []string{"nav.dashboard", "nav.nodes", "nav.subscriptions", "nav.routing", "nav.connections", "nav.logs", "nav.settings"} {
+			h.click(a.t(nav))
+			h.settle()
+			h.leaks(lang + " windows " + nav)
+		}
+		h.click(a.t("nav.routing"))
+		h.settle()
+		// A destination is changed in the page itself, and what it opens fits
+		// the window.
+		if lang == "en" {
+			h.chooseDest("Microsoft", "Direct", "Follow main exit", "Follow main exit (Automatic)")
+			if got := h.row("b-microsoft").Item.Dest.Kind; got != routing.DestFollow {
+				t.Fatalf("Microsoft = %q after the person chose the main exit", got)
+			}
+		}
+		for _, tc := range h.dialogCases() {
+			tc.open()
+			h.settle()
+			if !a.dlgOpen {
+				t.Errorf("windows %s: the dialog %q did not open", lang, tc.name)
+			}
+			h.leaks(lang + " windows dialog: " + tc.name)
+			h.shut()
+		}
+	}
 }
 
 func TestRoutingPinsAnItemToANode(t *testing.T) {

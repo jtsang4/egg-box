@@ -20,9 +20,17 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"eggbox/internal/agent/engine"
 	"eggbox/internal/agentapi"
 )
+
+// shown is a connection as it is now, for whoever it is handed to: the world
+// goes on changing its own while the stream marshals what it was given.
+func shown(c *agentapi.Connection) *agentapi.Connection {
+	return proto.Clone(c).(*agentapi.Connection)
+}
 
 // Options tune the simulation.
 type Options struct {
@@ -646,7 +654,7 @@ func (e *Engine) advanceLocked() {
 	}
 	if spawn && len(e.conns) < 64 {
 		if c := e.newConnLocked(now); c != nil {
-			events = append(events, &agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_NEW, Id: c.c.Id, Connection: c.c})
+			events = append(events, &agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_NEW, Id: c.c.Id, Connection: shown(c.c)})
 		}
 	}
 
@@ -684,7 +692,7 @@ func (e *Engine) advanceLocked() {
 	for id, c := range e.conns {
 		if !now.Before(c.endsAt) {
 			c.c.ClosedUnixMs = now.UnixMilli()
-			events = append(events, &agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_CLOSED, Id: id, Connection: c.c})
+			events = append(events, &agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_CLOSED, Id: id, Connection: shown(c.c)})
 			delete(e.conns, id)
 		}
 	}
@@ -769,7 +777,7 @@ func (e *Engine) WatchConnections(ctx context.Context, _ time.Duration) (<-chan 
 	sort.Strings(ids)
 	for _, id := range ids {
 		c := e.conns[id].c
-		reset.Events = append(reset.Events, &agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_NEW, Id: id, Connection: c})
+		reset.Events = append(reset.Events, &agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_NEW, Id: id, Connection: shown(c)})
 	}
 	out <- reset
 	live := make(chan *agentapi.ConnectionEvents, 64)
@@ -821,8 +829,8 @@ func (e *Engine) Open(dest string) (*agentapi.Connection, error) {
 		if c == nil {
 			return nil, nil
 		}
-		e.emitLocked([]*agentapi.ConnectionEvent{{Type: agentapi.ConnectionEvent_TYPE_NEW, Id: c.c.Id, Connection: c.c}})
-		return c.c, nil
+		e.emitLocked([]*agentapi.ConnectionEvent{{Type: agentapi.ConnectionEvent_TYPE_NEW, Id: c.c.Id, Connection: shown(c.c)}})
+		return shown(c.c), nil
 	}
 	return nil, fmt.Errorf("%w: the world has no destination %q", engine.ErrNotFound, dest)
 }
@@ -840,7 +848,7 @@ func (e *Engine) CloseConnection(id string) error {
 	}
 	c.c.ClosedUnixMs = e.opt.Now().UnixMilli()
 	delete(e.conns, id)
-	e.emitLocked([]*agentapi.ConnectionEvent{{Type: agentapi.ConnectionEvent_TYPE_CLOSED, Id: id, Connection: c.c}})
+	e.emitLocked([]*agentapi.ConnectionEvent{{Type: agentapi.ConnectionEvent_TYPE_CLOSED, Id: id, Connection: shown(c.c)}})
 	return nil
 }
 
@@ -861,7 +869,7 @@ func (e *Engine) CloseAllConnections() error {
 	for _, id := range ids {
 		c := e.conns[id]
 		c.c.ClosedUnixMs = now
-		events = append(events, &agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_CLOSED, Id: id, Connection: c.c})
+		events = append(events, &agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_CLOSED, Id: id, Connection: shown(c.c)})
 	}
 	e.conns = map[string]*conn{}
 	e.emitLocked(events)
