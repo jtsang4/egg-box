@@ -549,3 +549,44 @@ func TestMirrorsFor(t *testing.T) {
 		t.Errorf("Prefix = %q", got)
 	}
 }
+
+// A file is replaced while it is read, as when a plan is compiled during a
+// download: no update may fail for it. (Windows refuses to rename over a file
+// that is open; there, this failed without the lock that keeps the two apart.)
+func TestAFileIsReplacedWhileItIsRead(t *testing.T) {
+	n := newNetwork()
+	n.put(jsonURL, jsonRules("example.net"))
+	m := open(t, n, ruledata.GitHub)
+	if r := m.Update(context.Background(), []string{jsonURL}, ruledata.UpdateOptions{}); r[0].Outcome != ruledata.Updated {
+		t.Fatalf("first download: %+v", r[0])
+	}
+	stop := make(chan struct{})
+	var readers sync.WaitGroup
+	for range 4 {
+		readers.Add(1)
+		go func() {
+			defer readers.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if _, err := m.Data(jsonURL); err != nil {
+					t.Errorf("reading while it is replaced: %v", err)
+					return
+				}
+			}
+		}()
+	}
+	for i := range 200 {
+		// Different bytes every time, so every update replaces the file.
+		n.put(jsonURL, jsonRules("example.net", fmt.Sprintf("n%d.example", i)))
+		if r := m.Update(context.Background(), []string{jsonURL}, ruledata.UpdateOptions{Force: true}); r[0].Outcome != ruledata.Updated {
+			t.Errorf("update %d while the file is read: %+v", i, r[0])
+			break
+		}
+	}
+	close(stop)
+	readers.Wait()
+}

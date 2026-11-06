@@ -168,6 +168,13 @@ type Manager struct {
 	client *http.Client
 	now    func() time.Time
 
+	// files keeps a stored file from being replaced while it is read: Windows
+	// refuses to rename over a file that is open (Go opens files without
+	// FILE_SHARE_DELETE), so a download landing while a plan is compiled from
+	// the same file failed there, and was reported as a failed update. Never
+	// held while waiting for mu.
+	files sync.RWMutex
+
 	mu      sync.Mutex // guards everything below
 	mirrors []Mirror
 	index   map[string]Meta // by key of the canonical address
@@ -291,7 +298,7 @@ func (m *Manager) Data(canonical string) ([]byte, error) {
 	if !ok {
 		return nil, ErrNotStored
 	}
-	data, err := os.ReadFile(m.path(keyOf(canonical)))
+	data, err := m.read(keyOf(canonical))
 	if err != nil {
 		return nil, ErrNotStored
 	}
@@ -313,7 +320,7 @@ func (m *Manager) Parsed(canonical string) (*rulefmt.Parsed, error) {
 	if !ok {
 		return nil, ErrNotStored
 	}
-	data, err := os.ReadFile(m.path(key))
+	data, err := m.read(key)
 	if err != nil {
 		return nil, ErrNotStored
 	}
@@ -325,6 +332,13 @@ func (m *Manager) Parsed(canonical string) (*rulefmt.Parsed, error) {
 	m.parsed[key] = &memo{sha: meta.SHA256, p: p}
 	m.mu.Unlock()
 	return p, nil
+}
+
+// read reads a stored file, which is not replaced meanwhile.
+func (m *Manager) read(key string) ([]byte, error) {
+	m.files.RLock()
+	defer m.files.RUnlock()
+	return os.ReadFile(m.path(key))
 }
 
 // Deps lists the files a stored file refers to by name: a Clash list that
@@ -538,7 +552,10 @@ func (m *Manager) store(key string, data []byte, meta Meta, parsed *rulefmt.Pars
 	if err := os.MkdirAll(filepath.Join(m.dir, "raw"), 0o700); err != nil {
 		return err
 	}
-	if err := fsutil.WriteFileAtomic(m.path(key), data, 0o600); err != nil {
+	m.files.Lock()
+	err := fsutil.WriteFileAtomic(m.path(key), data, 0o600)
+	m.files.Unlock()
+	if err != nil {
 		return err
 	}
 	m.mu.Lock()
@@ -611,7 +628,9 @@ func (m *Manager) Prune(keep map[string]bool) (removed int) {
 		if keep[meta.URL] {
 			continue
 		}
+		m.files.Lock()
 		_ = os.Remove(m.path(key))
+		m.files.Unlock()
 		delete(m.index, key)
 		delete(m.parsed, key)
 		removed++
