@@ -12,6 +12,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"eggbox/internal/app"
+	"eggbox/internal/library"
 	"eggbox/internal/routing"
 )
 
@@ -110,6 +111,7 @@ func TestDestinationMenuSaysWhenThereAreNoRegionsYet(t *testing.T) {
 	h.ui.Key(0, ui.KeyRight)
 	h.ui.Advance(300 * time.Millisecond)
 	h.mustHave("No regions yet")
+	h.mustNotHave("Set node regions…")
 	h.closeMenu()
 }
 
@@ -507,5 +509,22 @@ func TestEveryRuleFormatHasAName(t *testing.T) {
 				t.Errorf("[%s] the format %q has no name", lang, f)
 			}
 		}
+	}
+}
+
+// Where a node's name says nothing of its region, the menu of regions leads to
+// the nodes that have none, and says where their regions are set.
+func TestDestinationMenuLeadsToTheNodesWithoutARegion(t *testing.T) {
+	h := routingHarness(t, harnessOpt{setup: func(be *fixtureBackend, _ *Options) {
+		be.nodes = append(be.nodes, library.ActiveNode{Node: fixtureNode(len(be.nodes), "Edge 7"), SubID: "sub-local", SubName: "My nodes", Auto: true})
+		be.refresh()
+	}})
+	h.clickOnLine("AI services", "Follow main exit")
+	h.pick("Fastest", "Set")
+	h.settle()
+	h.mustHave("Set a region from a node’s ⋯ menu", "Edge 7", "Other")
+	h.mustNotHave("Osaka 01")
+	if h.app.page != pageNodes || h.app.node.region != regionOther {
+		t.Fatalf("page %v, region filter %q", h.app.page, h.app.node.region)
 	}
 }

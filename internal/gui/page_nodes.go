@@ -761,47 +761,72 @@ func (a *App) nodeGrid(c *ui.Context, vis []nodeEntry) {
 
 func (a *App) nodeCard(c *ui.Context, n nodeEntry, selected, inUse bool) {
 	p := a.pl
-	b := ui.ButtonBase(c.Key("node-" + n.Key))
-	b.Label(n.Name)
-	b.Grow(1).Basis(0).Height(86).Padding(0, 16).Gap(14).Radius(radiusCard - 2).AlignItems(ui.Center).Cursor(ui.CursorPointer)
-	hov := b.AnimateTo("hov", boolf(b.Hovered()), ui.Animation{Duration: 150 * time.Millisecond})
-	sel := b.AnimateTo("sel", boolf(selected), ui.Animation{Duration: 260 * time.Millisecond, Ease: ui.EaseOut})
-	a.selectableFace(b, hov, sel)
-	b.PopoverMenu(a.nodeMenu(c, n))
-	b.Children(func() {
-		a.regionBadge(c, n.Region, 44)
-		ui.Column(c).Grow(1).Basis(0).Gap(6).Children(func() {
-			ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
-				if inUse {
-					a.dot(c, toneGood, 7, true).Tooltip(a.t("nodes.in_use"))
-				}
-				a.txt(c, n.Name, 14.5, 650, p.Text).SingleLine()
+	// The card is the button that makes the node the main exit, with the
+	// button of its menu beside it rather than in it, as on an item's row: a
+	// menu found only by a right click is a menu few find.
+	card := ui.Row(c.Key("node-" + n.Key))
+	card.Grow(1).Basis(0).Height(86).Padding(0, 8, 0, 0).Gap(2).Radius(radiusCard - 2).AlignItems(ui.Center)
+	hov := card.AnimateTo("hov", boolf(card.Hovered()), ui.Animation{Duration: 150 * time.Millisecond})
+	sel := card.AnimateTo("sel", boolf(selected), ui.Animation{Duration: 260 * time.Millisecond, Ease: ui.EaseOut})
+	a.selectableFace(card, hov, sel)
+	card.PopoverMenu(a.nodeMenu(c, n))
+	card.Children(func() {
+		b := ui.ButtonBase(c.Key("node-use-" + n.Key))
+		b.Label(n.Name)
+		b.Grow(1).Basis(0).AlignSelf(ui.Stretch).Padding(0, 6, 0, 16).Gap(14).Radius(radiusCard - 2).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+		b.Children(func() {
+			a.regionBadge(c, n.Region, 44)
+			ui.Column(c).Grow(1).Basis(0).Gap(6).Children(func() {
+				ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+					if inUse {
+						a.dot(c, toneGood, 7, true).Tooltip(a.t("nodes.in_use"))
+					}
+					a.txt(c, n.Name, 14.5, 650, p.Text).SingleLine()
+				})
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					a.protoChip(c, n)
+					if src := n.Source(); src != "" {
+						a.txt(c, src, 11.5, 400, p.Text3).SingleLine()
+					}
+					if n.NoAuto {
+						ui.Icon(c, icon("bolt-slash")).Size(13, 13).TextColor(p.Text3).Shrink(0).Tooltip(a.t("nodes.noauto.tip"))
+					}
+				})
 			})
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				a.protoChip(c, n)
-				if src := n.Source(); src != "" {
-					a.txt(c, src, 11.5, 400, p.Text3).SingleLine()
+			ui.Column(c).Gap(6).AlignItems(ui.End).Children(func() {
+				switch {
+				case n.Delay > 0:
+					a.number(c, fmtMillis(n.Delay), 14, a.toneColor(latencyTone(n.Delay)))
+				case n.Delay < 0:
+					a.txt(c, a.t("nodes.timeout"), 12.5, 600, p.Bad).SingleLine()
+				default:
+					a.txt(c, "—", 14, 500, p.Text3)
 				}
-				if n.NoAuto {
-					ui.Icon(c, icon("bolt-slash")).Size(13, 13).TextColor(p.Text3).Shrink(0).Tooltip(a.t("nodes.noauto.tip"))
-				}
+				a.signal(c, n.Delay)
 			})
 		})
-		ui.Column(c).Gap(6).AlignItems(ui.End).Children(func() {
-			switch {
-			case n.Delay > 0:
-				a.number(c, fmtMillis(n.Delay), 14, a.toneColor(latencyTone(n.Delay)))
-			case n.Delay < 0:
-				a.txt(c, a.t("nodes.timeout"), 12.5, 600, p.Bad).SingleLine()
-			default:
-				a.txt(c, "—", 14, 500, p.Text3)
-			}
-			a.signal(c, n.Delay)
-		})
+		if b.Clicked() {
+			a.setMain(routing.ToNode(n.ID))
+		}
+		// Quiet until the card is pointed at, so that a grid of cards does not
+		// read as a grid of buttons.
+		more := a.btn(c, btnSpec{kind: btnGhost, icon: "more", iconOnly: true, small: true, tip: a.t("subs.more")})
+		more.Opacity(0.5 + 0.5*hov).PopoverMenuButton(a.nodeMenu(c, n))
 	})
-	if b.Clicked() {
-		a.setMain(routing.ToNode(n.ID))
+}
+
+// showUnplacedNodes leaves what the person was doing for the nodes page, showing
+// the nodes no region could be read from, and says where to set one.
+func (a *App) showUnplacedNodes() {
+	a.dlgStack, a.dlgOpen = nil, false
+	a.node.query, a.node.sub, a.node.region = "", "", ""
+	// The filter shows only beside another region; alone it would hide nodes
+	// once they get one, with nothing on screen saying why.
+	if len(regionsOf(a.liveNodes())) >= 2 {
+		a.node.region = regionOther
 	}
+	a.goTo(pageNodes)
+	a.toastInfo(a.t("dest.region.tip"))
 }
 
 // nodeMenu is the menu of a node's card.

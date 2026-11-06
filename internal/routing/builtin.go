@@ -31,10 +31,10 @@ func geoip(name string) Source   { return URLSource(GeoIP(name), "geoip: "+name,
 // the plan stores, the second the English one the interface shows.
 var builtinNames = map[string][]string{
 	"ads":       {"广告拦截", "Ad blocking", "广告", "ads", "adblock", "去广告"},
-	"ai":        {"AI 服务", "AI services", "ai", "openai", "chatgpt", "人工智能"},
+	"ai":        {"AI 服务", "AI services", "ai", "人工智能"},
 	"telegram":  {"Telegram", "Telegram", "电报"},
 	"youtube":   {"YouTube", "YouTube", "油管"},
-	"streaming": {"流媒体", "Streaming", "国际媒体", "国外媒体", "netflix"},
+	"streaming": {"流媒体", "Streaming", "国际媒体", "国外媒体"},
 	"google":    {"Google", "Google", "谷歌", "谷歌服务", "google services"},
 	"social":    {"社交媒体", "Social media", "社交", "social"},
 	"github":    {"GitHub", "GitHub"},
@@ -45,6 +45,15 @@ var builtinNames = map[string][]string{
 	// Items an imported plan makes of rules that name no group.
 	"direct": {"直连", "Direct", "direct"},
 	"reject": {"拦截", "Blocked", "reject", "block"},
+}
+
+// builtinHints are services a shipped item takes in that other plans often name
+// a whole item after ("💬 ChatGPT" for everything AI). A choice made for such
+// an item in another plan carries over to the shipped one, but they are not
+// its names: a person may add Netflix as an item of its own beside streaming.
+var builtinHints = map[string][]string{
+	"ai":        {"openai", "chatgpt"},
+	"streaming": {"netflix"},
 }
 
 // BuiltinName returns the display name of a shipped item in a language

@@ -186,6 +186,18 @@ func TestBuiltinPlanMatchesTheDesign(t *testing.T) {
 			t.Errorf("the AI item should answer to %q", n)
 		}
 	}
+	// A service the AI item takes in carries a choice over, but is not its
+	// name: an item of its own may have it.
+	if slices.Contains(ai.Names(), "chatgpt") || !slices.Contains(ai.Names(), "ai") {
+		t.Errorf("the AI item's names: %v", ai.Names())
+	}
+	st := NewState()
+	if _, err := st.AddItem(Item{Name: "Netflix", Dest: Direct(), Enabled: true}, ""); err != nil {
+		t.Errorf("Netflix beside the streaming item: %v", err)
+	}
+	if _, err := st.AddItem(Item{Name: "💬 AI", Dest: Direct(), Enabled: true}, ""); !errors.Is(err, ErrDuplicateName) {
+		t.Errorf("another name of the AI item: %v", err)
+	}
 	if BuiltinName("ai", "zh-CN") != "AI 服务" || BuiltinName("ai", "en") != "AI services" || BuiltinName("nope", "en") != "" {
 		t.Error("BuiltinName")
 	}

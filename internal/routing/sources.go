@@ -228,7 +228,7 @@ func (s *State) RenameItem(itemID, name string) error {
 		return ErrNoName
 	}
 	for _, r := range s.View().Rows {
-		if r.Item.ID != itemID && slices.Contains(r.Item.Keys(), NormName(name)) {
+		if r.Item.ID != itemID && slices.Contains(r.Item.Names(), NormName(name)) {
 			return ErrDuplicateName
 		}
 	}
@@ -261,7 +261,7 @@ func (s *State) CopyItemToMine(itemID, planID string) (Item, error) {
 	// language the person reads.
 	it.ID, it.Anchor = NewID("i"), ""
 	for _, other := range target.Items {
-		if slices.ContainsFunc(other.Keys(), func(k string) bool { return slices.Contains(it.Keys(), k) }) {
+		if SameName(other, it) {
 			return Item{}, ErrDuplicateName
 		}
 	}

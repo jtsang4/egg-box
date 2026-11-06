@@ -290,17 +290,62 @@ func TestWhereAnEntryGoes(t *testing.T) {
 
 func TestAnEntryTheplanAlreadyHasIsRecognized(t *testing.T) {
 	plan := routing.Builtin()
-	for id, want := range map[string]string{"telegram": "Telegram", "netflix": "流媒体", "github": "GitHub"} {
+	for id, want := range map[string]string{"telegram": "Telegram", "github": "GitHub", "ads": "广告拦截"} {
 		e, _ := catalog.Get(id)
 		got, ok := catalog.Covers(plan.Items, e)
-		if !ok || got != want {
-			t.Errorf("%s is covered by %q (%v), want %q", id, got, ok, want)
+		if !ok || got.Name != want {
+			t.Errorf("%s is covered by %q (%v), want %q", id, got.Name, ok, want)
 		}
 	}
-	for _, id := range []string{"gitlab", "steam", "twitch"} {
+	// Netflix is one of the streaming item's files, not the item: it can be
+	// added on its own, to go somewhere else.
+	for _, id := range []string{"gitlab", "steam", "twitch", "netflix"} {
 		e, _ := catalog.Get(id)
 		if got, ok := catalog.Covers(plan.Items, e); ok {
-			t.Errorf("%s is said to be covered by %q", id, got)
+			t.Errorf("%s is said to be covered by %q", id, got.Name)
+		}
+	}
+	// An item made from the entry is it, whichever project its files come from.
+	nf, _ := catalog.Get("netflix")
+	alt := nf.Item("zh", 0)
+	if got, ok := catalog.Covers(append(plan.Items, alt), nf); !ok || got.Catalog != "netflix" {
+		t.Errorf("an item made from another source of the entry is not recognized: %q %v", got.Name, ok)
+	}
+	// Lines written by hand into an item do not make it another one.
+	tg := plan.Items[2]
+	if tg.Key != "telegram" {
+		t.Fatalf("the third shipped item is %q", tg.Key)
+	}
+	tg.Catalog = ""
+	tg.Sources = append(tg.Sources, routing.InlineSource([]routing.Entry{{Kind: routing.EntryDomainSuffix, Value: "t.me"}}))
+	e, _ := catalog.Get("telegram")
+	if _, ok := catalog.Covers([]routing.Item{tg}, e); !ok {
+		t.Error("Telegram with a line added by hand is no longer recognized")
+	}
+}
+
+func TestAnEntryGoesBeforeTheItemThatTakesItIn(t *testing.T) {
+	plan := routing.Builtin()
+	nf, _ := catalog.Get("netflix")
+	at := catalog.InsertBefore(plan.Items, nf)
+	var name string
+	for _, it := range plan.Items {
+		if it.ID == at {
+			name = it.Key
+		}
+	}
+	if name != "streaming" {
+		t.Errorf("Netflix goes before %q, not before the streaming item that would answer first", name)
+	}
+	st := routing.NewState()
+	added, err := st.AddItem(nf.Item("zh", -1), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := st.View().Rows
+	for i, r := range rows {
+		if r.Item.ID == added.ID && (i+1 >= len(rows) || rows[i+1].Item.Key != "streaming") {
+			t.Errorf("Netflix is not right before the streaming item")
 		}
 	}
 }

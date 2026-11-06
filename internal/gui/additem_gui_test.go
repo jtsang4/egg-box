@@ -128,6 +128,50 @@ func TestAddItemCatalogMarksWhatIsThereAlready(t *testing.T) {
 	h.mustHave("Added")
 }
 
+// Netflix is among the streaming item's files but is not that item: it can be
+// added on its own, and goes before the item that would otherwise answer first.
+func TestAddItemThatABroaderItemTakesIn(t *testing.T) {
+	h := addItemHarness(t)
+	h.typeText("Netflix")
+	h.mustNotHave("Added")
+	h.click("Netflix")
+	h.mustHave("New item", "Automatic (before “Streaming”)")
+	h.submitDialog("Add item")
+	h.settle()
+	h.mustHave("“Netflix” added")
+	rows := h.state().View().Rows
+	for i, r := range rows {
+		if r.Item.Name == "Netflix" {
+			if i+1 >= len(rows) || rows[i+1].Item.ID != "b-streaming" {
+				t.Fatalf("Netflix is not right before Streaming")
+			}
+			return
+		}
+	}
+	t.Fatal("no Netflix item")
+}
+
+// An entry the plan has, but turned off, does not say "Added" as if it worked:
+// it says it is off, and a click turns it on.
+func TestAddItemCatalogTurnsOnWhatIsThereButOff(t *testing.T) {
+	h := addItemHarness(t)
+	if h.row("b-ads").Item.Enabled {
+		t.Fatal("the fixture's ad item is on")
+	}
+	h.typeText("Ad blocking")
+	h.mustHave("Off")
+	h.click("Off")
+	h.settle()
+	h.mustHave("“Ad blocking” turned on")
+	if !h.row("b-ads").Item.Enabled {
+		t.Fatal("the ad item is still off")
+	}
+	h.click("Add item")
+	h.typeText("Ad blocking")
+	h.mustHave("Added")
+	h.mustNotHave("Off")
+}
+
 func TestAddItemBackFromTheConfirmingStep(t *testing.T) {
 	h := addItemHarness(t)
 	h.typeText("Steam")

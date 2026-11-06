@@ -94,7 +94,13 @@ func (a *App) originName(origin string) string {
 func (a *App) planNote(p *routing.Plan) (string, tone) {
 	switch p.Kind {
 	case routing.PlanBuiltin:
-		return a.t("plan.note.builtin"), toneNeutral
+		// The items come with the application; the rule data behind them is
+		// downloaded as often as the settings say.
+		every := map[int]string{24: "settings.daily", 72: "settings.3days", 168: "settings.weekly"}[a.set.RuleUpdateHours]
+		if every == "" {
+			return a.t("plan.note.manual"), toneNeutral
+		}
+		return a.t("plan.note.builtin", "every", strings.ToLower(a.t(every))), toneNeutral
 	case routing.PlanSubscription:
 		s, ok := a.subscriptionByID(p.SubID)
 		switch {

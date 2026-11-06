@@ -161,12 +161,13 @@ const addTabHeight = 396
 
 // addRow is a line of the catalog list.
 type addRow struct {
-	header  string
-	entry   *catalog.Entry
-	site    *catalog.GeoSiteHit
-	other   *catalog.OtherHit
-	more    string
-	covered string
+	header string
+	entry  *catalog.Entry
+	site   *catalog.GeoSiteHit
+	other  *catalog.OtherHit
+	more   string
+	// covered is the item of the plan that already is this entry.
+	covered *routing.Item
 }
 
 // refreshRows searches the catalog again when the question or the plan changed.
@@ -191,8 +192,8 @@ func (d *addDialog) refreshRows(a *App) {
 			rows = append(rows, addRow{header: a.t("adddlg.recommended")})
 		}
 		row := addRow{entry: &e}
-		if name, ok := catalog.Covers(items, e); ok && d.target == "" {
-			row.covered = name
+		if it, ok := catalog.Covers(items, e); ok && d.target == "" {
+			row.covered = &it
 		}
 		rows = append(rows, row)
 	}
@@ -258,14 +259,20 @@ func (a *App) rowFace(b ui.Element, hov float32, disabled bool) {
 func (d *addDialog) entryRow(a *App, c *ui.Context, r addRow) {
 	p := a.pl
 	e := *r.entry
-	covered := r.covered != ""
+	// An entry the plan has is done with, unless its item is off: then a
+	// click turns it on, rather than "added" saying it works when it does not.
+	off := r.covered != nil && !r.covered.Enabled
+	covered := r.covered != nil && !off
 	b := ui.ButtonBase(c.Key("add-e-" + e.ID))
 	b.Label(e.Name(a.lang))
 	b.Height(58).Padding(0, 12).Gap(12).Radius(12).AlignItems(ui.Center).Cursor(boolOr(covered, ui.CursorDefault, ui.CursorPointer)).Disabled(covered)
 	hov := b.AnimateTo("hov", boolf(b.Hovered()), ui.Animation{Duration: 120 * time.Millisecond})
 	a.rowFace(b, hov, covered)
-	if covered {
-		b.Tooltip(a.t("adddlg.covered.tip", "name", r.covered))
+	switch {
+	case covered:
+		b.Tooltip(a.t("adddlg.covered.tip", "name", a.itemName(*r.covered)))
+	case off:
+		b.Tooltip(a.t("adddlg.off.tip", "name", a.itemName(*r.covered)))
 	}
 	b.Children(func() {
 		a.iconTile(c, e.Icon, boolOr(covered, toneNeutral, toneBlue), 36)
@@ -273,15 +280,42 @@ func (d *addDialog) entryRow(a *App, c *ui.Context, r addRow) {
 			a.txt(c, e.Name(a.lang), 13.5, 650, boolOr(covered, p.Text3, p.Text)).SingleLine()
 			a.txt(c, e.Desc(a.lang), 12, 400, p.Text3).SingleLine()
 		})
-		if covered {
+		switch {
+		case covered:
 			a.chip(c, a.t("adddlg.covered"), toneGood, "check")
-		} else {
+		case off:
+			a.chip(c, a.t("adddlg.off"), toneWarn, "")
+		default:
 			a.chip(c, e.Class.Name(a.lang), toneNeutral, "")
 		}
 	})
 	if b.Clicked() {
+		if off {
+			d.turnOn(a, *r.covered)
+			return
+		}
 		d.pickEntry(a, e)
 	}
+}
+
+// turnOn turns on the item of the plan that already is the entry chosen.
+func (d *addDialog) turnOn(a *App, it routing.Item) {
+	if d.busy {
+		return
+	}
+	d.busy, d.err = true, ""
+	id, name := it.ID, a.itemName(it)
+	a.enqueue(func(ctx context.Context) error {
+		return a.be.EditRouting(ctx, func(s *routing.State) error { return s.SetItemEnabled(id, true) })
+	}, func(err error) {
+		d.busy = false
+		if err != nil {
+			d.err = a.explain(err)
+			return
+		}
+		d.finish(a)
+		a.toastInfo(a.t("adddlg.turned_on", "name", name))
+	})
 }
 
 // plainRow is a row without a recommendation behind it: a name and a line.
@@ -588,14 +622,14 @@ func (d *addDialog) plansTab(a *App, c *ui.Context) {
 	rows := a.rt().ViewOf(plans[d.plan].ID).Rows
 	have := map[string]string{}
 	for _, r := range a.rv().Rows {
-		for _, k := range r.Item.Keys() {
+		for _, k := range r.Item.Names() {
 			have[k] = a.itemName(r.Item)
 		}
 	}
 	ui.List(c.Key("add-plan-list"), &d.planList, len(rows), func(i int) {
 		r := rows[i]
 		var dup string
-		for _, k := range r.Item.Keys() {
+		for _, k := range r.Item.Names() {
 			if n, ok := have[k]; ok {
 				dup = n
 				break

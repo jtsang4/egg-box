@@ -510,48 +510,83 @@ func broad(it routing.Item) bool {
 // InsertBefore says where an entry belongs among the items of a plan: the
 // id of the item it goes before, or "" for the end. What blocks goes before
 // everything that does not; a service goes before the first item that claims
-// whole countries; a broad category goes last.
+// whole countries; a broad category goes last. Whatever the class, an entry
+// goes before an item whose rules take in all of its own (Netflix before a
+// streaming item that has Netflix among others), or that item would answer
+// first and the new one would never be asked.
 func InsertBefore(items []routing.Item, e Entry) string {
+	at := len(items)
 	switch e.Prio {
 	case PrioBlock:
-		for _, it := range items {
+		for i, it := range items {
 			if it.Dest.Kind != routing.DestReject {
-				return it.ID
-			}
-		}
-	case PrioService:
-		for _, it := range items {
-			if broad(it) {
-				return it.ID
-			}
-		}
-	}
-	return ""
-}
-
-// Covers reports which item of a plan already carries the entry's
-// recommended rules, so the interface can say "already in X" instead of
-// adding it twice.
-func Covers(items []routing.Item, e Entry) (name string, ok bool) {
-	want := e.Sources()
-	if len(want) == 0 {
-		return "", false
-	}
-	for _, it := range items {
-		have := map[string]bool{}
-		for _, s := range it.Sources {
-			have[s.URL] = true
-		}
-		all := true
-		for _, s := range want {
-			if !have[s.URL] {
-				all = false
+				at = i
 				break
 			}
 		}
-		if all {
-			return it.Name, true
+	case PrioService:
+		for i, it := range items {
+			if broad(it) {
+				at = i
+				break
+			}
 		}
 	}
-	return "", false
+	want := urlSet(e.Sources())
+	for i, it := range items[:at] {
+		if have := urlSet(it.Sources); len(have) > len(want) && contains(have, want) {
+			at = i
+			break
+		}
+	}
+	if at == len(items) {
+		return ""
+	}
+	return items[at].ID
+}
+
+// Covers reports the item of a plan that already is the entry: one made from
+// it, or one with the same rule files, so the interface can say "already
+// there" instead of adding it twice. An item that has the entry's files among
+// others (a streaming item that has Netflix's) is not the entry: a person may
+// want Netflix on its own, to send it somewhere else.
+func Covers(items []routing.Item, e Entry) (routing.Item, bool) {
+	want := urlSet(e.Sources())
+	if len(want) == 0 {
+		return routing.Item{}, false
+	}
+	for _, it := range items {
+		if it.Catalog == e.ID {
+			return it, true
+		}
+		have := urlSet(it.Sources)
+		if len(have) == len(want) && contains(have, want) {
+			return it, true
+		}
+	}
+	return routing.Item{}, false
+}
+
+// urlSet is the addresses of the rule files among sources; the lines a person
+// wrote into an item do not make it another item.
+func urlSet(srcs []routing.Source) map[string]bool {
+	out := map[string]bool{}
+	for _, s := range srcs {
+		if s.URL != "" {
+			out[s.URL] = true
+		}
+	}
+	return out
+}
+
+func contains(have, want map[string]bool) bool {
+	if len(want) == 0 {
+		return false
+	}
+	for u := range want {
+		if !have[u] {
+			return false
+		}
+	}
+	return true
 }

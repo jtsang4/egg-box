@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -77,11 +78,11 @@ func (a *App) destMenu(o destOpts, cur routing.Dest, pick func(routing.Dest)) fu
 		if cur.Kind == routing.DestRegion {
 			keep = cur.Region
 		}
-		regions := regionsWithNodes(a.liveNodes(), keep)
+		nodes := a.liveNodes()
+		regions := regionsWithNodes(nodes, keep)
 		m.Submenu(a.t("dest.region.menu"), func(sm *ui.Menu) {
 			if len(regions) == 0 {
 				sm.Item(a.t("dest.region.none")).Disabled(true)
-				return
 			}
 			for _, rc := range regions {
 				label := a.regionName(rc.Code)
@@ -90,6 +91,14 @@ func (a *App) destMenu(o destOpts, cur routing.Dest, pick func(routing.Dest)) fu
 				}
 				if sm.Item(label).Radio(cur.Kind == routing.DestRegion && cur.Region == rc.Code).Chosen() {
 					pick(routing.ToRegion(rc.Code))
+				}
+			}
+			// The region of a node is read from its name; where that says
+			// nothing, the person can tell it.
+			if slices.ContainsFunc(nodes, func(n nodeEntry) bool { return n.Region == "" }) {
+				sm.Separator()
+				if sm.Item(a.t("dest.region.set")).Chosen() {
+					a.showUnplacedNodes()
 				}
 			}
 		})

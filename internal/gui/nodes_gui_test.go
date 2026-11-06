@@ -2,6 +2,7 @@ package gui
 
 import (
 	"testing"
+	"time"
 
 	"eggbox/internal/library"
 	"eggbox/internal/routing"
@@ -328,4 +329,27 @@ func TestNodesAreFilteredByRegionAndSubscription(t *testing.T) {
 	h.mustNotHave("Osaka 01")
 	h.click("Nimbus Net")
 	h.mustHave("Osaka 01")
+}
+
+// A node's menu has a button of its own on the card, as an item's row has: a
+// right click is not the only way to it.
+func TestNodeCardHasAButtonForItsMenu(t *testing.T) {
+	h := nodesHarness(t, nil)
+	name, ok := h.ui.Find("Tokyo 01")
+	if !ok {
+		t.Fatalf("no Tokyo 01; have %s", h.digest())
+	}
+	more, ok := h.ui.Find("More")
+	if !ok || more.Y > name.Y+name.H || more.Y+more.H < name.Y {
+		t.Fatalf("no menu button on the line of the first card: %+v vs %+v", more, name)
+	}
+	main := h.state().Main
+	h.ui.ClickAt(more.X+more.W/2, more.Y+more.H/2)
+	h.ui.Advance(300 * time.Millisecond)
+	h.mustHave("Use as main exit", "Set region…")
+	h.pick("Set")
+	h.mustHave("Set region", "Detect automatically")
+	if !h.state().Main.Equal(main) {
+		t.Fatal("opening the menu changed the main exit")
+	}
 }

@@ -166,7 +166,7 @@ func (h *harness) called(prefix string) int {
 
 func TestRoutingPageShowsThePlan(t *testing.T) {
 	h := routingHarness(t, harnessOpt{})
-	h.mustHave("12 items · Recommended", "PLAN IN FORCE", "Ships with the application and is updated with it.",
+	h.mustHave("12 items · Recommended", "PLAN IN FORCE", "Items are updated with the app; rule data is checked daily",
 		"My exceptions", "Items", "Ad blocking", "AI services", "Telegram", "YouTube", "Streaming", "Google", "Social media",
 		"GitHub", "Microsoft", "Apple", "China sites", "International sites", "Everything else", "Test a URL", "Add item")
 	// The exceptions are folded until they are looked at.

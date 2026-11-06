@@ -353,7 +353,7 @@ func (s *State) AddItem(it Item, beforeID string) (Item, error) {
 	}
 	v := s.View()
 	for _, r := range v.Rows {
-		if slices.ContainsFunc(r.Item.Keys(), func(k string) bool { return slices.Contains(it.Keys(), k) }) && r.Item.ID != it.ID {
+		if SameName(r.Item, it) && r.Item.ID != it.ID {
 			return Item{}, ErrDuplicateName
 		}
 	}

@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"net/netip"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -453,8 +454,22 @@ func cloneSources(in []Source) []Source {
 	return out
 }
 
-// Keys are the normalized names the item answers to.
+// Keys are the normalized names the item answers to when a choice is carried
+// over from another plan: its names, and for a shipped item the services it
+// takes in that other plans often name a whole item after.
 func (it Item) Keys() []string {
+	out := it.Names()
+	for _, n := range builtinHints[it.Key] {
+		if k := NormName(n); !slices.Contains(out, k) {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// Names are the names the item goes by: its own, its aliases and the other
+// names of a shipped item. Two items of a plan may not share one.
+func (it Item) Names() []string {
 	seen := map[string]bool{}
 	var out []string
 	add := func(s string) {
@@ -467,12 +482,16 @@ func (it Item) Keys() []string {
 	for _, a := range it.Aliases {
 		add(a)
 	}
-	if names, ok := builtinNames[it.Key]; ok {
-		for _, n := range names {
-			add(n)
-		}
+	for _, n := range builtinNames[it.Key] {
+		add(n)
 	}
 	return out
+}
+
+// SameName reports whether two items go by a name in common.
+func SameName(a, b Item) bool {
+	an := a.Names()
+	return slices.ContainsFunc(b.Names(), func(k string) bool { return slices.Contains(an, k) })
 }
 
 // NormName compares item names the way people do: the emoji and spaces at the
