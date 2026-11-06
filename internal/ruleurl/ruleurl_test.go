@@ -12,7 +12,7 @@ func TestCanonical(t *testing.T) {
 	cases := []struct {
 		name, in, want, project string
 		stripped, converted     bool
-		mrs                     bool
+		swapped, mrs            bool
 	}{
 		{name: "already canonical", in: raw + "MetaCubeX/meta-rules-dat/sing/geo/geosite/openai.srs",
 			want: raw + "MetaCubeX/meta-rules-dat/sing/geo/geosite/openai.srs", project: "MetaCubeX"},
@@ -45,19 +45,21 @@ func TestCanonical(t *testing.T) {
 		{name: "query is kept", in: "https://rules.example/list.txt?key=abc", want: "https://rules.example/list.txt?key=abc"},
 		{name: "host case", in: "HTTPS://Rules.Example/List.txt", want: "https://rules.example/List.txt"},
 		{name: "mrs of MetaCubeX", in: raw + "MetaCubeX/meta-rules-dat/meta/geo/geosite/openai.mrs",
-			want: raw + "MetaCubeX/meta-rules-dat/sing/geo/geosite/openai.srs", project: "MetaCubeX", converted: true},
+			want: raw + "MetaCubeX/meta-rules-dat/sing/geo/geosite/openai.srs", project: "MetaCubeX", swapped: true},
 		{name: "mrs of MetaCubeX geoip", in: raw + "MetaCubeX/meta-rules-dat/meta/geo/geoip/cn.mrs",
-			want: raw + "MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs", project: "MetaCubeX", converted: true},
+			want: raw + "MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs", project: "MetaCubeX", swapped: true},
 		{name: "mrs of MetaCubeX asn", in: raw + "MetaCubeX/meta-rules-dat/meta/asn/AS13335.mrs",
-			want: raw + "MetaCubeX/meta-rules-dat/sing/asn/AS13335.srs", project: "MetaCubeX", converted: true},
+			want: raw + "MetaCubeX/meta-rules-dat/sing/asn/AS13335.srs", project: "MetaCubeX", swapped: true},
 		{name: "mrs of DustinWin release", in: "https://github.com/DustinWin/ruleset_geodata/releases/download/mihomo-ruleset/ai.mrs",
-			want: "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/ai.srs", project: "DustinWin", converted: true},
+			want: "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/ai.srs", project: "DustinWin", swapped: true},
 		{name: "mrs of Loyalsoldier", in: raw + "Loyalsoldier/geoip/release/mrs/cn.mrs",
-			want: raw + "Loyalsoldier/geoip/release/srs/cn.srs", project: "Loyalsoldier", converted: true},
+			want: raw + "Loyalsoldier/geoip/release/srs/cn.srs", project: "Loyalsoldier", swapped: true},
 		{name: "mrs of 217heidai", in: raw + "217heidai/adblockfilters/main/rules/adblockmihomolite.mrs",
-			want: raw + "217heidai/adblockfilters/main/rules/adblocksingboxlite.srs", project: "217heidai", converted: true},
+			want: raw + "217heidai/adblockfilters/main/rules/adblocksingboxlite.srs", project: "217heidai", swapped: true},
 		{name: "mrs of AWAvenue", in: raw + "TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Clash-No.Privacy.mrs",
-			want: raw + "TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Singbox-No.Privacy.json", project: "AWAvenue", converted: true},
+			want: raw + "TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Singbox-No.Privacy.json", project: "AWAvenue", swapped: true},
+		{name: "page of an mrs file", in: "https://github.com/MetaCubeX/meta-rules-dat/blob/meta/geo/geosite/openai.mrs",
+			want: raw + "MetaCubeX/meta-rules-dat/sing/geo/geosite/openai.srs", project: "MetaCubeX", converted: true, swapped: true},
 		{name: "mrs nobody maps", in: "https://rules.example/x.mrs", want: "https://rules.example/x.mrs", mrs: true},
 		{name: "mrs of a mapped host but another path", in: raw + "MetaCubeX/meta-rules-dat/meta/other/x.mrs",
 			want: raw + "MetaCubeX/meta-rules-dat/meta/other/x.mrs", project: "MetaCubeX", mrs: true},
@@ -73,8 +75,8 @@ func TestCanonical(t *testing.T) {
 			if got.URL != c.want {
 				t.Errorf("URL = %q, want %q", got.URL, c.want)
 			}
-			if got.Project != c.project || got.Stripped != c.stripped || got.Converted != c.converted || got.MRS != c.mrs {
-				t.Errorf("info = %+v, want project %q stripped %v converted %v mrs %v", got, c.project, c.stripped, c.converted, c.mrs)
+			if got.Project != c.project || got.Stripped != c.stripped || got.Converted != c.converted || got.Swapped != c.swapped || got.MRS != c.mrs {
+				t.Errorf("info = %+v, want project %q stripped %v converted %v swapped %v mrs %v", got, c.project, c.stripped, c.converted, c.swapped, c.mrs)
 			}
 			again, err := ruleurl.Canonical(got.URL)
 			if err != nil || again.URL != got.URL {

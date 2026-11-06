@@ -181,8 +181,14 @@ func (d *testDialog) answer(a *App, c *ui.Context) {
 		if res.Waiting > 0 {
 			a.txt(c, a.tn("testdlg.waiting", res.Waiting), 12, 400, p.Warn).LineHeight(1.45)
 		}
+		if res.Why.Kind == app.WhyMode {
+			a.txt(c, a.t("testdlg.mode"), 12, 400, p.Text3).LineHeight(1.45)
+		}
 	})
-	d.actions(a, c)
+	// An exception made now would not decide anything until the mode is Rule.
+	if res.Why.Kind != app.WhyMode {
+		d.actions(a, c)
+	}
 }
 
 // addrList writes a few addresses.

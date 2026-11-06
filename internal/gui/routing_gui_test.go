@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"testing"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"eggbox/internal/library"
 	"eggbox/internal/routing"
 )
 
@@ -340,6 +342,83 @@ func TestRoutingMovingNeedsAPlanOfYourOwn(t *testing.T) {
 	h.mustHave("11 items · Work")
 }
 
+// An item of the plan in force is copied to a plan of the person's own from its
+// menu: the entry tells what to do first while there is none.
+func TestRoutingCopiesAnItemToAPlanOfYourOwn(t *testing.T) {
+	h := routingHarness(t, harnessOpt{})
+	h.rightClick("Telegram")
+	h.mustHave("Copy to my plan (save the plan as your own first)")
+	h.closeMenu()
+
+	// A plan of one's own, without Telegram, and back to the shipped plan.
+	h.click("More")
+	h.pick("Save as my plan…")
+	h.ui.Key(ui.Cmd, ui.KeyA)
+	h.typeText("Work")
+	h.enter()
+	h.settle()
+	h.rightClick("Telegram")
+	h.pick("Delete")
+	h.click("Delete")
+	h.mustHave("11 items · Work")
+	h.click("Work")
+	h.pick("Recommended")
+	h.mustHave("12 items · Recommended")
+
+	h.rightClick("Telegram")
+	h.mustHave("Copy to my plan")
+	h.mustNotHave("save the plan as your own first")
+	h.pick("Copy", "Work")
+	h.settle()
+	h.mustHave("“Telegram” copied to “Work”")
+	var work *routing.Plan
+	for _, pl := range h.state().Plans {
+		if pl.Kind == routing.PlanMine && pl.Name == "Work" {
+			work = pl
+		}
+	}
+	if work == nil || len(work.Items) != 12 {
+		t.Fatalf("the plan of one's own after the copy: %+v", work)
+	}
+	got := false
+	for _, it := range work.Items {
+		got = got || it.Name == "Telegram"
+	}
+	if !got {
+		t.Fatal("Telegram is not in the plan it was copied to")
+	}
+	// The plan in force was not touched.
+	h.mustHave("12 items · Recommended")
+}
+
+// A subscription that is switched off no longer updates the plan it brought,
+// but the plan stays in force with the rules it has.
+func TestRoutingSaysWhenTheSubscriptionOfThePlanIsSwitchedOff(t *testing.T) {
+	h := routingHarness(t, harnessOpt{})
+	h.click("Recommended")
+	h.pick("Aurora Cloud’s plan")
+	h.mustHave("Comes with “Aurora Cloud”", "Games", "Local sites")
+	h.mustNotHave("is switched off")
+
+	if err := h.be.EditSubscription(context.Background(), "sub-aurora", func(s *library.Subscription) { s.Enabled = false }); err != nil {
+		t.Fatal(err)
+	}
+	h.settle()
+	h.mustHave("“Aurora Cloud” is switched off, so this plan is not updated", "Games", "Local sites")
+	h.mustNotHave("Comes with “Aurora Cloud”")
+	if got := h.state().ActiveID(); got != routing.SubPlanID("sub-aurora") {
+		t.Fatalf("the plan in force is %q", got)
+	}
+
+	// And back on.
+	if err := h.be.EditSubscription(context.Background(), "sub-aurora", func(s *library.Subscription) { s.Enabled = true }); err != nil {
+		t.Fatal(err)
+	}
+	h.settle()
+	h.mustHave("Comes with “Aurora Cloud”")
+	h.mustNotHave("is switched off")
+}
+
 func TestRoutingPlansAreSwitchedAndDeleted(t *testing.T) {
 	h := routingHarness(t, harnessOpt{})
 	h.click("Recommended")
@@ -460,6 +539,26 @@ func TestRoutingSaysWhenRulesAreLeftOut(t *testing.T) {
 	h.mustHave("Some rules unsupported")
 	h.click("Telegram")
 	h.mustHave("2 rules of a type the engine cannot use are left out (process_name)")
+}
+
+// An item's page says what each of its sources is and holds: its name, the
+// project it comes from, its address (to copy), the format it was in, how many
+// domains and address ranges it has, and when it was updated and last looked at.
+func TestItemDialogSaysWhatEachSourceHolds(t *testing.T) {
+	h := routingHarness(t, harnessOpt{})
+	h.click("Streaming")
+	const netflix = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/netflix.srs"
+	h.mustHave("Sources", "Add source",
+		"geosite: netflix", netflix, "MetaCubeX", "Copy link",
+		"sing-box rules (binary) · 1,287 domains · 37 IP ranges",
+		"Updated 26 hours ago · checked 2 hours ago",
+		"geosite: disney", "geosite: hbo", "geosite: primevideo", "geosite: spotify", "geoip: netflix")
+	h.click("Copy link")
+	if got := h.ui.Clipboard(); got != netflix {
+		t.Fatalf("copied %q, want the address of the first source", got)
+	}
+	h.click("Done")
+	h.mustNotHave("Sources")
 }
 
 func TestRoutingUpdateButtonAsksForFreshFiles(t *testing.T) {

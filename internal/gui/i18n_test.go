@@ -42,6 +42,23 @@ func TestCatalogsAgree(t *testing.T) {
 	}
 }
 
+// TestNoJargonOfTheEngineIsOnTheScreens: the design keeps the words of the
+// engine and of other tools out of the screens (what a person sees are items,
+// sources and where things go), in both languages.
+func TestNoJargonOfTheEngineIsOnTheScreens(t *testing.T) {
+	jargon := map[string]*regexp.Regexp{
+		"en": regexp.MustCompile(`(?i)\b(srs|behaviou?r|rule[ -]?sets?|policy groups?)\b`),
+		"zh": regexp.MustCompile(`(?i)规则集|策略组|\b(srs|behaviou?r)\b`),
+	}
+	for lang, cat := range map[string]map[string]string{"en": catalogEN, "zh": catalogZH} {
+		for k, v := range cat {
+			if w := jargon[lang].FindString(v); w != "" {
+				t.Errorf("%s %q says %q: %q", lang, k, w, v)
+			}
+		}
+	}
+}
+
 // TestPluralsComplete: a counted phrase has both forms.
 func TestPluralsComplete(t *testing.T) {
 	for _, cat := range []map[string]string{catalogEN, catalogZH} {

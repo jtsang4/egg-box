@@ -85,7 +85,7 @@ func (a *App) until(t time.Time) string {
 	case d <= 0:
 		return a.t("time.expired")
 	case d < 90*time.Minute:
-		return a.tn("time.in_minutes", int(d.Minutes()+0.5))
+		return a.tn("time.in_minutes", max(1, int(d.Minutes()+0.5)))
 	case d < 36*time.Hour:
 		return a.tn("time.in_hours", int(d.Hours()+0.5))
 	}

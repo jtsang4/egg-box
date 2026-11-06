@@ -219,8 +219,8 @@ func build(d *doc, opts Options) (*Result, error) {
 			slots[target] = s
 			order = append(order, target)
 		} else if s.lastRun != run {
-			if !hasNote(s.item.Notes, "reordered") {
-				s.item.Notes = append(s.item.Notes, "reordered")
+			if !hasNote(s.item.Notes, routing.NoteReordered) {
+				s.item.Notes = append(s.item.Notes, routing.NoteReordered)
 			}
 			s.lastRun = run
 		}
@@ -419,7 +419,7 @@ func (b *builder) autoDest(g *group, forMain bool) (routing.Dest, []string) {
 	case n == 0:
 		return routing.Follow(), nil
 	}
-	return routing.Follow(), []string{"multi_region_auto"}
+	return routing.Follow(), []string{routing.NoteMultiRegionAuto}
 }
 
 // blocksAds reports whether a group is plainly for blocking ads: it can reject

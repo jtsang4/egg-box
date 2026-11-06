@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -229,6 +230,25 @@ func TestTooManyResources(t *testing.T) {
 	}
 	if _, err := s.Stage(0, "", "", rs); !errors.Is(err, ErrInvalidResource) {
 		t.Fatalf("got %v", err)
+	}
+}
+
+// A plan of a dozen items brings a few dozen rule sets, and a subscription's
+// plan brings its own: the old limit of 64 was too few. The limit is 256.
+func TestTheLimitOnResourcesIs256(t *testing.T) {
+	s, _ := open(t)
+	many := func(n int) []Resource {
+		rs := make([]Resource, n)
+		for i := range rs {
+			rs[i] = Resource{Name: fmt.Sprintf("set-%03d.srs", i), Data: []byte("data")}
+		}
+		return rs
+	}
+	if _, err := s.Stage(0, "", "", many(256)); err != nil {
+		t.Fatalf("256 resources: %v", err)
+	}
+	if _, err := s.Stage(0, "", "", many(257)); !errors.Is(err, ErrInvalidResource) {
+		t.Fatalf("257 resources: %v", err)
 	}
 }
 

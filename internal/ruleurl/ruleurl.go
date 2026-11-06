@@ -32,9 +32,12 @@ type Info struct {
 	Name string
 	// Stripped is set when a mirror prefix was removed.
 	Stripped bool
-	// Converted is set when the address was rewritten: a GitHub page to the
-	// raw file, a CDN address to the repository's, or an .mrs to its .srs.
+	// Converted is set when the address was rewritten to the file's own: a
+	// GitHub page to the raw file, or a CDN address to the repository's.
 	Converted bool
+	// Swapped is set when an .mrs address was replaced by the address of its
+	// sing-box counterpart.
+	Swapped bool
 	// MRS is set for a mihomo .mrs file with no sing-box counterpart known,
 	// which cannot be read.
 	MRS bool
@@ -95,7 +98,7 @@ func Canonical(raw string) (Info, error) {
 		p = trimRefs(p)
 	}
 	if np, ok := mapMRS(host, p); ok {
-		p, info.Converted = np, true
+		p, info.Swapped = np, true
 	} else if strings.HasSuffix(strings.ToLower(p), ".mrs") {
 		info.MRS = true
 	}

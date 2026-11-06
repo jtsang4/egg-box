@@ -50,6 +50,9 @@ type fixtureBackend struct {
 	failing map[string]bool
 	// partial names the rule files some of whose rules the engine cannot use.
 	partial map[string]bool
+	// lately names the rule files whose update failed just now: the copy kept
+	// is hours old, where one in failing is days old.
+	lately map[string]bool
 }
 
 // fixtureNow is the fixed "now" of the fixtures.
@@ -125,7 +128,7 @@ func fixtureDelay(i int, name string) int {
 // routing plan, a plan that came with a subscription and three exceptions.
 func newFixture() *fixtureBackend {
 	f := &fixtureBackend{set: library.DefaultSettings(), prefs: configgen.DefaultPrefs(), ver: 1,
-		down: map[string]bool{}, missing: map[string]bool{}, failing: map[string]bool{}, partial: map[string]bool{}}
+		down: map[string]bool{}, missing: map[string]bool{}, failing: map[string]bool{}, partial: map[string]bool{}, lately: map[string]bool{}}
 	f.set.Theme = "dark"
 	f.set.Language = "en"
 	f.set.OnboardingDone = true
@@ -309,12 +312,14 @@ func fixtureConns() []app.Conn {
 
 // nodeRef is how the core's reports name a node.
 func (f *fixtureBackend) nodeRef(st routing.State, n library.ActiveNode) app.NodeRef {
-	names := 0
+	// Ambiguous: another subscription has a node of this name.
+	subs := map[string]bool{}
 	for _, o := range f.nodes {
 		if o.Node.Name == n.Node.Name {
-			names++
+			subs[o.SubID] = true
 		}
 	}
+	names := len(subs)
 	return app.NodeRef{Key: n.Key(), ID: n.ID(), Name: n.Node.Name, Protocol: n.Node.Protocol(), Transport: n.Node.Transport(),
 		Region: app.RegionOf(st, n), Server: n.Node.Server, Port: n.Node.Port, SubID: n.SubID, SubName: n.SubName,
 		SubAlias: n.SubAlias, Ambiguous: names > 1}
@@ -330,6 +335,23 @@ func (f *fixtureBackend) delayOf(n library.ActiveNode) int {
 		}
 	}
 	return 0
+}
+
+// tags are the tags the core gives the nodes, by the node's key: the name, and a
+// number after it for a node whose name an earlier one has, as the generator
+// does.
+func (f *fixtureBackend) tags() map[string]string {
+	out := make(map[string]string, len(f.nodes))
+	seen := map[string]bool{}
+	for _, n := range f.nodes {
+		tag := n.Node.Name
+		for i := 2; seen[strings.ToLower(tag)]; i++ {
+			tag = fmt.Sprintf("%s %d", n.Node.Name, i)
+		}
+		seen[strings.ToLower(tag)] = true
+		out[n.Key()] = tag
+	}
+	return out
 }
 
 // fastest is the node an automatic choice ends on: the fastest that answers,
@@ -395,7 +417,7 @@ func (f *fixtureBackend) exitFor(st routing.State, d routing.Dest, group string)
 		id := *d.Node
 		if n, ok := f.find(st, id); ok && !f.down[n.Node.Name] {
 			ref := f.nodeRef(st, n)
-			info.Node, info.Member, info.DelayMS = &ref, n.Node.Name, f.delayOf(n)
+			info.Node, info.Member, info.DelayMS = &ref, f.tags()[n.Key()], f.delayOf(n)
 			return info
 		}
 		// The chosen node does not answer or is gone: a node of its region stands in.
@@ -447,6 +469,8 @@ func (f *fixtureBackend) planInfo(st routing.State) app.PlanInfo {
 				if f.failing[src.URL] {
 					ss.Err = "the server answered with an error (HTTP 503)"
 					ss.Updated, ss.Checked = fixtureNow.Add(-4*24*time.Hour), fixtureNow.Add(-4*24*time.Hour)
+				} else if f.lately[src.URL] {
+					ss.Err = "the server answered with an error (HTTP 503)"
 				}
 				if f.partial[src.URL] && ss.Present {
 					ss.Unsupported = map[string]int{"process_name": 2}
@@ -489,9 +513,15 @@ func (f *fixtureBackend) planInfo(st routing.State) app.PlanInfo {
 		}
 	}
 	pin(plancompile.OwnerMain, "", "", st.Main)
+	pin(plancompile.OwnerFallback, "", "", view.Fallback)
 	for _, r := range view.Rows {
 		if r.Item.Enabled {
 			pin(plancompile.OwnerItem, r.Item.ID, r.Item.Name, r.Item.Dest)
+		}
+	}
+	for _, x := range st.Exceptions {
+		if x.Enabled {
+			pin(plancompile.OwnerException, x.ID, x.Value, x.Dest)
 		}
 	}
 	return info
@@ -501,17 +531,18 @@ func (f *fixtureBackend) planInfo(st routing.State) app.PlanInfo {
 func (f *fixtureBackend) groups(st routing.State, exits map[string]app.ExitInfo) []app.Group {
 	var items []app.GroupItem
 	byRegion := map[string][]string{}
+	tags := f.tags()
 	for _, n := range f.nodes {
 		ref := f.nodeRef(st, n)
-		items = append(items, app.GroupItem{Tag: n.Node.Name, Type: n.Node.Type, DelayMS: f.delayOf(n), Tested: fixtureNow.Add(-4 * time.Minute), Node: &ref})
+		items = append(items, app.GroupItem{Tag: tags[n.Key()], Type: n.Node.Type, DelayMS: f.delayOf(n), Tested: fixtureNow.Add(-4 * time.Minute), Node: &ref})
 		if ref.Region != "" {
-			byRegion[ref.Region] = append(byRegion[ref.Region], n.Node.Name)
+			byRegion[ref.Region] = append(byRegion[ref.Region], tags[n.Key()])
 		}
 	}
 	best, _ := f.fastest(st, "")
 	autoSel := ""
 	if best != nil {
-		autoSel = best.Name
+		autoSel = tags[best.Key]
 	}
 	proxyItems := []app.GroupItem{{Tag: configgen.TagAuto, Type: "urltest"}}
 	var regions []app.Group
@@ -535,7 +566,7 @@ func (f *fixtureBackend) groups(st routing.State, exits map[string]app.ExitInfo)
 		}
 		sel := mem[0].Tag
 		if ref, _ := f.fastest(st, code); ref != nil {
-			sel = ref.Name
+			sel = tags[ref.Key]
 		}
 		regions = append(regions, app.Group{Tag: configgen.RegionPrefix + code, Type: "urltest", Items: mem, Selected: sel})
 	}
@@ -778,7 +809,20 @@ func (f *fixtureBackend) TestURL(ctx context.Context, raw string) (*app.TestURLR
 	}
 	f.mu.Lock()
 	online := f.snap.Phase.Online()
+	mode := f.snap.Status.GetMode()
 	f.mu.Unlock()
+	// The core's own mode comes before everything the plan says.
+	if online && (mode == configgen.ModeGlobal || mode == configgen.ModeDirect) {
+		res.Why = app.Why{Kind: app.WhyMode}
+		res.Dest = routing.Direct()
+		if mode == configgen.ModeGlobal {
+			res.Dest = routing.Follow()
+			if ex := f.exitFor(st, routing.Follow(), configgen.TagProxy); ex.Node != nil {
+				res.Exit = &ex
+			}
+		}
+		return res, nil
+	}
 	finish := func(d routing.Dest, group string) {
 		res.Dest = d
 		if online && d.Kind != routing.DestDirect && d.Kind != routing.DestReject {
@@ -813,6 +857,17 @@ func (f *fixtureBackend) TestURL(ctx context.Context, raw string) (*app.TestURLR
 			}
 		}
 	}
+	// Names the plan has rules about addresses for are looked up first: this
+	// one is answered with four addresses, and two items could not take part.
+	if strings.HasSuffix(host, ".lookedup.example") {
+		res.Resolved, res.Waiting = true, 2
+		for _, a := range []string{"203.0.113.5", "203.0.113.6", "203.0.113.7", "203.0.113.8"} {
+			res.Addrs = append(res.Addrs, netip.MustParseAddr(a))
+		}
+		res.Why = app.Why{Kind: app.WhyFallback}
+		finish(view.Fallback, "fallback")
+		return res, nil
+	}
 	// A name nobody can look up: the plan has rules about addresses, so the
 	// core turns it away (the fixture's one such name is under nowhere.example).
 	if strings.HasSuffix(host, ".nowhere.example") {
@@ -837,9 +892,13 @@ func (f *fixtureBackend) PreviewRuleSet(ctx context.Context, raw string) (*app.R
 	case !strings.HasPrefix(raw, "https://"):
 		return nil, ruleurl.ErrAddress
 	}
+	// What was done to the address shows in the answer, as the service's does.
 	return &app.RuleSetPreview{
 		URL: raw, Display: raw, Name: "my-list", Format: rulefmt.FormatSingBox, Project: "",
-		Stats: rulefmt.Stats{Domain: 128, IP: 4, Other: 1, Unsupported: map[string]int{"process_name": 2}},
+		Stripped:  strings.Contains(raw, "mirror.example/https://"),
+		Converted: strings.HasPrefix(raw, "https://github.com/"),
+		Swapped:   strings.HasSuffix(raw, ".mrs"),
+		Stats:     rulefmt.Stats{Domain: 128, IP: 4, Other: 1, Unsupported: map[string]int{"process_name": 2}},
 	}, nil
 }
 
@@ -856,6 +915,7 @@ func (f *fixtureBackend) UpdateRuleData(ctx context.Context, force bool) error {
 	f.mu.Lock()
 	f.missing = map[string]bool{}
 	f.failing = map[string]bool{}
+	f.lately = map[string]bool{}
 	f.mu.Unlock()
 	f.refresh()
 	return nil

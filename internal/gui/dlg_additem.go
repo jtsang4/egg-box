@@ -274,7 +274,7 @@ func (d *addDialog) entryRow(a *App, c *ui.Context, r addRow) {
 			a.txt(c, e.Desc(a.lang), 12, 400, p.Text3).SingleLine()
 		})
 		if covered {
-			a.chip(c, a.t("adddlg.covered", "name", r.covered), toneGood, "check")
+			a.chip(c, a.t("adddlg.covered"), toneGood, "check")
 		} else {
 			a.chip(c, e.Class.Name(a.lang), toneNeutral, "")
 		}
@@ -499,6 +499,9 @@ func (d *addDialog) previewCard(a *App, c *ui.Context) {
 		}
 		if pv.Converted {
 			a.txt(c, a.t("adddlg.converted"), 12, 400, p.Text3).LineHeight(1.5)
+		}
+		if pv.Swapped {
+			a.txt(c, a.t("adddlg.swapped"), 12, 400, p.Text3).LineHeight(1.5)
 		}
 		ui.Row(c).Justify(ui.End).Children(func() {
 			label := a.t("adddlg.use")

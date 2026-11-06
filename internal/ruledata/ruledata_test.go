@@ -363,7 +363,7 @@ func TestMihomoBinaryFilesAreNamedAsUnreadable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch(mapped .mrs): %v", err)
 	}
-	if got.Info.URL != ruleurl.GeoSite("openai") || got.Parsed.Format != rulefmt.FormatSRS || !got.Info.Converted {
+	if got.Info.URL != ruleurl.GeoSite("openai") || got.Parsed.Format != rulefmt.FormatSRS || !got.Info.Swapped || got.Info.Converted {
 		t.Errorf("mapped fetch = %+v", got.Info)
 	}
 }

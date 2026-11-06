@@ -353,6 +353,67 @@ type worldSpec struct {
 	// nodes is how many nodes the subscription has (the three of this
 	// machine unless a real provider's profile brings its own).
 	nodes int
+	// legacy, when set, starts the application on the data an older version
+	// left behind (its subscription is a local one with the same nodes)
+	// instead of on an empty library.
+	legacy *legacySpec
+}
+
+// legacySpec is what the version before the routing plan left in the library:
+// the preset the person picked, the rules they wrote, and the node they chose.
+type legacySpec struct {
+	preset   string
+	blockAds bool
+	rules    []map[string]string
+	// node is the name of the node chosen (found again by its key), or
+	// region the "region-XX" of a chosen region.
+	node, region string
+}
+
+// writeLegacyLibrary lays the library an older version wrote in dir: one local
+// subscription made of body, and the routing fields of the old format.
+func writeLegacyLibrary(t *testing.T, dir string, secrets library.SecretStore, body string, l legacySpec) library.Subscription {
+	t.Helper()
+	lib, err := library.Open(dir, library.Options{Secrets: secrets})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := subscription.Parse([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub, err := lib.AddLocal("Mine", res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := l.region
+	for _, n := range res.Nodes {
+		if n.Name == l.node {
+			selected = n.Key()
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "library.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc["version"] = 1
+	delete(doc, "routing")
+	prefs := doc["prefs"].(map[string]any)
+	prefs["preset"], prefs["blockAds"], prefs["regionGroups"] = l.preset, l.blockAds, true
+	doc["rules"] = l.rules
+	doc["settings"].(map[string]any)["selectedNode"] = selected
+	out, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "library.json"), out, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return sub
 }
 
 // nodesOnly is a subscription of the three nodes and nothing else: the
@@ -406,10 +467,14 @@ func newWorld(t *testing.T, opts ...func(*worldSpec)) *world {
 		httpc = &http.Client{Timeout: 90 * time.Second}
 		w.dataWait = 5 * time.Minute
 	}
+	dataDir, secrets := t.TempDir(), library.NewMemorySecrets()
+	if spec.legacy != nil {
+		w.sub = writeLegacyLibrary(t, filepath.Join(dataDir, "library"), secrets, body, *spec.legacy)
+	}
 	rt, err := boot.Start(ctx(t), boot.Config{
 		Mode:       boot.Dev,
-		DataDir:    t.TempDir(),
-		Secrets:    library.NewMemorySecrets(),
+		DataDir:    dataDir,
+		Secrets:    secrets,
 		Dial:       transport.DialDev(w.stack.socket),
 		HTTPClient: httpc,
 		Resolve: func(c context.Context, host string) ([]netip.Addr, error) {
@@ -435,9 +500,11 @@ func newWorld(t *testing.T, opts ...func(*worldSpec)) *world {
 	if _, err := w.svc.SavePrefs(ctx(t), prefs); err != nil {
 		t.Fatalf("preferences: %v", err)
 	}
-	w.sub, _, err = w.svc.AddSubscription(ctx(t), "", srv.URL+"/sub/"+m.token, library.RemoteOptions{})
-	if err != nil {
-		t.Fatalf("add the subscription: %v", err)
+	if spec.legacy == nil {
+		w.sub, _, err = w.svc.AddSubscription(ctx(t), "", srv.URL+"/sub/"+m.token, library.RemoteOptions{})
+		if err != nil {
+			t.Fatalf("add the subscription: %v", err)
+		}
 	}
 	if spec.nodes == 0 {
 		spec.nodes = len(nodeNames)
@@ -703,6 +770,130 @@ func TestTheCoreFollowsThePlanTheWayTheTestURLSaysItWill(t *testing.T) {
 		until(t, "the suffix exception to be gone", 20*time.Second, func() bool { return w.probe("wiki.corp.example", directPort).body == jp1 })
 		w.check("wiki.corp.example", directPort, expect{app.WhyFallback, "", []string{jp1}, "the exception is deleted"})
 	})
+
+	// The mode is the first thing the core asks: in Global everything leaves
+	// through the main exit and in Direct nothing does, the local network and
+	// the exceptions included; the dialog says the same, and says it is the mode.
+	t.Run("the routing mode comes before everything the plan says", func(t *testing.T) {
+		setMode := func(mode string) {
+			t.Helper()
+			if err := w.svc.SetMode(ctx(t), mode); err != nil {
+				t.Fatalf("SetMode(%s): %v", mode, err)
+			}
+			// The core has the mode when SetMode returns, and the connections
+			// made from then on show it. The dialog answers from what the app
+			// knows, and the app learns the mode from the status the agent
+			// publishes a moment later: wait for that, or the dialog is asked
+			// while it still speaks of the earlier mode.
+			until(t, "the app to know the mode", 20*time.Second, func() bool {
+				return w.svc.Snapshot().Status.GetMode() == mode
+			})
+		}
+		t.Cleanup(func() { _ = w.svc.SetMode(context.Background(), configgen.ModeRule) })
+		everywhere := func(body string, dest routing.DestKind) {
+			t.Helper()
+			for _, c := range []struct {
+				host string
+				port int
+				note string
+			}{
+				{"chat.category-ai-cn.example", directPort, "a name of an item that follows the main exit"},
+				{"www.cn.example", directPort, "a domestic name"},
+				{"www.google.example", directPort, "a service the plan sends direct"},
+				{"app.private.category-ai-cn.example", directPort, "a name an exception sends direct"},
+				{"anything.unlisted.example", 8443, "a port an exception sends to another node"},
+				{"127.0.0.1", directPort, "this machine"},
+			} {
+				if c.host == "anything.unlisted.example" && body == "exit-direct" {
+					continue // nothing here knows the name: a direct connection has nowhere to go
+				}
+				w.check(c.host, c.port, expect{app.WhyMode, "", []string{body}, c.note})
+				if got := w.predicted(c.host, c.port).Dest.Kind; got != dest {
+					t.Errorf("%s:%d (%s): the dialog sends it to %v, the core to %q", c.host, c.port, c.note, got, body)
+				}
+			}
+		}
+		setMode(configgen.ModeGlobal)
+		everywhere(jp1, routing.DestFollow)
+		setMode(configgen.ModeDirect)
+		everywhere(direct, routing.DestDirect)
+		// Back in Rule mode the plan decides again.
+		setMode(configgen.ModeRule)
+		w.check("www.cn.example", directPort, expect{app.WhyItem, "b-cn", []string{direct}, "back in Rule mode"})
+		w.check("www.google.example", directPort, expect{app.WhyItem, "b-google", []string{direct}, "back in Rule mode"})
+		w.check("t.telegram.example", directPort, expect{app.WhyItem, "b-telegram", []string{hk1}, "back in Rule mode"})
+	})
+}
+
+// The first start after an upgrade, in the real core: what the older version
+// kept (the preset the person picked, the rules they wrote, the node they
+// chose, whether ads were blocked) has to come out as the same behaviour, with
+// the plan's rule files fetched before the first connection, and the dialog has
+// to agree with the core about every one of them.
+func TestAnOlderVersionsDataUpgradesAndConnects(t *testing.T) {
+	rules := []map[string]string{
+		{"kind": "domain_suffix", "value": "*.Corp.Example", "target": "direct"},
+		{"kind": "domain_keyword", "value": "tracker", "target": "reject"},
+		{"kind": "port", "value": "8443", "target": "Proxy"},
+		{"kind": "ip_cidr", "value": "not-an-ip", "target": "direct"}, // cannot be carried over
+	}
+	for _, c := range []struct {
+		name, preset string
+		blockAds     bool
+		// where a domestic name and an address nobody claims go
+		domestic, rest string
+	}{
+		{"the default preset, ads blocked", "china", true, "exit-direct", "exit-Japan 02"},
+		{"everything through the proxy", "proxy-all", false, "exit-Japan 02", "exit-Japan 02"},
+		{"only the foreign sites through the proxy", "foreign-only", false, "exit-direct", "exit-direct"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w := newWorld(t, func(s *worldSpec) {
+				s.legacy = &legacySpec{preset: c.preset, blockAds: c.blockAds, rules: rules, node: "Japan 02"}
+			})
+			directPort := portOf(t, w.direct)
+			w.dns.know("www.cn.example", "127.0.0.1")
+			w.dns.know("wiki.corp.example", "127.0.0.1")
+
+			st := w.svc.Routing()
+			if len(st.Exceptions) != 3 {
+				t.Fatalf("the rules came out as %+v", st.Exceptions)
+			}
+			if st.Main.Kind != routing.DestNode || st.Main.Node == nil || st.Main.Node.Name != "Japan 02" || st.Main.Node.Sub != w.sub.ID {
+				t.Fatalf("the chosen node came out as %+v (%+v)", st.Main, st.Main.Node)
+			}
+			ids := []string{st.Exceptions[0].ID, st.Exceptions[1].ID, st.Exceptions[2].ID}
+
+			w.connect()
+			// What a rule of the person's sends "through the proxy" goes where the main exit goes.
+			until(t, "the chosen node to be the main exit", 20*time.Second, func() bool {
+				return w.probe("anything.unlisted.example", 8443).body == "exit-Japan 02"
+			})
+
+			w.check("www.cn.example", directPort, expect{app.WhyItem, "b-cn", []string{c.domestic}, "a domestic name"})
+			if c.rest == "exit-direct" {
+				// Whatever this machine can reach counts as domestic, so an
+				// address nobody claims has nowhere to go: the request fails,
+				// but the core did try to leave directly, as the dialog said.
+				pred := w.predicted("203.0.113.200", directPort)
+				o := w.probe("203.0.113.200", directPort)
+				if pred.Why.Kind != app.WhyFallback || pred.Dest.Kind != routing.DestDirect {
+					t.Errorf("the dialog says %+v to %v for an address nobody claims", pred.Why, pred.Dest)
+				}
+				if !o.tracked || o.conn.Why != pred.Why || o.conn.Outbound != "direct" {
+					t.Errorf("the core did %+v through %q (chain %v), tracked=%v", o.conn.Why, o.conn.Outbound, o.conn.Chain, o.tracked)
+				}
+			} else {
+				w.check("203.0.113.200", directPort, expect{app.WhyFallback, "", []string{c.rest}, "an address nobody claims"})
+			}
+			w.check("wiki.corp.example", directPort, expect{app.WhyException, ids[0], []string{"exit-direct"}, "a rule the person wrote: direct"})
+			w.check("ads.tracker.example", directPort, expect{app.WhyException, ids[1], nil, "a rule the person wrote: reject"})
+			w.check("anything.unlisted.example", 8443, expect{app.WhyException, ids[2], []string{"exit-Japan 02"}, "a rule the person wrote: the proxy"})
+			if c.blockAds {
+				w.check("x.category-ads-all.example", directPort, expect{app.WhyItem, "b-ads", nil, "ads were blocked before"})
+			}
+		})
+	}
 }
 
 // Where the plan asks about addresses the core looks a name up first, and
@@ -897,6 +1088,11 @@ func TestTheMainExitFailsOverToTheSameRegionAndComesBack(t *testing.T) {
 		return w.probe("203.0.113.200", directPort).body == "exit-Japan 01"
 	})
 	revision := w.revision()
+	// The service says the node that was chosen carries the main exit.
+	until(t, "the service to say Japan 01 carries the main exit", 20*time.Second, func() bool {
+		ex := w.svc.Snapshot().Exits["main"]
+		return ex.Node != nil && ex.Node.Name == "Japan 01" && !ex.StandIn
+	})
 
 	w.nodes["Japan 01"].stop()
 	failed := 0
@@ -921,6 +1117,12 @@ func TestTheMainExitFailsOverToTheSameRegionAndComesBack(t *testing.T) {
 			t.Errorf("traffic went to another region")
 		}
 	}
+	// What the screens show is what happened: the node that stands in carries
+	// the main exit, and the one that was chosen is the one it stands in for.
+	until(t, "the service to say Japan 02 stands in for Japan 01", 20*time.Second, func() bool {
+		ex := w.svc.Snapshot().Exits["main"]
+		return ex.StandIn && ex.Node != nil && ex.Node.Name == "Japan 02" && ex.Wanted != nil && ex.Wanted.Name == "Japan 01"
+	})
 
 	// A node is measured once a minute while traffic flows and it has a
 	// stand-in, so coming back takes up to that long.
@@ -935,6 +1137,10 @@ func TestTheMainExitFailsOverToTheSameRegionAndComesBack(t *testing.T) {
 	if w.revision() != revision {
 		t.Errorf("the recovery needed a new configuration")
 	}
+	until(t, "the service to say Japan 01 carries the main exit again", 20*time.Second, func() bool {
+		ex := w.svc.Snapshot().Exits["main"]
+		return ex.Node != nil && ex.Node.Name == "Japan 01" && !ex.StandIn
+	})
 }
 
 // ------------------------------------------------- a plan that comes with a provider

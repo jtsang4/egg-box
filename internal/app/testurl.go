@@ -16,6 +16,7 @@ import (
 	"golang.org/x/net/idna"
 	"golang.org/x/net/publicsuffix"
 
+	"eggbox/internal/configgen"
 	"eggbox/internal/plancompile"
 	"eggbox/internal/routing"
 	"eggbox/internal/rulefmt"
@@ -43,7 +44,8 @@ type TestURLResult struct {
 	// answer of the name server"), not given.
 	Resolved   bool
 	ResolveErr string
-	// Why is what decided: an item, an exception, the fallback or the local network.
+	// Why is what decided: the routing mode, an item, an exception, the
+	// fallback or the local network.
 	Why Why
 	// Dest is where the matching row sends traffic.
 	Dest   routing.Dest
@@ -119,10 +121,15 @@ type matcherKey struct {
 }
 
 // TestURL says where an address would go, by evaluating the plan the way the
-// core does: the local network, the exceptions in order, the host-name part
-// of every item, then (after looking the name up) the address part, then the
-// fallback. It needs no connection; with one, it also says which node the
-// traffic uses now.
+// core does: the routing mode, the local network, the exceptions in order, the
+// host-name part of every item, then (after looking the name up) the address
+// part, then the fallback. It needs no connection; with one, it also says
+// which node the traffic uses now.
+//
+// The mode is the first thing the core asks: in Global every connection goes
+// through the main exit and in Direct none does, whatever the plan says. The
+// core's mode is only known while it runs; without it the plan is what is
+// being asked about.
 //
 // The core looks a name up once, where the first rule about addresses is, and
 // turns the connection away when the name cannot be looked up: that is what
@@ -173,6 +180,20 @@ func (s *Service) TestURL(ctx context.Context, raw string) (*TestURLResult, erro
 			q.Addrs = append(q.Addrs, a)
 		}
 		res.Addrs = q.Addrs
+	}
+
+	if snap := s.Snapshot(); snap.Phase.Online() {
+		switch snap.Status.GetMode() {
+		case configgen.ModeGlobal:
+			res.Why, res.Dest = Why{Kind: WhyMode}, routing.Follow()
+			if e, ok := snap.Exits["main"]; ok {
+				res.Exit = &e
+			}
+			return res, nil
+		case configgen.ModeDirect:
+			res.Why, res.Dest = Why{Kind: WhyMode}, routing.Direct()
+			return res, nil
+		}
 	}
 
 	view := v.state.View()

@@ -650,6 +650,47 @@ func TestChangingWhereAnItemGoesSwitchesWithoutRestartingTheCore(t *testing.T) {
 	}
 }
 
+// What a connection takes for the configuration of the core is the one it
+// pushed, not whatever the plan the screens show was compiled last. That plan
+// is compiled on its own schedule from what the library holds, so one written
+// while the connection comes up is in it and not in the core, and the next
+// apply has to bring it to the core instead of finding nothing to do.
+func TestAnEditMadeWhileConnectingReachesTheCoreWithTheNextApply(t *testing.T) {
+	h := newHarness(t, nil)
+	h.addSubscription()
+	h.waitPlan("the built-in plan's rule files", func(p app.PlanInfo) bool { return len(p.Items) == 12 && p.Missing == 0 })
+
+	release := h.agent.Engine.BlockStart()
+	t.Cleanup(release)
+	connected := make(chan error, 1)
+	go func() { connected <- h.svc.Connect(h.ctx(), app.ConnectOptions{}) }()
+	// The configuration is stored and the core is about to start with it.
+	h.waitFor("the configuration to be stored", func(s *app.Snapshot) bool { return s.Applied.Revision > 0 })
+	h.edit(func(st *routing.State) error {
+		_, err := st.AddException(routing.Exception{Kind: routing.EntryDomainSuffix, Value: "late.example", Dest: routing.Direct(), Enabled: true})
+		return err
+	})
+	release()
+	if err := <-connected; err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor("connected", func(s *app.Snapshot) bool { return s.Phase == app.PhaseConnected })
+	if strings.Contains(string(h.agent.Engine.Current().JSON), "late.example") {
+		t.Fatal("this needs a core that started without the exception")
+	}
+
+	report, err := h.svc.Apply(h.ctx())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Switched || report.Skipped {
+		t.Errorf("an exception is a change of the configuration, not of a selection: %+v", report)
+	}
+	if !strings.Contains(string(h.agent.Engine.Current().JSON), "late.example") {
+		t.Error("the exception written while the connection came up never reached the core")
+	}
+}
+
 func waitCall(t *testing.T, a *testkit.Agent, want string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)

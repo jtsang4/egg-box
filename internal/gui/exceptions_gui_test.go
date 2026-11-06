@@ -250,7 +250,14 @@ func TestExceptionsEmptyCardTeaches(t *testing.T) {
 		be.arrange(func(st *routing.State) { st.Exceptions = nil })
 	}})
 	h.mustHave("My exceptions", "Paste a list", "Add")
-	h.mustHave("Nothing here yet. Add a site, an address or a program that should always go its own way, or paste a list.")
+	h.mustHave("A site going the wrong way? Right-click it in the connections list, or paste its domain here.")
+}
+
+func TestExceptionsEmptyCardTeachesInChinese(t *testing.T) {
+	h := routingHarness(t, harnessOpt{lang: "zh", setup: func(be *fixtureBackend, _ *Options) {
+		be.arrange(func(st *routing.State) { st.Exceptions = nil })
+	}})
+	h.mustHave("我的例外", "网站走错了？在连接列表里右键，或者在这里粘贴域名。")
 }
 
 // ------------------------------------------------------------- pasted lists

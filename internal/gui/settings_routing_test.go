@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+	"time"
+
+	"github.com/egoist/mygo/ui"
 
 	"eggbox/internal/routing"
 )
@@ -146,6 +149,87 @@ func TestSettingsRuleData(t *testing.T) {
 	if got := h.be.Settings().RuleUpdateHours; got != 168 {
 		t.Fatalf("update interval = %d hours", got)
 	}
+}
+
+// A mirror of one's own is the last place the rule files are asked for. The box
+// takes a web address, says so when what was written is none (and keeps
+// nothing), saves with Return or the button, and an empty box takes the mirror
+// away again.
+func TestSettingsTakeAMirrorOfTheUsersOwn(t *testing.T) {
+	h := settingsHarness(t, harnessOpt{})
+	h.mustHave("A mirror of your own", "Asked last, when the others cannot deliver a file.")
+	h.mustNotHave("This is not a web address")
+	if got := h.be.Settings().RuleMirrorPrefix; got != "" {
+		t.Fatalf("a mirror was set from the start: %q", got)
+	}
+
+	// Something that is no address is told so and kept nowhere.
+	h.click("https://mirror.example/")
+	h.typeText("mirror.example")
+	h.click("Save")
+	h.settle()
+	h.mustHave("This is not a web address. Write one like https://mirror.example/")
+	if got := h.be.Settings().RuleMirrorPrefix; got != "" {
+		t.Fatalf("something that is no address was kept: %q", got)
+	}
+
+	// Writing something else takes the complaint away; Return keeps the address.
+	h.click("https://mirror.example/")
+	h.ui.Key(ui.Cmd, ui.KeyA)
+	h.typeText("https://mirror.example/")
+	h.mustNotHave("This is not a web address")
+	h.enter()
+	h.settle()
+	if got := h.be.Settings().RuleMirrorPrefix; got != "https://mirror.example/" {
+		t.Fatalf("the mirror is %q", got)
+	}
+	h.mustNotHave("This is not a web address")
+	if h.shows("Save") {
+		t.Fatal("the button to keep a change is there although nothing is changed")
+	}
+
+	// A second address is kept with the button.
+	h.ui.Key(ui.Cmd, ui.KeyA)
+	h.typeText("https://gh-proxy.example/")
+	if !h.shows("Save") {
+		t.Fatal("a change was typed and there is no button to keep it")
+	}
+	h.click("Save")
+	h.settle()
+	if got := h.be.Settings().RuleMirrorPrefix; got != "https://gh-proxy.example/" {
+		t.Fatalf("the mirror is %q", got)
+	}
+	if h.shows("Save") {
+		t.Fatal("the button to keep a change is there although the change was kept")
+	}
+
+	// An empty box takes the mirror away.
+	h.click("https://mirror.example/")
+	h.ui.Key(ui.Cmd, ui.KeyA)
+	h.ui.Key(0, ui.KeyBackspace)
+	h.ui.Advance(100 * time.Millisecond)
+	h.enter()
+	h.settle()
+	if got := h.be.Settings().RuleMirrorPrefix; got != "" {
+		t.Fatalf("the mirror is %q, want none", got)
+	}
+}
+
+// shows says whether a line of text on screen is exactly this one (mustHave
+// finds a word inside a longer sentence as well).
+func (h *harness) shows(text string) bool {
+	h.t.Helper()
+	return slices.Contains(h.ui.Texts(), text)
+}
+
+func TestSettingsTakeAMirrorOfTheUsersOwnInChinese(t *testing.T) {
+	h := settingsHarness(t, harnessOpt{lang: "zh"})
+	h.mustHave("自己的镜像", "其他下载源都下载不了时，最后试这个。")
+	h.click("https://mirror.example/")
+	h.typeText("不是网址")
+	h.click("保存")
+	h.settle()
+	h.mustHave("这不是一个网址，请写成 https://mirror.example/ 这样")
 }
 
 func TestSettingsRuleDataSaysWhatIsMissingAndWhatFailed(t *testing.T) {

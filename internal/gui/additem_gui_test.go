@@ -211,6 +211,36 @@ func TestAddItemFromALink(t *testing.T) {
 	}
 }
 
+// The preview says what was done to the address that was pasted, in words that
+// fit what was done: a mirror's prefix taken off, a page changed to the file
+// itself, an .mrs swapped for its sing-box twin.
+func TestAddItemLinkPreviewSaysWhatWasDoneToTheAddress(t *testing.T) {
+	for _, c := range []struct {
+		in  string
+		say string
+		not []string
+	}{
+		{"https://rules.example/lists/plain.json", "", []string{"prefix was taken off", "changed to the address", "swapped for its sing-box twin"}},
+		{"https://mirror.example/https://raw.githubusercontent.com/o/r/main/x.list", "A download mirror’s prefix was taken off the address.",
+			[]string{"changed to the address", "swapped for its sing-box twin"}},
+		{"https://github.com/o/r/blob/main/x.list", "The address was changed to the address of the file itself.",
+			[]string{"prefix was taken off", "swapped for its sing-box twin"}},
+		{"https://rules.example/meta/geo/geosite/x.mrs", "An .mrs address (the kind only mihomo reads) was swapped for its sing-box twin.",
+			[]string{"prefix was taken off", "changed to the address"}},
+	} {
+		h := addItemHarness(t)
+		h.click("A link")
+		h.typeText(c.in)
+		h.enter()
+		h.settle()
+		h.mustHave("Recognized: ", "Use this file")
+		if c.say != "" {
+			h.mustHave(c.say)
+		}
+		h.mustNotHave(c.not...)
+	}
+}
+
 func TestAddItemLinkThatIsNoAddress(t *testing.T) {
 	h := addItemHarness(t)
 	h.click("A link")

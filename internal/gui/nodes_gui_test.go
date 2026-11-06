@@ -133,6 +133,38 @@ func TestNodeMenuUsesTheNodeForAnItem(t *testing.T) {
 	h.mustHave("Osaka 01")
 }
 
+// The row under the strip lists the items that go through a node of their own
+// and the node each one uses right now, with its delay.
+func TestNodesSayWhichNodeEachItemUsesNow(t *testing.T) {
+	// Nothing goes through a node of its own: nothing to list.
+	h := nodesHarness(t, nil)
+	h.mustNotHave("Used by items")
+
+	// The node that was chosen answers.
+	h = nodesHarness(t, seoulIsChosen)
+	h.mustHave("Used by items", "Telegram", "Seoul 01 · 132 ms")
+
+	// It does not: the node that stands in for it is the one named.
+	h = nodesHarness(t, func(be *fixtureBackend, o *Options) {
+		seoulIsChosen(be, o)
+		be.down["Seoul 01"] = true
+		be.refresh()
+	})
+	h.mustHave("Used by items", "Telegram", "Tokyo 01 · 58 ms")
+	h.mustNotHave("Seoul 01 · 132 ms")
+
+	// An item that is switched off is not using anything.
+	h = nodesHarness(t, func(be *fixtureBackend, o *Options) {
+		seoulIsChosen(be, o)
+		be.arrange(func(st *routing.State) {
+			if err := st.SetItemEnabled("b-telegram", false); err != nil {
+				panic(err)
+			}
+		})
+	})
+	h.mustNotHave("Used by items")
+}
+
 func TestNodeMenuLeavesTheNodeOutOfTheAutomaticChoice(t *testing.T) {
 	h := nodesHarness(t, nil)
 	id := nodeID(t, h.be, "Tokyo 01")

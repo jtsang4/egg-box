@@ -76,6 +76,52 @@ func TestDanglingReferencesAreRejectedWithTheirLocation(t *testing.T) {
 	}
 }
 
+// The group of a node the person pinned (the member they chose, and the groups
+// that stand in for it while it is unhealthy) is allowed, and checked like the
+// others: what it names must exist, its default must be one of its members, and
+// a stand-in must be a group, not a single node.
+func TestAPreferredGroupIsAllowedAndWhatItNamesMustExist(t *testing.T) {
+	const (
+		urltest = `{"type": "urltest", "tag": "auto", "outbounds": ["node-a"], "url": "https://www.gstatic.com/generate_204"}`
+		pinned  = `{"type": "preferred", "tag": "pin", "outbounds": ["node-a"], "default": "node-a", "stand_ins": ["auto"], "url": "https://www.gstatic.com/generate_204", "interval": "1m"}`
+	)
+	if strings.Count(refBase, urltest) != 1 {
+		t.Fatal("the fixture does not hold the group this test builds on")
+	}
+	with := func(groups ...string) string {
+		cfg := strings.Replace(refBase, urltest, urltest+", "+strings.Join(groups, ", "), 1)
+		// Something is sent to the group, and the person's selector offers it.
+		cfg = strings.Replace(cfg, `{"action": "sniff"},`, `{"action": "sniff"}, {"domain": ["pinned.example"], "outbound": "pin"},`, 1)
+		return strings.Replace(cfg, `"outbounds": ["node-a", "direct"]`, `"outbounds": ["node-a", "direct", "pin"]`, 1)
+	}
+	mustPass(t, prod(), with(pinned))
+	// A stand-in is any group: a selector, or another group of the same kind.
+	mustPass(t, prod(), with(strings.Replace(pinned, `"stand_ins": ["auto"]`, `"stand_ins": ["proxy"]`, 1)))
+	mustPass(t, prod(), with(pinned, `{"type": "preferred", "tag": "pin2", "outbounds": ["direct"], "default": "direct"}`,
+		`{"type": "preferred", "tag": "pin3", "outbounds": ["node-a"], "stand_ins": ["pin2"]}`))
+
+	for _, c := range []struct {
+		name, from, to, code, path string
+	}{
+		{"a member that is not there", `"outbounds": ["node-a"], "default": "node-a", "stand_ins"`, `"outbounds": ["ghost"], "default": "ghost", "stand_ins"`, "reference_missing", "$.outbounds[4].outbounds[0]"},
+		{"a default that is not a member", `"default": "node-a", "stand_ins"`, `"default": "direct", "stand_ins"`, "reference_missing", "$.outbounds[4].default"},
+		{"a stand-in that is not there", `"stand_ins": ["auto"]`, `"stand_ins": ["ghost"]`, "reference_missing", "$.outbounds[4].stand_ins[0]"},
+		{"a stand-in that is a single node", `"stand_ins": ["auto"]`, `"stand_ins": ["node-a"]`, "reference_invalid", "$.outbounds[4].stand_ins[0]"},
+	} {
+		if !strings.Contains(pinned, c.from) {
+			t.Fatalf("%s: the fixture does not contain %q", c.name, c.from)
+		}
+		res := mustFail(t, prod(), with(strings.Replace(pinned, c.from, c.to, 1)), c.code)
+		found := false
+		for _, is := range res.Errors() {
+			found = found || (is.Code == c.code && is.Path == c.path)
+		}
+		if !found {
+			t.Errorf("%s: no %s at %s:\n%s", c.name, c.code, c.path, dump(res))
+		}
+	}
+}
+
 func TestResolveActionNeedsAKnownServer(t *testing.T) {
 	ok := strings.Replace(refBase, `{"action": "sniff"},`, `{"action": "sniff"}, {"action": "resolve", "server": "dns-direct"},`, 1)
 	mustPass(t, prod(), ok)

@@ -13,16 +13,10 @@ import (
 // destOpts shapes a destination picker.
 type destOpts struct {
 	key string
-	// main is the picker of the main exit: automatic, a region or a node, and
-	// nothing else (it cannot follow itself, go direct or block).
-	main bool
 	// width of the button; 0 takes the usual one.
 	width float32
 	// title says what the choice is for, in the node list's header.
 	title string
-	// plain keeps the picker quiet: no tint for blocking or a node, for
-	// places where the button is a form field and not a state.
-	plain bool
 }
 
 const destWidth = 196
@@ -47,11 +41,8 @@ func (a *App) destButton(c *ui.Context, o destOpts, cur routing.Dest, pick func(
 	case missing:
 		b.Background(p.Warn.Alpha(0.12+0.06*hov)).Border(1, p.Warn.Alpha(0.35))
 		col = p.Warn
-	case t == toneNeutral || o.plain:
+	case t == toneNeutral:
 		b.Background(p.Field.Mix(p.PanelHi, hov)).Border(1, p.Line.Mix(p.LineHi, hov))
-		if t == toneBlue {
-			col = p.Text2
-		}
 	default:
 		b.Background(col.Alpha(0.1+0.07*hov)).Border(1, col.Alpha(0.2+0.1*hov))
 	}
@@ -62,7 +53,7 @@ func (a *App) destButton(c *ui.Context, o destOpts, cur routing.Dest, pick func(
 	}
 	b.Children(func() {
 		ui.Icon(c, icon(destIcon(cur))).Size(14, 14).TextColor(col).Shrink(0)
-		a.txt(c, label, 13, 600, boolOr(t == toneNeutral || o.plain, p.Text, p.Text.Mix(col, 0.25))).SingleLine().Grow(1).Basis(0)
+		a.txt(c, label, 13, 600, boolOr(t == toneNeutral, p.Text, p.Text.Mix(col, 0.25))).SingleLine().Grow(1).Basis(0)
 		ui.Icon(c, icon("chevron-down")).Size(14, 14).TextColor(p.Text3).Shrink(0)
 	})
 	b.PopoverMenuButton(a.destMenu(o, cur, pick))
@@ -72,22 +63,16 @@ func (a *App) destButton(c *ui.Context, o destOpts, cur routing.Dest, pick func(
 // destMenu builds the one menu of destinations.
 func (a *App) destMenu(o destOpts, cur routing.Dest, pick func(routing.Dest)) func(m *ui.Menu) {
 	return func(m *ui.Menu) {
-		if o.main {
-			if m.Item(a.t("dest.auto.menu")).Radio(cur.Kind == routing.DestAuto).Chosen() {
-				pick(routing.Auto())
-			}
-		} else {
-			if m.Item(a.t("dest.follow.menu", "main", a.destLabel(a.rt().Main))).Radio(cur.Kind == routing.DestFollow).Chosen() {
-				pick(routing.Follow())
-			}
-			if m.Item(a.t("dest.direct")).Radio(cur.Kind == routing.DestDirect).Chosen() {
-				pick(routing.Direct())
-			}
-			if m.Item(a.t("dest.reject")).Radio(cur.Kind == routing.DestReject).Chosen() {
-				pick(routing.Reject())
-			}
-			m.Separator()
+		if m.Item(a.t("dest.follow.menu", "main", a.destLabel(a.rt().Main))).Radio(cur.Kind == routing.DestFollow).Chosen() {
+			pick(routing.Follow())
 		}
+		if m.Item(a.t("dest.direct")).Radio(cur.Kind == routing.DestDirect).Chosen() {
+			pick(routing.Direct())
+		}
+		if m.Item(a.t("dest.reject")).Radio(cur.Kind == routing.DestReject).Chosen() {
+			pick(routing.Reject())
+		}
+		m.Separator()
 		keep := ""
 		if cur.Kind == routing.DestRegion {
 			keep = cur.Region
@@ -109,7 +94,7 @@ func (a *App) destMenu(o destOpts, cur routing.Dest, pick func(routing.Dest)) fu
 			}
 		})
 		if m.Item(a.t("dest.node.menu")).Radio(cur.Kind == routing.DestNode).Chosen() {
-			a.pickNodeFor(o.title, cur, !o.main, pick)
+			a.pickNodeFor(o.title, cur, true, pick)
 		}
 	}
 }

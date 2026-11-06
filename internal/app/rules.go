@@ -259,8 +259,11 @@ type RuleSetPreview struct {
 	Name string
 	// Stripped is set when a mirror's prefix was taken off the address.
 	Stripped bool
-	// Converted is set when a mihomo .mrs address was replaced by its sing-box twin.
+	// Converted is set when the address was changed to the file's own (a GitHub
+	// page, or a CDN's copy).
 	Converted bool
+	// Swapped is set when a mihomo .mrs address was replaced by its sing-box twin.
+	Swapped bool
 	// Format is the format the content was recognised as.
 	Format rulefmt.Format
 	// Stats counts what the file holds.
@@ -291,7 +294,7 @@ func (s *Service) PreviewRuleSet(ctx context.Context, raw string) (*RuleSetPrevi
 	s.mu.Unlock()
 	return &RuleSetPreview{
 		URL: f.Info.URL, Display: ruleurl.Display(f.Info.URL), Project: f.Info.Project, Name: f.Info.Name,
-		Stripped: f.Info.Stripped, Converted: f.Info.Converted, Format: f.Parsed.Format, Stats: f.Parsed.Stats, Mirror: f.Mirror,
+		Stripped: f.Info.Stripped, Converted: f.Info.Converted, Swapped: f.Info.Swapped, Format: f.Parsed.Format, Stats: f.Parsed.Stats, Mirror: f.Mirror,
 	}, nil
 }
 

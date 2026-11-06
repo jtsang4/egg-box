@@ -56,7 +56,7 @@ func (a *App) nodesPage(c *ui.Context) {
 	online := a.snap.Phase.Online()
 	sub := a.t("nodes.sub.empty")
 	if len(nodes) > 0 {
-		sub = a.tn("nodes.sub", len(nodes), "subs", strconv.Itoa(a.enabledSubs()))
+		sub = a.tn("nodes.sub", len(nodes))
 		if best, ok := bestDelay(nodes); ok && online {
 			sub += "  ·  " + a.t("nodes.sub.best", "ms", strconv.Itoa(best))
 		}
@@ -110,16 +110,6 @@ func (a *App) emptyNodes(c *ui.Context) {
 			a.openImport()
 		}
 	})
-}
-
-func (a *App) enabledSubs() int {
-	n := 0
-	for _, s := range a.subs {
-		if s.Enabled {
-			n++
-		}
-	}
-	return n
 }
 
 // bestDelay is the lowest working latency among the nodes.

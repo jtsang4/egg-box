@@ -346,9 +346,6 @@ func (a *App) segmented(c *ui.Context, key string, sel *int, items []segItem, op
 		if it.icon != "" {
 			w += 20
 		}
-		if opt.minSeg > w {
-			w = opt.minSeg
-		}
 		widths[i] = float32(math.Ceil(float64(w)))
 		total += widths[i]
 	}
@@ -410,10 +407,9 @@ func (a *App) segmented(c *ui.Context, key string, sel *int, items []segItem, op
 }
 
 type segOpts struct {
-	small  bool
-	fill   bool
-	width  float32
-	minSeg float32
+	small bool
+	fill  bool
+	width float32
 }
 
 // input is a styled single-line text input; it returns the element.

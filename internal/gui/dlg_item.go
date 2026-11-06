@@ -68,6 +68,7 @@ func (d *itemDialog) frame(a *App, c *ui.Context) dlgFrame {
 			if own {
 				d.ownerControls(a, c, row)
 			}
+			d.importNotes(a, c, it)
 			a.hr(c)
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 				a.heading(c, a.t("itemdlg.sources")).Grow(1)
@@ -95,6 +96,36 @@ func (d *itemDialog) frame(a *App, c *ui.Context) dlgFrame {
 			}
 		},
 	}
+}
+
+// importNotes say what making this item from a provider's plan changed where
+// the person could not tell: the plan had it differently.
+func (d *itemDialog) importNotes(a *App, c *ui.Context, it routing.Item) {
+	p := a.pl
+	var lines []string
+	for _, n := range it.Notes {
+		switch n {
+		case routing.NoteReordered:
+			lines = append(lines, a.t("itemdlg.note.reordered"))
+		case routing.NoteMultiRegionAuto:
+			// The note explains why the item follows the main exit; once the
+			// person chose something else there is nothing to explain.
+			if it.Dest.Kind == routing.DestFollow {
+				lines = append(lines, a.t("itemdlg.note.multi_region"))
+			}
+		}
+	}
+	if len(lines) == 0 {
+		return
+	}
+	ui.Column(c.Key("id-notes")).Gap(8).Padding(10, 12).Radius(12).Background(p.Field).Border(1, p.Line).Children(func() {
+		for _, line := range lines {
+			ui.Row(c).Gap(8).Children(func() {
+				ui.Icon(c, icon("info")).Size(14, 14).TextColor(p.Text3).Shrink(0)
+				a.txt(c, line, 12.5, 400, p.Text2).Grow(1).Basis(0).LineHeight(1.5)
+			})
+		}
+	})
 }
 
 // ownerControls are the parts of an item that only an item of the person's own

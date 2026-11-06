@@ -11,6 +11,7 @@ import (
 	"eggbox/internal/agentapi"
 	"eggbox/internal/app"
 	"eggbox/internal/configgen"
+	"eggbox/internal/ruleurl"
 )
 
 // settingsState holds the text being edited in the network section, which is
@@ -28,6 +29,12 @@ type settingsState struct {
 	bootKnown bool            // the startup choice was read
 	boot      bool
 	bootErr   bool
+
+	// The mirror of the person's own, being typed.
+	mirror       string
+	mirrorFrom   string // what the box was filled from
+	mirrorLoaded bool
+	mirrorBad    string // the text that was refused, while it is still there
 }
 
 // ServiceStartup lets the user choose whether the privileged service starts
@@ -455,6 +462,45 @@ func (a *App) ruleStatusLine() string {
 	return line
 }
 
+// mirrorPrefixRow lets the person name a mirror of their own: the last place a
+// rule file is asked for, when its own address and the CDN cannot deliver it.
+func (a *App) mirrorPrefixRow(c *ui.Context) {
+	st := &a.sett
+	stored := a.set.RuleMirrorPrefix
+	// The box follows what is stored until the person types something else; a
+	// change made elsewhere does not overwrite what is being typed.
+	if value := strings.TrimSpace(st.mirror); !st.mirrorLoaded || value == st.mirrorFrom || value == stored {
+		st.mirror, st.mirrorFrom, st.mirrorLoaded = stored, stored, true
+	}
+	a.settingRow(c, a.t("settings.mirror.custom"), a.t("settings.mirror.custom.desc"), func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			in := a.input(c, "set-mirror-prefix", &st.mirror, "https://mirror.example/")
+			in.Width(280)
+			value := strings.TrimSpace(st.mirror)
+			dirty := value != stored
+			save := func() {
+				if !dirty {
+					return
+				}
+				if ruleurl.ValidPrefix(value) != nil {
+					st.mirrorBad = value
+					return
+				}
+				a.updateSettings(func(s *settingsT) { s.RuleMirrorPrefix = value })
+			}
+			if in.Submitted() {
+				save()
+			}
+			if dirty && a.btn(c, btnSpec{kind: btnSecondary, small: true, label: a.t("common.save")}).Clicked() {
+				save()
+			}
+		})
+	})
+	if value := strings.TrimSpace(st.mirror); st.mirrorBad != "" && st.mirrorBad == value {
+		a.errorNote(c, a.t("settings.mirror.custom.bad"))
+	}
+}
+
 func (a *App) ruleDataSection(c *ui.Context) {
 	a.section(c, "database", a.t("settings.ruledata"), a.t("settings.ruledata.desc"), func() {
 		a.settingRow(c, a.t("settings.ruledata.status"), a.ruleStatusLine(), func() {
@@ -473,6 +519,8 @@ func (a *App) ruleDataSection(c *ui.Context) {
 				a.updateSettings(func(s *settingsT) { s.RuleMirror = v })
 			}
 		})
+		a.rowDivider(c)
+		a.mirrorPrefixRow(c)
 		a.rowDivider(c)
 		a.settingRow(c, a.t("settings.ruleinterval"), a.t("settings.ruleinterval.desc"), func() {
 			sel := 0

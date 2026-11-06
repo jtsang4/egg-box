@@ -7,18 +7,24 @@ package app_test
 // controller); only the core and the network are made up.
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"net/netip"
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"eggbox/internal/agent/engine"
 	"eggbox/internal/agentapi"
 	"eggbox/internal/app"
+	"eggbox/internal/configgen"
 	"eggbox/internal/library"
 	"eggbox/internal/routing"
 	"eggbox/internal/ruledata"
@@ -326,6 +332,57 @@ func TestAProvidersChangesToItsPlanReachARunningConnectionAndKeepChoices(t *test
 	})
 }
 
+// A subscription that is switched off is not asked for anything any more, but
+// the plan it brought stays in force with the rule files already downloaded,
+// and keeps steering the connection (the nodes of the other subscriptions
+// carry it).
+func TestAPlanKeepsWorkingWhenItsSubscriptionIsSwitchedOff(t *testing.T) {
+	h := newHarness(t, nil)
+	h.prov.body.Store(routedProfile("video", "domestic"))
+	sub := h.addSubscription()
+	other := newProvider(t, links("SG 01", "US 01"))
+	if _, _, err := h.svc.AddSubscription(h.ctx(), "Other", other.link(), library.RemoteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	h.waitPlan("the plan's rule files", func(p app.PlanInfo) bool { return len(p.Items) == 2 && p.Missing == 0 })
+	h.connect()
+	h.eventually("the core to run the plan", func() bool {
+		tags := h.ruleSetTags()
+		return countPrefix(tags, "d-") == 2 && countPrefix(tags, "p-") == 1
+	})
+	revision := h.svc.Snapshot().Applied.Revision
+	asked := h.prov.hits.Load()
+
+	if err := h.svc.EditSubscription(h.ctx(), sub.ID, func(s *library.Subscription) { s.Enabled = false }); err != nil {
+		t.Fatal(err)
+	}
+	h.eventually("the connection to carry on without its nodes", func() bool {
+		return h.svc.Snapshot().Applied.Revision > revision && h.svc.Snapshot().Phase == app.PhaseConnected
+	})
+
+	// The plan is the one in force, complete and in the core, and nothing was
+	// downloaded from the subscription that is off.
+	if got := h.lib.Routing().ActiveID(); got != routing.SubPlanID(sub.ID) {
+		t.Fatalf("the plan in force is %q", got)
+	}
+	p := h.waitPlan("the plan to be looked at again", func(p app.PlanInfo) bool { return len(p.Items) == 2 && p.Missing == 0 })
+	for id, it := range p.Items {
+		if it.State != app.ItemReady {
+			t.Errorf("item %s is %v", id, it.State)
+		}
+	}
+	tags := h.ruleSetTags()
+	if countPrefix(tags, "d-") != 2 || countPrefix(tags, "p-") != 1 {
+		t.Errorf("the core runs %v: the plan's rule sets are gone", tags)
+	}
+	if _, err := h.svc.RefreshAll(h.ctx()); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.prov.hits.Load(); got != asked {
+		t.Errorf("the subscription that is off was asked for its nodes again (%d requests, were %d)", got, asked)
+	}
+}
+
 // A refresh the scheduler makes on its own is no different from one the
 // person asks for: a provider that changes only its plan reaches the core.
 func TestAScheduledRefreshThatOnlyChangesThePlanReachesTheCore(t *testing.T) {
@@ -528,6 +585,88 @@ func TestTestURLEvaluatesThePlanTheWayTheCoreDoes(t *testing.T) {
 	res = h.testURL(cn.String(), func(r *app.TestURLResult) bool { return r.Why.Kind == app.WhyItem })
 	if res.Why.ID != "b-cn" || res.Dest.Kind != routing.DestDirect || res.Source == nil || res.Source.Name != "geoip: cn" {
 		t.Errorf("an address in a geoip range: %+v", res)
+	}
+}
+
+// The core asks its mode before it looks at the plan: in Global everything
+// goes through the main exit and in Direct nothing does, the local network and
+// the exceptions included. The answer of a test says so; the mode is the
+// core's own, so without the core it is the plan that is asked about.
+func TestTestURLSaysWhenTheRoutingModeDecides(t *testing.T) {
+	h := newHarness(t, nil)
+	h.addSubscription()
+	h.waitPlan("the built-in plan's rule files", func(p app.PlanInfo) bool { return len(p.Items) == 12 && p.Missing == 0 })
+	h.edit(func(st *routing.State) error {
+		_, err := st.AddException(routing.Exception{Kind: routing.EntryDomainSuffix, Value: "corp.example", Dest: routing.Reject(), Enabled: true})
+		return err
+	})
+	targets := []string{"chat.category-ai-cn.example", "microsoft.example", "wiki.corp.example", "printer.local", "192.168.1.20:5000", "198.51.100.7"}
+	plan := func(target string) *app.TestURLResult {
+		t.Helper()
+		return h.testURL(target, func(r *app.TestURLResult) bool { return r.Why.Kind != app.WhyMode })
+	}
+	h.connect()
+	mode := func(m string) {
+		t.Helper()
+		if err := h.svc.SetMode(h.ctx(), m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	decided := func(dest routing.DestKind) {
+		t.Helper()
+		for _, target := range targets {
+			// The mode reaches the app with the status the agent publishes a
+			// moment after the mode was set: until it does, the answer is
+			// the one of the mode before (Global and Direct both say "the
+			// mode decides", each in its own way).
+			res := h.testURL(target, func(r *app.TestURLResult) bool { return r.Why.Kind == app.WhyMode && r.Dest.Kind == dest })
+			if res.Source != nil || res.Skipped != 0 || res.Waiting != 0 || res.Resolved || res.Why.ID != "" {
+				t.Errorf("%s in %s: %+v", target, dest, res)
+			}
+		}
+	}
+
+	// Rule: the plan decides.
+	if res := plan("chat.category-ai-cn.example"); res.Why.Kind != app.WhyItem || res.Why.ID != "b-ai" {
+		t.Errorf("in Rule mode: %+v", res)
+	}
+	if res := plan("wiki.corp.example"); res.Why.Kind != app.WhyException {
+		t.Errorf("in Rule mode: %+v", res)
+	}
+
+	mode(configgen.ModeGlobal)
+	decided(routing.DestFollow)
+	mode(configgen.ModeDirect)
+	decided(routing.DestDirect)
+	if res := h.testURL("chat.category-ai-cn.example", func(r *app.TestURLResult) bool { return r.Why.Kind == app.WhyMode }); res.Exit != nil {
+		t.Errorf("nothing leaves through a node in Direct mode: %+v", res.Exit)
+	}
+
+	mode(configgen.ModeRule)
+	if res := plan("chat.category-ai-cn.example"); res.Why.ID != "b-ai" {
+		t.Errorf("back in Rule mode: %+v", res)
+	}
+
+	// A core that died for good routes nothing, though the agent's status
+	// still names the mode it had; and a core that was stopped has none.
+	mode(configgen.ModeGlobal)
+	h.testURL("chat.category-ai-cn.example", func(r *app.TestURLResult) bool { return r.Why.Kind == app.WhyMode })
+	h.agent.Engine.FailStartWhen(func(engine.Prepared) error { return errors.New("the core cannot start") })
+	h.agent.Engine.Crash(errors.New("the core died"))
+	failed := h.waitFor("the connection to fail for good", func(s *app.Snapshot) bool { return s.Phase == app.PhaseFailed })
+	if failed.Status.GetMode() != configgen.ModeGlobal {
+		t.Fatalf("this needs a failed connection whose status still names its mode, not %q", failed.Status.GetMode())
+	}
+	if res := plan("chat.category-ai-cn.example"); res.Why.ID != "b-ai" {
+		t.Errorf("with the core dead: %+v", res)
+	}
+	h.agent.Engine.FailStartWhen(nil)
+	if err := h.svc.Disconnect(h.ctx()); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor("disconnected", func(s *app.Snapshot) bool { return s.Phase == app.PhaseDisconnected })
+	if res := plan("chat.category-ai-cn.example"); res.Why.ID != "b-ai" {
+		t.Errorf("without the core: %+v", res)
 	}
 }
 
@@ -899,6 +1038,134 @@ func TestARuleListIsPreviewedBeforeItIsKept(t *testing.T) {
 	}
 }
 
+// airtight answers every request itself: the hosts it is told about serve what
+// they are given, every other one is down. Nothing leaves the process. It
+// remembers who was asked for the one file it is told to watch (the service
+// asks for others on its own, at its own time).
+type airtight struct {
+	watch string // the file name asked about
+
+	mu    sync.Mutex
+	serve map[string][]byte // "host/path" -> body
+	asked []string          // hosts, in the order they were asked about the file
+}
+
+func (a *airtight) RoundTrip(r *http.Request) (*http.Response, error) {
+	a.mu.Lock()
+	if strings.HasSuffix(r.URL.Path, a.watch) {
+		a.asked = append(a.asked, r.URL.Host)
+	}
+	body, ok := a.serve[r.URL.Host+r.URL.Path]
+	a.mu.Unlock()
+	status := http.StatusOK
+	if !ok {
+		status, body = http.StatusServiceUnavailable, []byte("down")
+	}
+	return &http.Response{StatusCode: status, Status: http.StatusText(status), Body: io.NopCloser(bytes.NewReader(body)),
+		Header: http.Header{}, Request: r}, nil
+}
+
+func (a *airtight) hosts() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return slices.Clone(a.asked)
+}
+
+func (a *airtight) forget() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.asked = nil
+}
+
+// The mirror a person names in the settings is the last place a rule file is
+// asked for: after the file's own address and the CDN, which are asked first
+// and cannot deliver it here. The service puts the order together from the
+// settings, as it does in the application (the rest of these tests give it a
+// mirror of their own), and with no network but the one made up here.
+func TestAMirrorOfTheUsersOwnIsAskedLast(t *testing.T) {
+	const listPath = "/o/r/main/lists/work.list"
+	canonical := "https://raw.githubusercontent.com" + listPath
+	world := &airtight{watch: "work.list", serve: map[string][]byte{
+		// A mirror serves a file at its own address after the mirror's.
+		"mirror.example/" + canonical: []byte("DOMAIN-SUFFIX,intranet.example\n"),
+	}}
+	h := newHarness(t, func(cfg *app.Config) {
+		rules, err := ruledata.New(ruledata.Options{Dir: t.TempDir(), Client: &http.Client{Transport: world}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg.Rules, cfg.Mirrors = rules, nil
+	})
+
+	// Without a mirror of one's own, nothing delivers the file here.
+	if _, err := h.svc.PreviewRuleSet(h.ctx(), canonical); err == nil {
+		t.Fatal("the file was delivered with no mirror that can")
+	}
+	if got := world.hosts(); !slices.Equal(got, []string{"raw.githubusercontent.com", "cdn.jsdelivr.net"}) {
+		t.Fatalf("asked %v, want the file's own address, then the CDN", got)
+	}
+
+	// With one, it is asked after those two, and delivers.
+	if err := h.lib.UpdateSettings(func(s *library.Settings) { s.RuleMirrorPrefix = "https://mirror.example/" }); err != nil {
+		t.Fatal(err)
+	}
+	world.forget()
+	prev, err := h.svc.PreviewRuleSet(h.ctx(), canonical)
+	if err != nil {
+		t.Fatalf("the mirror of one's own did not deliver: %v", err)
+	}
+	if got := world.hosts(); !slices.Equal(got, []string{"raw.githubusercontent.com", "cdn.jsdelivr.net", "mirror.example"}) {
+		t.Fatalf("asked %v, want the mirror of one's own last", got)
+	}
+	if prev.Mirror != "custom" || prev.Stats.Domain != 1 {
+		t.Fatalf("%+v", prev)
+	}
+
+	// Taking it away goes back to asking the first two only.
+	if err := h.lib.UpdateSettings(func(s *library.Settings) { s.RuleMirrorPrefix = "" }); err != nil {
+		t.Fatal(err)
+	}
+	world.forget()
+	if _, err := h.svc.PreviewRuleSet(h.ctx(), canonical); err == nil {
+		t.Fatal("the file was delivered after the mirror was taken away")
+	}
+	if got := world.hosts(); !slices.Equal(got, []string{"raw.githubusercontent.com", "cdn.jsdelivr.net"}) {
+		t.Fatalf("asked %v after the mirror was taken away", got)
+	}
+}
+
+// What was done to an address a person pasted is told for what it was: a
+// mirror's prefix taken off, a page changed to the file itself, an .mrs file
+// swapped for its sing-box twin (and both, when a page is of an .mrs file).
+func TestThePreviewSaysWhatWasDoneToThePastedAddress(t *testing.T) {
+	h := newHarness(t, nil)
+	const listPath = "/o/r/main/lists/work.list"
+	h.rules.set(listPath, []byte("DOMAIN-SUFFIX,intranet.example\n"))
+	h.rules.set("/MetaCubeX/meta-rules-dat/sing/geo/geosite/openai.srs", srs.DomainSuffixes(t, "openai.example"))
+	const raw = "https://raw.githubusercontent.com"
+
+	for _, c := range []struct {
+		in                           string
+		stripped, converted, swapped bool
+	}{
+		{raw + listPath, false, false, false},
+		{"https://gh-proxy.example/" + raw + listPath, true, false, false},
+		{"https://github.com/o/r/blob/main/lists/work.list", false, true, false},
+		{raw + "/MetaCubeX/meta-rules-dat/meta/geo/geosite/openai.mrs", false, false, true},
+		{"https://github.com/MetaCubeX/meta-rules-dat/blob/meta/geo/geosite/openai.mrs", false, true, true},
+	} {
+		prev, err := h.svc.PreviewRuleSet(h.ctx(), c.in)
+		if err != nil {
+			t.Errorf("PreviewRuleSet(%q): %v", c.in, err)
+			continue
+		}
+		if prev.Stripped != c.stripped || prev.Converted != c.converted || prev.Swapped != c.swapped {
+			t.Errorf("PreviewRuleSet(%q): stripped %v converted %v swapped %v, want %v %v %v", c.in,
+				prev.Stripped, prev.Converted, prev.Swapped, c.stripped, c.converted, c.swapped)
+		}
+	}
+}
+
 func TestWhatIsNotARuleListIsNamedForWhatItIs(t *testing.T) {
 	h := newHarness(t, nil)
 	raw := "https://raw.githubusercontent.com/o/r/main/lists/"
@@ -1081,4 +1348,112 @@ func TestChosenNodesThatLeaveAreSaidSoOnceTheyAreMissed(t *testing.T) {
 	if got := len(noticesOf(h.svc.Snapshot(), "pin_gone")) + len(noticesOf(h.svc.Snapshot(), "pin_gone_main")) + len(noticesOf(h.svc.Snapshot(), "pin_gone_fallback")); got != 3 {
 		t.Errorf("%d notices after connecting twice, want 3", got)
 	}
+}
+
+// ------------------------------------------------------- nodes of the same name
+
+// coreOffersTheNodes makes the core report the main group as it would: every
+// node the configuration it was given holds, under the tag the generator chose.
+func (h *harness) coreOffersTheNodes() {
+	h.t.Helper()
+	started := h.agent.Engine.Started()
+	if len(started) == 0 {
+		h.t.Fatal("the core was not started")
+	}
+	var cfg struct {
+		Outbounds []struct{ Tag, Type string }
+	}
+	if err := json.Unmarshal(started[len(started)-1].JSON, &cfg); err != nil {
+		h.t.Fatal(err)
+	}
+	items := []*agentapi.GroupItem{{Tag: "Auto", Type: "urltest"}}
+	for _, o := range cfg.Outbounds {
+		if o.Type == "trojan" {
+			items = append(items, &agentapi.GroupItem{Tag: o.Tag, Type: o.Type, DelayMs: 100})
+		}
+	}
+	h.agent.Engine.SetGroups(&agentapi.Groups{Groups: []*agentapi.Group{{
+		Tag: configgen.TagProxy, Type: "selector", Selectable: true, Selected: "Auto", Items: items,
+	}}})
+}
+
+// proxyNodes are the nodes of the main group as the service names them, by the
+// name each has.
+func proxyNodes(s *app.Snapshot) map[string][]app.NodeRef {
+	out := map[string][]app.NodeRef{}
+	for _, g := range s.Groups {
+		if g.Tag != configgen.TagProxy {
+			continue
+		}
+		for _, it := range g.Items {
+			if it.Node != nil {
+				out[it.Node.Name] = append(out[it.Node.Name], *it.Node)
+			}
+		}
+	}
+	return out
+}
+
+// shownAs is how each node of that name is shown.
+func shownAs(s *app.Snapshot, name string) []string {
+	var out []string
+	for _, r := range proxyNodes(s)[name] {
+		out = append(out, r.Label())
+	}
+	slices.Sort(out)
+	return out
+}
+
+// Two subscriptions that both have a node called "HK 01" (two servers): each
+// says which one it is wherever the service names a node, by the name of its
+// subscription or by the short name the person gave it. A name that only one
+// subscription has stays as it is.
+func TestANodeNamedLikeOneOfAnotherSubscriptionSaysWhichOneItIs(t *testing.T) {
+	h := newHarness(t, nil)
+	first, _, err := h.svc.AddSubscription(h.ctx(), "First", h.prov.link(), library.RemoteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Its "HK 01" is the third entry of the list, so another server than the
+	// first subscription's (the same server twice would be one node).
+	other := newProvider(t, links("JP 02", "SG 01", "HK 01"))
+	second, _, err := h.svc.AddSubscription(h.ctx(), "Second", other.link(), library.RemoteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.connect()
+	h.coreOffersTheNodes()
+	h.eventually("the nodes of the core", func() bool { return len(proxyNodes(h.svc.Snapshot())) == 5 })
+
+	snap := h.svc.Snapshot()
+	if got := shownAs(snap, "HK 01"); !slices.Equal(got, []string{"HK 01 · First", "HK 01 · Second"}) {
+		t.Fatalf("the two nodes called HK 01 are shown as %q", got)
+	}
+	for _, name := range []string{"HK 02", "JP 01", "JP 02", "SG 01"} {
+		if got := shownAs(snap, name); !slices.Equal(got, []string{name}) {
+			t.Errorf("%s is shown as %q, want the name alone", name, got)
+		}
+	}
+
+	// The short name the person gives a subscription is what its nodes carry,
+	// at once and without a new configuration.
+	revision := snap.Applied.Revision
+	if err := h.svc.EditSubscription(h.ctx(), second.ID, func(s *library.Subscription) { s.Alias = "2nd" }); err != nil {
+		t.Fatal(err)
+	}
+	h.eventually("the short name on the nodes", func() bool {
+		return slices.Equal(shownAs(h.svc.Snapshot(), "HK 01"), []string{"HK 01 · 2nd", "HK 01 · First"})
+	})
+	if got := h.svc.Snapshot().Applied.Revision; got != revision {
+		t.Errorf("a short name needed a new configuration: revision %d, then %d", revision, got)
+	}
+
+	// Once the other subscription is gone the name is the node's own again.
+	if err := h.svc.RemoveSubscription(h.ctx(), first.ID); err != nil {
+		t.Fatal(err)
+	}
+	h.coreOffersTheNodes()
+	h.eventually("the name alone", func() bool {
+		return slices.Equal(shownAs(h.svc.Snapshot(), "HK 01"), []string{"HK 01"})
+	})
 }

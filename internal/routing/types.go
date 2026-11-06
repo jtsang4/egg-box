@@ -388,6 +388,19 @@ func sourceID(url string) string {
 	return "u" + strconv.FormatUint(h, 36)
 }
 
+// The notes an import leaves on an item (Item.Notes).
+const (
+	// NoteReordered: the rules the provider's plan sent to this item were not
+	// all together, other items' rules were between them. The item is made
+	// once, in the place of its first rules, so a few of its rules are now
+	// asked earlier or later than the provider had them.
+	NoteReordered = "reordered"
+	// NoteMultiRegionAuto: the provider sent this item through a group that
+	// picks the fastest of nodes in several regions, which no single
+	// destination says. The item follows the main exit instead.
+	NoteMultiRegionAuto = "multi_region_auto"
+)
+
 // Item is one class of traffic: a name, where its rules come from and where
 // it goes.
 type Item struct {
@@ -405,7 +418,8 @@ type Item struct {
 	Aliases []string `json:"aliases,omitempty"`
 	// Catalog is the catalog entry the item was made from.
 	Catalog string `json:"catalog,omitempty"`
-	// Notes are codes for things an import wants the person to know.
+	// Notes are codes (the Note constants) for things an import wants the
+	// person to know about this item; the item's page says them.
 	Notes []string `json:"notes,omitempty"`
 	// Anchor, on an item the user added to a followed plan, is the name of the
 	// item it goes before ("" goes before the fallback).
@@ -502,7 +516,6 @@ type Plan struct {
 	Main *Dest `json:"main,omitempty"`
 	// Origin is a note on where a plan the user keeps came from.
 	Origin    string    `json:"origin,omitempty"`
-	Notes     []string  `json:"notes,omitempty"`
 	UpdatedAt time.Time `json:"updatedAt,omitempty"`
 }
 
@@ -521,7 +534,6 @@ func (p *Plan) Clone() *Plan {
 		m := p.Main.Clone()
 		c.Main = &m
 	}
-	c.Notes = append([]string(nil), p.Notes...)
 	return &c
 }
 

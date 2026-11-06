@@ -77,4 +77,21 @@ func TestExitLabel(t *testing.T) {
 			t.Errorf("exitLabel(%+v) = %q, want %q", c.cn, got, c.want)
 		}
 	}
+
+	// Two nodes of one name, in two subscriptions: the core tells them apart by
+	// a number after the second one's name, the person by the subscription.
+	h = newHarness(t, harnessOpt{setup: twinOfTokyo("Nim")})
+	a = h.app
+	for _, c := range []struct {
+		cn   app.Conn
+		want string
+	}{
+		{app.Conn{Outbound: "Tokyo 01", Chain: []string{"Tokyo 01", "Auto", "Proxy"}}, "Tokyo 01 · Aurora Cloud"},
+		{app.Conn{Outbound: "Tokyo 01 2", Chain: []string{"Tokyo 01 2", "Auto", "Proxy"}}, "Tokyo 01 · Nim"},
+		{app.Conn{Outbound: "Osaka 01", Chain: []string{"Osaka 01", "Proxy"}}, "Osaka 01"},
+	} {
+		if got := a.exitLabel(c.cn); got != c.want {
+			t.Errorf("exitLabel(%+v) = %q, want %q", c.cn, got, c.want)
+		}
+	}
 }

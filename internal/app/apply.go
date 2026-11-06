@@ -31,6 +31,13 @@ type ApplyReport struct {
 	Nodes    int
 	Dropped  []Dropped
 	Warnings []Warning
+
+	// view is the plan as this configuration was made from it. A connection
+	// has to start from this one: the view the plan loop keeps for the
+	// interface is compiled on its own schedule from whatever the library
+	// holds at the moment, so by the time a connection is up it may describe
+	// a later state, or an earlier one, than the configuration the core runs.
+	view *planView
 }
 
 // maxHealRounds bounds how many times nodes the service rejects are dropped
@@ -182,7 +189,7 @@ func (s *Service) applyLocked(ctx context.Context, force bool) (*ApplyReport, er
 	if err != nil {
 		return nil, err
 	}
-	report := &ApplyReport{Nodes: len(p.active), Dropped: p.dropped}
+	report := &ApplyReport{Nodes: len(p.active), Dropped: p.dropped, view: p.view}
 	for _, w := range p.out.Warnings {
 		report.Warnings = append(report.Warnings, Warning{Code: w.Code, Detail: w.Detail})
 	}
@@ -354,21 +361,26 @@ func (s *Service) Connect(ctx context.Context, opts ConnectOptions) error {
 		}
 		return err
 	}
-	if v := s.view.Load(); v != nil && v.out != nil {
+	// What the core runs is what this connection pushed. Taking it from the
+	// view the plan loop keeps would make a later apply compare with a
+	// configuration that was never pushed: an item moved between exits then
+	// stores a new configuration instead of switching, and an edit made while
+	// the connection came up would pass for something the core already has.
+	if v := report.view; v != nil && v.out != nil {
 		s.reassert(ctx, v.out)
 		s.mu.Lock()
 		s.applied = v.out
 		s.mu.Unlock()
 	}
-	s.connectNotices()
+	s.connectNotices(report.view)
 	s.notice(LevelSuccess, "connected", "", nil)
 	return nil
 }
 
 // connectNotices tells, once, what the plan could not use: items that are on
-// but have no data, and chosen nodes that are not there.
-func (s *Service) connectNotices() {
-	v := s.view.Load()
+// but have no data, and chosen nodes that are not there. v is the plan the
+// connection was made from.
+func (s *Service) connectNotices(v *planView) {
 	if v == nil {
 		return
 	}
