@@ -306,6 +306,12 @@ func newHarnessWith(t *testing.T, mutate func(*app.Config), prepare func(*ruleSe
 		Resolve: dns.lookup,
 		// Never the public mirrors: tests must not reach the Internet.
 		Mirrors: func(string, string) []ruledata.Mirror { return []ruledata.Mirror{mirror} },
+		// The scheduler looks for the first time three seconds after the start,
+		// and then takes the rule files of every item of the plan in force, the
+		// ones that are off too. A test that runs longer than that, as one does
+		// on a slow machine, would find files it did not expect; the tests of
+		// the schedule ask for it themselves.
+		ScheduleDelay: time.Hour, ScheduleEvery: time.Hour,
 	}
 	if mutate != nil {
 		mutate(&cfg)
