@@ -1,0 +1,4 @@
+interface:
+  display_name: "Privileged Boundary"
+  short_description: "Keep the agent, wire API and config gate invariants intact"
+  default_prompt: "Use $privileged-boundary to check this change against the invariants of the privileged agent and its config gate."

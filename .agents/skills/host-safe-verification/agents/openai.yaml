@@ -1,4 +1,0 @@
-interface:
-  display_name: "Host-Safe Verification"
-  short_description: "Verify system-touching software without touching the host"
-  default_prompt: "Use $host-safe-verification to plan and run verification of this change without affecting the host network or system."

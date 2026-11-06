@@ -1,0 +1,4 @@
+interface:
+  display_name: "GUI Changes"
+  short_description: "Test and look at the EggBox screens a change affects"
+  default_prompt: "Use $gui-changes to test this interface change and review the screens it affects."

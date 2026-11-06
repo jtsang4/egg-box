@@ -1,4 +1,0 @@
-interface:
-  display_name: "Privileged Helper Architecture"
-  short_description: "Design unprivileged apps with a safe root helper service"
-  default_prompt: "Use $privileged-helper-architecture to design or review the split between this app and its privileged service."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Change Verification"
+  short_description: "Verify an EggBox change with checks sized to what it touches"
+  default_prompt: "Use $change-verification to choose and run the checks this change needs, then report what was and was not verified."

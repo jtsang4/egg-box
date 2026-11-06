@@ -1,4 +1,0 @@
-interface:
-  display_name: "Native UI Quality Loop"
-  short_description: "Polish desktop UIs with screenshots, a rubric and idle CPU"
-  default_prompt: "Use $native-ui-quality-loop to review and improve this interface with a screenshot matrix, a rubric and idle-cost measurements."

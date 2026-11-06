@@ -1,4 +1,0 @@
-interface:
-  display_name: "Untrusted Input Gates"
-  short_description: "Gate untrusted configs and formats with allow-lists"
-  default_prompt: "Use $untrusted-input-gates to design, test and fuzz the gate between untrusted input and a privileged component."
