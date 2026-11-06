@@ -46,7 +46,7 @@ func addItemHarness(t *testing.T) *harness {
 	t.Helper()
 	h := routingHarness(t, harnessOpt{})
 	h.click("Add item")
-	h.mustHave("Add an item", "Choose where its rules come from", "Catalog", "A link", "Other plans", "Write it")
+	h.mustHave("Add an item", "Choose where its rules come from", "Library", "A link", "Other plans", "Write it")
 	return h
 }
 
@@ -178,7 +178,7 @@ func TestAddItemBackFromTheConfirmingStep(t *testing.T) {
 	h.click("Steam")
 	h.mustHave("New item")
 	h.click("Back")
-	h.mustHave("Add an item", "Catalog")
+	h.mustHave("Add an item", "Library")
 	h.mustNotHave("New item")
 	if h.called("edit-routing") != 0 {
 		t.Fatal("something was saved before it was confirmed")

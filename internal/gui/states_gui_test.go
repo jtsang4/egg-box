@@ -188,7 +188,7 @@ func TestRoutingSaysWhenThePlanHasNoItems(t *testing.T) {
 			}
 		})
 	}})
-	h.mustHave("No items yet", "Add an item to send one kind of traffic somewhere specific: a service from the catalog, a rule file, or a few rules you write yourself.")
+	h.mustHave("No items yet", "Add an item to send one kind of traffic somewhere specific: a service from the library, a rule file, or a few rules you write yourself.")
 	h.mustNotHave("AI services")
 }
 
