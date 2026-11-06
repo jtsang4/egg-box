@@ -19,8 +19,10 @@ import (
 
 var (
 	once sync.Once
-	path string
-	err  error
+	// libDir is where the library was built.
+	libDir string
+	path   string
+	err    error
 )
 
 // Load returns the bridge, building the library first when this is the first
@@ -44,18 +46,28 @@ func build() {
 		err = e
 		return
 	}
-	dir, e := os.MkdirTemp("", "eggbox-bridge-*")
+	built, e := os.MkdirTemp("", "eggbox-bridge-*")
 	if e != nil {
 		err = e
 		return
 	}
+	libDir = built
 	arch := map[string]string{"arm64": "arm64", "amd64": "x86_64"}[runtime.GOARCH]
 	script := filepath.Join(root, "native", "macos", "ServiceBridge", "build.sh")
-	if out, e := exec.Command(script, dir, arch).CombinedOutput(); e != nil {
+	if out, e := exec.Command(script, libDir, arch).CombinedOutput(); e != nil {
 		err = fmt.Errorf("build the service bridge: %w\n%s", e, out)
 		return
 	}
-	path = filepath.Join(dir, "ServiceBridge.dylib")
+	path = filepath.Join(libDir, "ServiceBridge.dylib")
+}
+
+// Cleanup removes what Load built. A package that calls Load calls this from
+// its TestMain once its tests are done: the library is needed until then, and
+// nothing else would ever remove its directory from the temporary one.
+func Cleanup() {
+	if libDir != "" {
+		_ = os.RemoveAll(libDir)
+	}
 }
 
 // moduleRoot finds the repository root from the test's working directory.
