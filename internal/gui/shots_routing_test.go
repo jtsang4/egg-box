@@ -39,7 +39,7 @@ func init() {
 		add(shot{name: "routing-plan-menu", run: onRouting(func(h *harness) { h.click(h.app.t("subs.more")) })})
 		add(shot{name: "routing-plan-switch", run: onRouting(func(h *harness) { h.click(h.app.t("plan.builtin")) })})
 		add(shot{name: "dlg-plan-new", run: onRouting(func(h *harness) { h.app.openNewPlan("") })})
-		add(shot{name: "dlg-plan-copy", run: onRouting(func(h *harness) { h.app.openNewPlan(routing.BuiltinID) })})
+		add(shot{name: "dlg-plan-empty", run: onRouting(func(h *harness) { h.app.openNewPlan(""); h.settle(); h.click(h.app.t("plan.new.empty")) })})
 		add(shot{name: "nodes-crowded", h: 1100, setup: crowd, run: page("nav.nodes")})
 		add(shot{name: "dlg-exception-add", run: onRouting(func(h *harness) { h.app.openException(nil) })})
 		add(shot{name: "dlg-exception-from-connection", run: onRouting(func(h *harness) {

@@ -40,15 +40,21 @@ func (a *App) openPlanName(rename bool) {
 	a.openDialog(d)
 }
 
-// openNewPlan opens the dialog that makes a plan of the person's own: an empty
-// one, or (with from set) a copy of that plan.
+// openNewPlan opens the dialog that makes a plan of the person's own, as a copy
+// of the plan from ("" for the one in force) until they choose to start empty.
+// A copy is offered first: an empty plan sends even domestic traffic the way of
+// the fallback until items are added.
 func (a *App) openNewPlan(from string) {
-	d := &planDialog{mode: planNew, name: a.t("plan.default_name"), empty: from == "", from: from}
 	if from == "" {
-		d.from = a.rt().ActiveID()
+		from = a.rt().ActiveID()
 	}
-	a.openDialog(d)
+	a.openDialog(&planDialog{mode: planNew, name: a.t("plan.default_name"), from: from})
 }
+
+// planStartHeight is what the choice of a plan to copy takes (the field's label,
+// its gap and the dropdown): the note shown instead for an empty plan takes as
+// much, so that the dialog does not change size between the two.
+const planStartHeight = 16 + 6 + 38
 
 func (d *planDialog) submit(a *App) {
 	name := strings.TrimSpace(d.name)
@@ -113,9 +119,11 @@ func (d *planDialog) frame(a *App, c *ui.Context) dlgFrame {
 						d.empty = sel == 1
 					}
 				})
-				if d.empty {
-					a.txt(c, a.t("plan.new.empty.hint"), 12.5, 400, p.Text2).LineHeight(1.5)
-				} else {
+				ui.Column(c).MinHeight(planStartHeight).Children(func() {
+					if d.empty {
+						a.txt(c, a.t("plan.new.empty.hint"), 12.5, 400, p.Text2).LineHeight(1.5)
+						return
+					}
 					plans := a.allPlans()
 					names := make([]string, len(plans))
 					cur := 0
@@ -128,7 +136,7 @@ func (d *planDialog) frame(a *App, c *ui.Context) dlgFrame {
 					a.field(c, a.t("plan.new.copy_of"), "", func() {
 						a.dropdown(c, "pd-from", names, cur, func(i int) { d.from = plans[i].ID })
 					})
-				}
+				})
 			}
 			if d.err != "" {
 				a.errorNote(c, d.err)

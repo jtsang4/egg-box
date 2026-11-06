@@ -477,12 +477,19 @@ func TestRoutingNewPlanStartsFromNothingOrACopy(t *testing.T) {
 	// The list of plans ends with the way to a new one.
 	h.click("Recommended")
 	h.pick("New")
-	h.mustHave("New plan", "Name", "Start from", "A copy of a plan", "Nothing",
-		"No items: apart from your exceptions and the local network, all traffic goes the way of “Everything else”. Add items as you need them.")
+	// A copy of the plan in force is offered first; starting empty is a click
+	// away, and the dialog keeps its size between the two.
+	h.mustHave("New plan", "Name", "Start from", "A copy of a plan", "Nothing", "Plan to copy")
+	before, _ := h.ui.Find("Create")
 	h.ui.Key(ui.Cmd, ui.KeyA)
 	h.typeText("Scratch")
-	h.enter()
-	h.settle()
+	h.click("Nothing")
+	h.mustHave("No items: apart from your exceptions and the local network, all traffic goes the way of “Everything else”. Add items as you need them.")
+	h.mustNotHave("Plan to copy")
+	if after, _ := h.ui.Find("Create"); after.Y != before.Y {
+		t.Errorf("the dialog changed size: its button moved from %v to %v", before.Y, after.Y)
+	}
+	h.submitDialog("Create")
 	pl := h.state().ActivePlan()
 	if pl.Kind != routing.PlanMine || pl.Name != "Scratch" || len(pl.Items) != 0 {
 		t.Fatalf("the new plan: %+v", pl)
@@ -494,8 +501,6 @@ func TestRoutingNewPlanStartsFromNothingOrACopy(t *testing.T) {
 	h.pick("New")
 	h.ui.Key(ui.Cmd, ui.KeyA)
 	h.typeText("Mine too")
-	h.click("A copy of a plan")
-	h.mustHave("Plan to copy")
 	h.chooseInDialog("Scratch", "Aurora")
 	h.submitDialog("Create")
 	pl = h.state().ActivePlan()
