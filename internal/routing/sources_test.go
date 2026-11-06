@@ -6,14 +6,6 @@ import (
 	"testing"
 )
 
-func sourceNames(it Item) []string {
-	var out []string
-	for _, s := range it.Sources {
-		out = append(out, s.Name)
-	}
-	return out
-}
-
 func rowOf(t *testing.T, st State, name string) Row {
 	t.Helper()
 	for _, r := range st.View().Rows {

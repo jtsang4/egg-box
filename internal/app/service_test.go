@@ -39,6 +39,8 @@ type provider struct {
 	srv  *httptest.Server
 	body atomic.Value
 	hits atomic.Int32
+	// hold, when set, keeps every answer back until the channel is closed.
+	hold atomic.Pointer[chan struct{}]
 }
 
 func newProvider(t *testing.T, body string) *provider {
@@ -47,6 +49,13 @@ func newProvider(t *testing.T, body string) *provider {
 	p.body.Store(body)
 	p.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p.hits.Add(1)
+		if gate := p.hold.Load(); gate != nil {
+			select {
+			case <-*gate:
+			case <-r.Context().Done():
+				return
+			}
+		}
 		w.Header().Set("Subscription-Userinfo", "upload=1; download=2; total=100000; expire=1893456000")
 		_, _ = w.Write([]byte(p.body.Load().(string)))
 	}))
@@ -720,6 +729,80 @@ func TestAddSubscriptionWithABrokenLinkLeavesNothingBehind(t *testing.T) {
 	}
 	if _, _, err := h.svc.AddSubscription(h.ctx(), "bad", "not a url", library.RemoteOptions{}); app.Explain(err).Code != "fetch_bad_url" {
 		t.Errorf("%v", err)
+	}
+}
+
+// A second ask for a subscription that is being downloaded joins the download:
+// it does not fail with "already being updated" (which, for the add of a new
+// subscription the schedule had picked up first, would have undone the add),
+// and nothing is fetched twice. A download that fails fails everyone who joined.
+func TestTwoRefreshesOfOneSubscriptionShareOneDownload(t *testing.T) {
+	h := newHarness(t, nil)
+	sub := h.addSubscription()
+
+	type outcome struct {
+		res *library.RefreshResult
+		err error
+	}
+	asking := func(body string) (got []outcome, downloads int32) {
+		t.Helper()
+		h.prov.body.Store(body)
+		before := h.prov.hits.Load()
+		gate := make(chan struct{})
+		h.prov.hold.Store(&gate)
+		defer h.prov.hold.Store(nil)
+		done := make(chan outcome, 2)
+		ask := func() {
+			res, err := h.svc.RefreshSubscription(h.ctx(), sub.ID)
+			done <- outcome{res, err}
+		}
+		go ask()
+		h.eventually("the first refresh to be under way", func() bool { return h.svc.Snapshot().Busy.Refreshing[sub.ID] })
+		go ask()
+		select {
+		case o := <-done:
+			t.Fatalf("a refresh ended while the download was held back (%v): the second ask did not wait for the first", o.err)
+		case <-time.After(250 * time.Millisecond):
+		}
+		close(gate)
+		for i := 0; i < 2; i++ {
+			select {
+			case o := <-done:
+				got = append(got, o)
+			case <-time.After(10 * time.Second):
+				t.Fatal("the refreshes did not end")
+			}
+		}
+		if h.svc.Snapshot().Busy.Refreshing[sub.ID] {
+			t.Error("the subscription is still shown as being updated")
+		}
+		return got, h.prov.hits.Load() - before
+	}
+
+	got, downloads := asking(links("Tokyo 01", "Tokyo 02", "Hong Kong 01"))
+	if downloads != 1 {
+		t.Errorf("%d downloads for two asks, want one", downloads)
+	}
+	for _, o := range got {
+		if o.err != nil || o.res == nil {
+			t.Errorf("a refresh that joined the download: %+v", o)
+		}
+	}
+	if len(got) == 2 && got[0].res != got[1].res {
+		t.Error("the two asks did not share the outcome of the one download")
+	}
+
+	got, downloads = asking("<html>not a subscription</html>")
+	if downloads != 1 {
+		t.Errorf("%d downloads for two asks of a failing one, want one", downloads)
+	}
+	for _, o := range got {
+		if o.err == nil || app.Explain(o.err).Code != "bad_subscription" {
+			t.Errorf("a refresh that joined a failing download: %+v", o)
+		}
+	}
+	if _, ok := h.lib.Subscription(sub.ID); !ok {
+		t.Error("a failing refresh removed the subscription")
 	}
 }
 

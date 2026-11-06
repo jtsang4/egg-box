@@ -214,6 +214,23 @@ func TestConnectionMenuMakesAnExceptionForTheDomain(t *testing.T) {
 	}
 }
 
+// Saying the same thing twice does not make two exceptions: the second time
+// moves the one that is there.
+func TestConnectionMenuMovesTheExceptionThatAlreadyHasThatMatch(t *testing.T) {
+	h := connectionsHarness(t)
+	n := len(h.state().Exceptions)
+	h.rightClick("registry.npmjs.org")
+	h.pick("From#1", "Direct")
+	h.rightClick("registry.npmjs.org")
+	h.pick("From#1", "Block")
+	if got := len(h.state().Exceptions); got != n+1 {
+		t.Fatalf("choosing twice for npmjs.org left %d exceptions, want %d", got, n+1)
+	}
+	if x, ok := h.exception("npmjs.org"); !ok || x.Kind != routing.EntryDomainSuffix || x.Dest.Kind != routing.DestReject || !x.Enabled {
+		t.Fatalf("the exception for the domain is %+v, want it blocked and switched on", x)
+	}
+}
+
 func TestConnectionMenuOffersEachWayToSayIt(t *testing.T) {
 	h := connectionsHarness(t)
 	// Only this name, followed to the main exit.

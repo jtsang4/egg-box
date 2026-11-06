@@ -143,7 +143,7 @@ type LiveNode struct {
 
 // ID is the identity of the live node.
 func (n LiveNode) ID() NodeID {
-	return NodeID{Sub: n.Sub, Name: n.Name, Hash: n.Hash, Region: n.Region}
+	return NodeID(n)
 }
 
 // Match says how a node a person pinned was found again.

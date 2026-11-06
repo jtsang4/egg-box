@@ -508,6 +508,36 @@ func TestChangeListenersRunOutsideTheLock(t *testing.T) {
 	}
 }
 
+// A subscription that was just added is due at once, and the schedule may pick
+// it up while the add is still handing it back: the copy given back is made
+// under the library's lock, so the two never touch the same memory. The
+// schedule's edit is made here from the change listener, which runs after the
+// lock is let go and before the add returns, and deliberately with nothing to
+// order it against the add (the race detector, which the CI runs, notices when
+// the add reads what the edit wrote).
+func TestHandingBackANewSubscriptionDoesNotRaceWithTheSchedule(t *testing.T) {
+	l := open(t, t.TempDir(), nil)
+	var started atomic.Bool
+	l.OnChange(func() {
+		if !started.CompareAndSwap(false, true) {
+			return
+		}
+		go func() {
+			for _, s := range l.Subscriptions() {
+				_ = l.Edit(s.ID, func(e *library.Subscription) { e.Alias = "sched" })
+			}
+		}()
+		time.Sleep(150 * time.Millisecond) // long enough for the edit to be done; not a synchronization
+	})
+	sub, err := l.AddRemote("A", "https://example.com/a", library.RemoteOptions{})
+	if err != nil || sub.ID == "" || sub.Kind != library.KindRemote {
+		t.Fatalf("AddRemote: %+v, %v", sub, err)
+	}
+	if got, _ := l.Subscription(sub.ID); got.Alias != "sched" {
+		t.Errorf("the edit of the schedule did not happen (alias %q): the test proves nothing", got.Alias)
+	}
+}
+
 func TestFutureFormatIsRefused(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "library.json"), []byte(`{"version": 99}`), 0o600); err != nil {

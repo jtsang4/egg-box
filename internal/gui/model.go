@@ -183,15 +183,6 @@ func (a *App) nodeFor(id routing.NodeID) (nodeEntry, routing.Match) {
 	return nodes[i], m
 }
 
-// refLabel names a node of the core's groups, with its subscription when the
-// name alone would not tell it apart.
-func refLabel(r *app.NodeRef) string {
-	if r == nil {
-		return ""
-	}
-	return r.Label()
-}
-
 // group finds a group of the running core.
 func (a *App) group(tag string) (app.Group, bool) { return groupIn(a.snap, tag) }
 

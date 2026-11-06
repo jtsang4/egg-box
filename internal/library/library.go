@@ -364,15 +364,19 @@ func (l *Library) AddRemote(name, rawURL string, o RemoteOptions) (Subscription,
 	if err := l.secrets.Set(secretKey(sub.ID), rawURL); err != nil {
 		return Subscription{}, fmt.Errorf("could not store the link securely: %w", err)
 	}
+	// The copy handed back is made under the lock: the schedule may pick the new
+	// subscription up (it was never refreshed, so it is due) the moment it exists.
+	var added Subscription
 	err := l.mutate(func() error {
 		l.data.Subscriptions = append(l.data.Subscriptions, sub)
+		added = clone(sub)
 		return nil
 	})
 	if err != nil {
 		_ = l.secrets.Delete(secretKey(sub.ID))
 		return Subscription{}, err
 	}
-	return clone(sub), nil
+	return added, nil
 }
 
 // AddLocal adds a subscription whose nodes were imported once.
@@ -391,16 +395,18 @@ func (l *Library) AddLocal(name string, res *subscription.Result) (Subscription,
 	if err := l.writeNodes(sub.ID, res.Nodes); err != nil {
 		return Subscription{}, err
 	}
+	var added Subscription
 	err := l.mutate(func() error {
 		l.data.Subscriptions = append(l.data.Subscriptions, sub)
 		l.nodes[sub.ID] = res.Nodes
+		added = clone(sub)
 		return nil
 	})
 	if err != nil {
 		_ = os.Remove(l.nodePath(sub.ID))
 		return Subscription{}, err
 	}
-	return clone(sub), nil
+	return added, nil
 }
 
 // Edit changes a subscription's settings. fn may change Name, Alias, Enabled,

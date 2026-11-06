@@ -54,9 +54,6 @@ func (a *App) pumpEdits() {
 	})
 }
 
-// editing reports whether a change is being applied or waits to be.
-func (a *App) editing() bool { return a.rte.running || len(a.rte.queue) > 0 }
-
 // ----------------------------------------------------------------- names
 
 // itemName is an item's name in the person's language: a shipped item's name

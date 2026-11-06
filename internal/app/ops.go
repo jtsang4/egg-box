@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"runtime"
 	"sort"
@@ -168,25 +169,47 @@ func (s *Service) ImportNodes(ctx context.Context, name, text string) (library.S
 	return sub, nil
 }
 
-// beginRefresh marks a subscription as being refreshed; false if it already is.
-func (s *Service) beginRefresh(id string) bool {
-	if s.Snapshot().Busy.Refreshing[id] {
-		return false
-	}
-	s.setBusy(func(b *Busy) { b.Refreshing[id] = true })
-	return true
+// refreshFlight is a refresh under way and, once done, what came of it.
+type refreshFlight struct {
+	done chan struct{}
+	res  *library.RefreshResult
+	err  error
 }
 
+// refresh downloads a subscription again. When the same subscription is being
+// downloaded already (a due one is picked up by the schedule at the moment it
+// is added, or a click comes while the schedule is at it) the caller waits for
+// that download and shares its outcome, so nothing is fetched twice and the
+// add of a new subscription is not undone by a collision.
 func (s *Service) refresh(ctx context.Context, id string) (*library.RefreshResult, error) {
-	if !s.beginRefresh(id) {
-		return nil, fmt.Errorf("this subscription is already being updated")
+	s.refreshMu.Lock()
+	if f, ok := s.refreshing[id]; ok {
+		s.refreshMu.Unlock()
+		select {
+		case <-f.done:
+			return f.res, f.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
-	defer s.setBusy(func(b *Busy) { delete(b.Refreshing, id) })
-	res, err := s.lib.Refresh(ctx, id, library.RefreshOptions{Client: s.cfg.HTTPClient})
-	if err == nil {
+	// A refresh that dies half way leaves its waiters an error, not an empty result.
+	f := &refreshFlight{done: make(chan struct{}), err: errors.New("the update did not finish")}
+	s.refreshing[id] = f
+	s.refreshMu.Unlock()
+	s.setBusy(func(b *Busy) { b.Refreshing[id] = true })
+
+	defer func() {
+		s.setBusy(func(b *Busy) { delete(b.Refreshing, id) })
+		s.refreshMu.Lock()
+		delete(s.refreshing, id)
+		s.refreshMu.Unlock()
+		close(f.done)
+	}()
+	f.res, f.err = s.lib.Refresh(ctx, id, library.RefreshOptions{Client: s.cfg.HTTPClient})
+	if f.err == nil {
 		s.deliverLibraryNotices()
 	}
-	return res, err
+	return f.res, f.err
 }
 
 // refreshed reports whether a refresh changed anything the configuration is

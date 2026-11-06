@@ -105,6 +105,12 @@ type Service struct {
 	runCtx context.Context
 
 	opMu sync.Mutex // serializes connect, disconnect and apply
+
+	// refreshing holds the refreshes under way, by subscription, so that a
+	// second ask for the same one (the schedule's, a click, the add that made
+	// it) joins the first instead of failing or downloading twice.
+	refreshMu  sync.Mutex
+	refreshing map[string]*refreshFlight
 }
 
 // New returns a service that is not running yet; call Run.
@@ -124,6 +130,7 @@ func New(cfg Config) *Service {
 		compiler: plancompile.New(), planKick: make(chan struct{}, 1),
 		told: map[string]bool{}, tried: map[string]time.Time{}, previews: map[string]*ruledata.Fetched{},
 		fetchErrs: map[string]string{}, runCtx: context.Background(), matchers: map[matcherKey]*rulefmt.Matcher{},
+		refreshing: map[string]*refreshFlight{},
 	}
 	first := &Snapshot{
 		Link:  LinkInfo{State: agentclient.LinkConnecting},

@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"eggbox/internal/agent/engine"
 	"eggbox/internal/agent/engine/demo"
 	"eggbox/internal/agentapi"
@@ -218,6 +220,66 @@ func TestSelectingANode(t *testing.T) {
 	}
 }
 
+// A watcher that does not keep up must end up holding the groups as they are
+// now: if the newest picture were the one dropped, a choice made while it
+// lagged would never reach it, and nothing sends the groups again.
+func TestAWatcherOfTheGroupsThatFellBehindEndsUpWithTheGroupsAsTheyAreNow(t *testing.T) {
+	// An hour per tick keeps the world still: the only changes are made here.
+	e := demo.New(demo.Options{Seed: 7, Tick: time.Hour})
+	if err := e.Start(context.Background(), generated(t, 4)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = e.Stop(context.Background()) })
+
+	slow, err := e.WatchGroups(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var members []string
+	for _, it := range group(recv(t, slow, "groups"), configgen.TagProxy).Items {
+		members = append(members, it.Tag)
+	}
+	if len(members) < 3 {
+		t.Fatalf("the choices are %v", members)
+	}
+
+	// Many choices with nobody reading, far more than the watcher can hold,
+	// the last one unlike every other.
+	const changes = 40
+	early, last := members[0], members[len(members)-1]
+	for i := range changes {
+		pick := early
+		if i == changes-1 {
+			pick = last
+		}
+		if err := e.SelectOutbound(configgen.TagProxy, pick); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := len(slow); n == 0 || n >= changes {
+		t.Fatalf("the watcher holds %d pictures: the test does not overflow it", n)
+	}
+
+	fresh, err := e.WatchGroups(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := recv(t, fresh, "the groups now")
+	var got *agentapi.Groups
+	for len(slow) > 0 {
+		got = <-slow
+	}
+	if group(want, configgen.TagProxy).Selected == early {
+		t.Fatalf("choosing %s after %s left the same choice: the test cannot tell the pictures apart", last, early)
+	}
+	if a, b := group(got, configgen.TagProxy).Selected, group(want, configgen.TagProxy).Selected; a != b {
+		t.Fatalf("the watcher that fell behind was left with %s selected, the groups have %s", a, b)
+	}
+	if !proto.Equal(got, want) {
+		t.Fatalf("the watcher that fell behind was left with another picture than the groups now:\n%v\nwant\n%v", got, want)
+	}
+}
+
 func TestURLTestFillsDelays(t *testing.T) {
 	e, _ := start(t, 5)
 	if err := e.URLTest(context.Background(), configgen.TagProxy); err != nil {
@@ -328,6 +390,73 @@ func TestConnectionsComeAndGo(t *testing.T) {
 	if err := e.CloseAllConnections(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Events are changes, so a watcher that fell behind cannot be left with the
+// first ones and miss the rest: it is given the whole list again instead.
+func TestAWatcherOfTheConnectionsThatFellBehindIsGivenTheListAsItIsNow(t *testing.T) {
+	// An hour per tick keeps the world still: the only connections are opened here.
+	e := demo.New(demo.Options{Seed: 7, Tick: time.Hour})
+	if err := e.Start(context.Background(), generated(t, 4)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = e.Stop(context.Background()) })
+
+	ch, err := e.WatchConnections(t.Context(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Many connections open with nobody reading, far more than the stream holds.
+	open := map[string]bool{}
+	for range 300 {
+		c, err := e.Open("github.com")
+		if err != nil || c == nil {
+			t.Fatalf("opening a connection: %v %v", c, err)
+		}
+		open[c.Id] = true
+	}
+
+	// What a watcher makes of the messages it reads, as the interface does.
+	known := map[string]bool{}
+	deadline := time.After(5 * time.Second)
+	resets := 0
+	for !sameKeys(known, open) {
+		select {
+		case m, ok := <-ch:
+			if !ok {
+				t.Fatal("the stream ended")
+			}
+			if m.Reset_ {
+				resets++
+				known = map[string]bool{}
+			}
+			for _, ev := range m.Events {
+				switch ev.Type {
+				case agentapi.ConnectionEvent_TYPE_NEW:
+					known[ev.Id] = true
+				case agentapi.ConnectionEvent_TYPE_CLOSED:
+					delete(known, ev.Id)
+				}
+			}
+		case <-deadline:
+			t.Fatalf("the watcher knows %d of the %d open connections", len(known), len(open))
+		}
+	}
+	if resets < 2 { // the first list is the one every watcher starts with
+		t.Fatalf("the watcher was given the list %d time(s): the test does not overflow the stream", resets)
+	}
+}
+
+func sameKeys(a, b map[string]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k := range a {
+		if !b[k] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestModeShapesTheInventedRoutes(t *testing.T) {

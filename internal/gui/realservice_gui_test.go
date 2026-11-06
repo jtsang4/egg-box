@@ -132,10 +132,27 @@ func TestTheScreensWorkOnTheRealService(t *testing.T) {
 	h.eventually("connections", func() bool { return len(rt.Service.Snapshot().Conns) >= 3 })
 	h.settle()
 	h.leaks("the connections of the real service")
-	// A connection of the list is made an exception, for its registrable domain.
+	// A connection of the list is made an exception, for its registrable
+	// domain. The world invents its connections as it likes, and a domain the
+	// person already has an exception for (a steam store, the netflix of the
+	// step above) would only move that exception to the new destination: the
+	// same match is never listed twice. This step is about a new one.
+	have := map[routing.Entry]bool{}
+	for _, x := range rt.Library.Routing().Exceptions {
+		have[x.Entry().Normalize()] = true
+	}
 	var host string
 	for _, c := range rt.Service.Snapshot().Conns {
-		if c.Host != "" && c.Open() && h.ui.HasText(c.Host) {
+		if c.Host == "" || !c.Open() || !h.ui.HasText(c.Host) {
+			continue
+		}
+		var fresh bool
+		for _, cand := range app.ConnCandidates(c) {
+			if cand.Scope == app.ScopeDomain {
+				fresh = !have[cand.Entry.Normalize()]
+			}
+		}
+		if fresh {
 			host = c.Host
 			break
 		}

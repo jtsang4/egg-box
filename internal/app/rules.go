@@ -60,8 +60,7 @@ func (s *Service) neededRuleData(st routing.State) []string {
 // switching plans does not mean downloading again.
 func (s *Service) keptRuleData(st routing.State) map[string]bool {
 	keep := map[string]bool{}
-	var add func(items []routing.Item)
-	add = func(items []routing.Item) {
+	add := func(items []routing.Item) {
 		for _, it := range items {
 			for _, src := range it.Sources {
 				if src.Kind != routing.SourceURL {

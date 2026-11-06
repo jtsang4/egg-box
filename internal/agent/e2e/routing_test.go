@@ -724,6 +724,9 @@ func TestTheCoreTurnsAwayANameThatLeadsNowhereOnlyWhereThePlanAsksAboutAddresses
 	// The shipped plan publishes address ranges, so every name is looked up.
 	w.check("x.unlisted.example", directPort, expect{app.WhyFallback, "", []string{jp1}, "a name that leads nowhere the plan knows"})
 	w.check("gone.unlisted.example", directPort, expect{app.WhyUnresolved, "", nil, "a name nobody can look up"})
+	if w.dns.timesAsked("gone.unlisted.example") == 0 {
+		t.Error("the core turned a name away without asking the name server about it")
+	}
 
 	// No item on: no rule about addresses, so no lookup.
 	w.edit(func(st *routing.State) error {
@@ -737,7 +740,11 @@ func TestTheCoreTurnsAwayANameThatLeadsNowhereOnlyWhereThePlanAsksAboutAddresses
 	until(t, "the plan to ask about no address", 20*time.Second, func() bool {
 		return w.probe("gone.unlisted.example", directPort).body == jp1
 	})
+	asked := w.dns.timesAsked("gone.unlisted.example")
 	w.check("gone.unlisted.example", directPort, expect{app.WhyFallback, "", []string{jp1}, "nothing asks where a name leads, so none is looked up"})
+	if got := w.dns.timesAsked("gone.unlisted.example"); got != asked {
+		t.Errorf("the name server was asked about the name %d times where no rule is about addresses", got-asked)
+	}
 
 	// An exception about a range asks again, after the exceptions before it.
 	var host, rng routing.Exception

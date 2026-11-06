@@ -471,8 +471,26 @@ func (e *Engine) snapshotLocked() *agentapi.Groups {
 func (e *Engine) publishGroupsLocked() {
 	snap := e.snapshotLocked()
 	for ch := range e.groupSubs {
+		offer(ch, snap)
+	}
+}
+
+// offer hands a picture of the groups to a watcher that may be slow. When the
+// watcher's buffer is full the oldest picture goes to make room, never the
+// newest: whoever fell behind ends up holding the groups as they stand now,
+// not an old picture that nothing will ever correct (a choice made while the
+// watcher lagged would otherwise never reach it). Every send is made with the
+// engine's lock held and watchers only receive, so the room that was made
+// cannot be taken by anyone else.
+func offer[T any](ch chan T, v T) {
+	for {
 		select {
-		case ch <- snap:
+		case ch <- v:
+			return
+		default:
+		}
+		select {
+		case <-ch:
 		default:
 		}
 	}
@@ -703,12 +721,45 @@ func (e *Engine) emitLocked(events []*agentapi.ConnectionEvent) {
 	if len(events) == 0 {
 		return
 	}
+	msg := &agentapi.ConnectionEvents{Events: events}
+	var reset *agentapi.ConnectionEvents
 	for ch := range e.connSubs {
 		select {
-		case ch <- &agentapi.ConnectionEvents{Events: events}:
+		case ch <- msg:
+			continue
 		default:
 		}
+		// The watcher fell behind. Events are changes, so losing some would
+		// leave it with a list that stays wrong; what it has not read yet is
+		// replaced by the whole list as it stands now. Only this function
+		// sends, with the lock held, so the room made here is not taken.
+		for drained := false; !drained; {
+			select {
+			case <-ch:
+			default:
+				drained = true
+			}
+		}
+		if reset == nil {
+			reset = e.resetLocked()
+		}
+		ch <- reset
 	}
+}
+
+// resetLocked is every open connection, as the one message that replaces
+// whatever its receiver knew.
+func (e *Engine) resetLocked() *agentapi.ConnectionEvents {
+	reset := &agentapi.ConnectionEvents{Reset_: true}
+	ids := make([]string, 0, len(e.conns))
+	for id := range e.conns {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		reset.Events = append(reset.Events, &agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_NEW, Id: id, Connection: shown(e.conns[id].c)})
+	}
+	return reset
 }
 
 // WatchTraffic reports the rates and totals every interval.
@@ -769,17 +820,7 @@ func (e *Engine) WatchConnections(ctx context.Context, _ time.Duration) (<-chan 
 		return nil, err
 	}
 	out := make(chan *agentapi.ConnectionEvents, 1)
-	reset := &agentapi.ConnectionEvents{Reset_: true}
-	ids := make([]string, 0, len(e.conns))
-	for id := range e.conns {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		c := e.conns[id].c
-		reset.Events = append(reset.Events, &agentapi.ConnectionEvent{Type: agentapi.ConnectionEvent_TYPE_NEW, Id: id, Connection: shown(c)})
-	}
-	out <- reset
+	out <- e.resetLocked()
 	live := make(chan *agentapi.ConnectionEvents, 64)
 	e.connSubs[live] = struct{}{}
 	done := e.runDone

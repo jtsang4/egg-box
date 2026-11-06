@@ -820,10 +820,7 @@ func (a *App) nodeMenu(c *ui.Context, n nodeEntry) func(m *ui.Menu) {
 		if m.Item(a.t("nodes.use")).Chosen() {
 			a.setMain(routing.ToNode(n.ID))
 		}
-		var items []routing.Row
-		for _, r := range a.rv().Rows {
-			items = append(items, r)
-		}
+		items := append([]routing.Row(nil), a.rv().Rows...)
 		m.Submenu(a.t("nodes.use_for"), func(sm *ui.Menu) {
 			if len(items) == 0 {
 				sm.Item(a.t("nodes.use_for.none")).Disabled(true)
