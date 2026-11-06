@@ -42,7 +42,14 @@ public func eggbox_dns_set(
         "ServerAddresses": addresses,
         // The empty domain matches every name.
         "SupplementalMatchDomains": [""],
-        "SearchOrder": 1,
+        // Ahead of every other resolver for every name, including another
+        // VPN's catch-all one (those get orders from 100000 up), so a takeover
+        // of the routes takes the names with it. More specific match domains
+        // still win over the empty one whatever the order. configd drops
+        // "SearchOrder" from a service that has no IPv4 or IPv6, which this
+        // entry never has, so the order goes per domain here, one per entry
+        // of SupplementalMatchDomains (a count that differs drops the entry).
+        "SupplementalMatchOrders": [1],
         tokenKey: String(cString: token),
     ]
     if !SCDynamicStoreSetValue(store, String(cString: key) as CFString, value as CFDictionary) {
