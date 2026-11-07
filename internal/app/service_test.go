@@ -1000,6 +1000,7 @@ func TestExplainClassifiesRoutingErrors(t *testing.T) {
 		{routing.ErrLocked, "plan_locked"},
 		{routing.ErrNotMine, "plan_not_mine"},
 		{routing.ErrTooManyExceptions, "too_many_exceptions"},
+		{routing.ErrExceptionsChanged, "exceptions_changed"},
 		{routing.ErrNoItem, "not_found"},
 		{routing.ErrNoException, "not_found"},
 		{routing.ErrNoPlan, "not_found"},

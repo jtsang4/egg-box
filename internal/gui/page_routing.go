@@ -204,8 +204,8 @@ func (a *App) exceptionsCard(c *ui.Context) {
 			if head.Clicked() && n > 0 {
 				a.rte.exOpen = !a.rte.exOpen
 			}
-			if a.btn(c, btnSpec{kind: btnGhost, small: true, label: a.t("exceptions.paste"), icon: "copy"}).Clicked() {
-				a.openBatchException("")
+			if a.btn(c, btnSpec{kind: btnGhost, small: true, label: a.t("exceptions.edit_text"), icon: "file-text"}).Clicked() {
+				a.openExceptionsEditor()
 			}
 			if a.btn(c, btnSpec{kind: btnSoft, small: true, label: a.t("common.add"), icon: "plus"}).Clicked() {
 				a.openException(nil)
@@ -263,8 +263,8 @@ func (a *App) exceptionMenu(c *ui.Context, i int, x routing.Exception, n int) fu
 		if m.Item(a.t("common.edit")).Chosen() {
 			a.openException(&x)
 		}
-		if m.Item(a.t("common.copy_value")).Chosen() {
-			c.WriteClipboard(x.Value)
+		if m.Item(a.t("exceptions.copy_rule")).Chosen() {
+			c.WriteClipboard(a.exceptionRule(x))
 		}
 		m.Separator()
 		if m.Item(a.t("subs.move_up")).Disabled(i == 0).Chosen() {

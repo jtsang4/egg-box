@@ -16,14 +16,50 @@ type BatchLine struct {
 	// Target is what the line said to do with it, as written ("DIRECT",
 	// "REJECT", the name of a group); empty when the line said nothing.
 	Target string
+	// Disabled is set for a rule that was commented out ("# DOMAIN,…"), which
+	// only the exceptions editor reads: everywhere else it is a comment.
+	Disabled bool
+	// Text is the line as it was written, shortened.
+	Text string
 }
 
-// BatchBad is a line that was not understood.
+// BatchBad is a line that was not understood, or that cannot be used.
 type BatchBad struct {
-	Line   int
-	Text   string
+	Line int
+	Text string
+	// Reason says why in English, for logs and tests.
 	Reason string
+	// Code says why in a form the interface words itself (one of the Bad…
+	// codes); Arg and Choices are what the words need.
+	Code    string
+	Arg     string
+	Choices []string
 }
+
+// Why a line of a list cannot be used.
+const (
+	// BadSyntax: not a rule the app can read.
+	BadSyntax = "syntax"
+	// BadType: a rule type that is not supported here; Arg is the type.
+	BadType = "type"
+	// BadDuplicate: the same match as an earlier line; Arg is that line's number.
+	BadDuplicate = "duplicate"
+	// BadTarget: a destination nothing answers to; Arg is the destination.
+	BadTarget = "target"
+	// BadAmbiguous: a node name more than one subscription has; Arg is the
+	// name, Choices the ways to write each node.
+	BadAmbiguous = "ambiguous"
+	// BadNoNode: no node has the name; Arg is the name.
+	BadNoNode = "no_node"
+	// BadRegion: a region code that is not known; Arg is the code.
+	BadRegion = "region"
+)
+
+// unsupportedType is the reason a rule of a type that is not supported here
+// cannot be used.
+type unsupportedType string
+
+func (t unsupportedType) Error() string { return string(t) + " rules are not supported here" }
 
 // BatchResult is what a pasted list came to, to be shown before anything is
 // added.
@@ -65,14 +101,35 @@ var clashTypes = map[string]EntryKind{
 
 // ParseBatch reads a pasted list: one entry per line, either written plainly
 // (a domain, an address range, a port, a program) or in the Clash syntax,
-// `DOMAIN-SUFFIX,example.com,DIRECT`. Blank lines, comments and the
-// `payload:` line of a rule file are skipped. Nothing here fails: what cannot
-// be read is returned, so it can be shown.
-func ParseBatch(text string) BatchResult {
+// `DOMAIN-SUFFIX,example.com,DIRECT`. A field may be put in double quotes
+// when it holds a comma (`PROCESS-PATH,"/Apps/A, B.app/a",DIRECT`; a quote
+// inside is written twice). Blank lines, comments and the `payload:` line of a
+// rule file are skipped. Nothing here fails: what cannot be read is returned,
+// so it can be shown.
+func ParseBatch(text string) BatchResult { return parseList(text, false) }
+
+// parseList reads a list. With disabled, a line that is a whole Clash rule
+// commented out with "#" is read as a rule that is switched off.
+func parseList(text string, disabled bool) BatchResult {
 	res := BatchResult{Counts: map[EntryKind]int{}}
-	for i, raw := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+	for i, raw := range listLines(text) {
 		n := i + 1
 		line := strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))
+		if disabled && strings.HasPrefix(line, "#") {
+			// A rule commented out is a rule switched off; anything else
+			// after "#" is a comment.
+			rest := strings.TrimSpace(strings.TrimLeft(line, "#"))
+			if looksLikeRule(rest) {
+				entry, target, err := parseClashLine(rest)
+				if err != nil {
+					res.Unrecognized = append(res.Unrecognized, BatchBad{Line: n, Text: clip(raw, 120), Reason: err.Error(), Code: BadSyntax})
+					continue
+				}
+				res.Lines = append(res.Lines, BatchLine{Line: n, Entry: entry, Target: target, Disabled: true, Text: clip(raw, 120)})
+				res.Counts[entry.Kind]++
+				continue
+			}
+		}
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") || strings.HasPrefix(line, ";") {
 			continue
 		}
@@ -89,13 +146,22 @@ func ParseBatch(text string) BatchResult {
 		}
 		entry, target, err := parseBatchLine(line)
 		if err != nil {
-			res.Unrecognized = append(res.Unrecognized, BatchBad{Line: n, Text: clip(raw, 120), Reason: err.Error()})
+			bad := BatchBad{Line: n, Text: clip(raw, 120), Reason: err.Error(), Code: BadSyntax}
+			if t, ok := err.(unsupportedType); ok {
+				bad.Code, bad.Arg = BadType, string(t)
+			}
+			res.Unrecognized = append(res.Unrecognized, bad)
 			continue
 		}
-		res.Lines = append(res.Lines, BatchLine{Line: n, Entry: entry, Target: target})
+		res.Lines = append(res.Lines, BatchLine{Line: n, Entry: entry, Target: target, Text: clip(raw, 120)})
 		res.Counts[entry.Kind]++
 	}
 	return res
+}
+
+// listLines splits a list into its lines.
+func listLines(text string) []string {
+	return strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
 }
 
 func trimQuotes(s string) string {
@@ -121,32 +187,171 @@ func parseBatchLine(line string) (Entry, string, error) {
 	return e, "", err
 }
 
-func parseClashLine(line string) (Entry, string, error) {
-	parts := strings.Split(line, ",")
-	for i := range parts {
-		parts[i] = strings.TrimSpace(parts[i])
+// field is one comma-separated part of a Clash line.
+type field struct {
+	text   string
+	quoted bool
+	// start is where the field begins in the line.
+	start int
+}
+
+// splitFields splits a line at its commas. A field that starts with a double
+// quote runs to the closing quote and may hold commas; a quote inside it is
+// written twice. A quote that does not close is kept as it is.
+func splitFields(s string) []field {
+	var out []field
+	i := 0
+	for {
+		j := i
+		for j < len(s) && (s[j] == ' ' || s[j] == '\t') {
+			j++
+		}
+		if j < len(s) && s[j] == '"' {
+			if text, end, ok := readQuoted(s, j); ok {
+				k := end
+				for k < len(s) && (s[k] == ' ' || s[k] == '\t') {
+					k++
+				}
+				if k == len(s) || s[k] == ',' {
+					out = append(out, field{text: text, quoted: true, start: i})
+					if k == len(s) {
+						return out
+					}
+					i = k + 1
+					continue
+				}
+			}
+		}
+		k := strings.IndexByte(s[i:], ',')
+		if k < 0 {
+			return append(out, field{text: strings.TrimSpace(s[i:]), start: i})
+		}
+		out = append(out, field{text: strings.TrimSpace(s[i : i+k]), start: i})
+		i += k + 1
 	}
-	typ := strings.ToUpper(parts[0])
+}
+
+// readQuoted reads the quoted text that starts at s[at]: what it says, and
+// where it ends.
+func readQuoted(s string, at int) (string, int, bool) {
+	var b strings.Builder
+	for p := at + 1; p < len(s); p++ {
+		if s[p] != '"' {
+			b.WriteByte(s[p])
+			continue
+		}
+		if p+1 < len(s) && s[p+1] == '"' {
+			b.WriteByte('"')
+			p++
+			continue
+		}
+		return b.String(), p + 1, true
+	}
+	return "", 0, false
+}
+
+// regexChars are the characters a regular expression is made of: text after
+// a regex's last comma that has none of them is the destination, not a part
+// of the expression.
+const regexChars = `\^$()[]{}*+?|`
+
+// looksLikeRule reports whether text after "#" is a rule rather than words:
+// a known type, then fields with no space after their commas, which is how
+// rules are written and sentences are not.
+func looksLikeRule(s string) bool {
+	fs := splitFields(s)
+	if _, known := clashTypes[strings.ToUpper(fs[0].text)]; !known || len(fs) < 2 {
+		return false
+	}
+	for i, f := range fs[1:] {
+		if i > 0 && hasPrefixFold(strings.TrimSpace(s[f.start:]), "NODE:") {
+			break // a node's name, the destination, may have ", " in it
+		}
+		if f.start < len(s) && (s[f.start] == ' ' || s[f.start] == '\t') {
+			return false
+		}
+	}
+	return true
+}
+
+// cutNoResolve takes a trailing ",no-resolve" off a destination.
+func cutNoResolve(s string) string {
+	const word = "no-resolve"
+	t := strings.TrimSpace(s)
+	if len(t) > len(word) && strings.EqualFold(t[len(t)-len(word):], word) {
+		if rest := strings.TrimSpace(t[:len(t)-len(word)]); strings.HasSuffix(rest, ",") {
+			return strings.TrimSpace(strings.TrimSuffix(rest, ","))
+		}
+	}
+	return t
+}
+
+// namedTarget finds the comma before a destination that names a node or a
+// region (",NODE:…", ",REGION:…") in the text after a rule's type; -1 when
+// there is none.
+func namedTarget(raw string) int {
+	for i := len(raw) - 1; i >= 0; i-- {
+		if raw[i] == ',' && (hasPrefixFold(raw[i+1:], "NODE:") || hasPrefixFold(raw[i+1:], "REGION:")) {
+			return i
+		}
+	}
+	return -1
+}
+
+func hasPrefixFold(s, prefix string) bool {
+	return len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix)
+}
+
+func parseClashLine(line string) (Entry, string, error) {
+	fs := splitFields(line)
+	typ := strings.ToUpper(fs[0].text)
 	kind, ok := clashTypes[typ]
 	if !ok {
-		return Entry{}, "", fmt.Errorf("%s rules are not supported here", typ)
+		return Entry{}, "", unsupportedType(typ)
 	}
-	if len(parts) < 2 || parts[1] == "" {
+	if len(fs) < 2 || fs[1].text == "" {
 		return Entry{}, "", fmt.Errorf("%s needs a value", typ)
 	}
-	value := trimQuotes(parts[1])
-	target := ""
-	if len(parts) > 2 && !strings.EqualFold(parts[2], "no-resolve") {
-		target = trimQuotes(parts[2])
+	value, rest := fs[1].text, fs[2:]
+	if !fs[1].quoted {
+		value = trimQuotes(value)
 	}
-	if kind == EntryDomainRegex {
-		// A regular expression may itself contain commas.
-		value = trimQuotes(strings.Join(parts[1:], ","))
-		target = ""
-		if i := strings.LastIndex(value, ","); i >= 0 && !strings.ContainsAny(value[i+1:], `\^$()[]{}*+?|`) {
-			target = trimQuotes(strings.TrimSpace(value[i+1:]))
-			value = strings.TrimSpace(value[:i])
+	target := ""
+	if kind == EntryDomainRegex && !fs[1].quoted {
+		// A regular expression may itself contain commas: the destination is
+		// the last field, when it is quoted or cannot be a part of a regex.
+		raw := line[fs[1].start:]
+		last := fs[len(fs)-1]
+		switch {
+		case len(fs) > 2 && last.quoted:
+			value, target = strings.TrimSpace(line[fs[1].start:last.start-1]), last.text
+		case namedTarget(raw) >= 0:
+			// A node's name may look like a part of a regex: what follows
+			// ",NODE:" or ",REGION:" is the destination.
+			i := namedTarget(raw)
+			value, target = trimQuotes(strings.TrimSpace(raw[:i])), cutNoResolve(raw[i+1:])
+		default:
+			value = trimQuotes(strings.TrimSpace(raw))
+			if i := strings.LastIndex(value, ","); i >= 0 && !strings.ContainsAny(value[i+1:], regexChars) {
+				target = trimQuotes(strings.TrimSpace(value[i+1:]))
+				value = strings.TrimSpace(value[:i])
+			}
 		}
+		rest = nil
+	}
+	for _, f := range rest {
+		if !f.quoted && strings.EqualFold(f.text, "no-resolve") {
+			continue
+		}
+		target = f.text
+		if !f.quoted {
+			target = trimQuotes(target)
+			if strings.HasPrefix(strings.ToUpper(target), "NODE:") {
+				// A node's name may have commas in it.
+				target = cutNoResolve(line[f.start:])
+			}
+		}
+		break
 	}
 	e := Entry{Kind: kind, Value: value}.Normalize()
 	if err := e.Valid(); err != nil {

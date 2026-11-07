@@ -1,6 +1,8 @@
 package gui
 
 import (
+	"errors"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -135,16 +137,9 @@ func (b *batchEditor) result() *routing.BatchResult {
 	return &b.res
 }
 
-// batchBox is the text area a list is pasted into.
-func (a *App) batchBox(c *ui.Context, key string, b *batchEditor) ui.Element {
-	area := a.area(c, key, &b.text, a.t("batch.placeholder"), 6, 10)
-	return area
-}
-
 // batchPreview shows what a pasted list came to, before anything is added:
-// how many lines were read, of which kinds, which were not understood and, for
-// lists whose lines name a destination, what each name stands for.
-func (a *App) batchPreview(c *ui.Context, b *batchEditor, rows []routing.Row, targets bool) {
+// how many lines were read, of which kinds, and which were not understood.
+func (a *App) batchPreview(c *ui.Context, b *batchEditor) {
 	p := a.pl
 	if strings.TrimSpace(b.text) == "" {
 		a.txt(c, a.t("batch.help"), 12, 400, p.Text3).LineHeight(1.5)
@@ -162,82 +157,138 @@ func (a *App) batchPreview(c *ui.Context, b *batchEditor, rows []routing.Row, ta
 			a.txt(c, boolOr(n > 0, a.tn("batch.recognized", n), a.t("batch.none")), 13, 650, p.Text).Grow(1).Basis(0)
 		})
 		if n > 0 {
-			ui.Row(c).Gap(6).Wrap().Children(func() {
-				for _, k := range routing.EntryKinds {
-					if cnt := res.Counts[k]; cnt > 0 {
-						a.chip(c, a.entryKindLabel(k)+"  "+strconv.Itoa(cnt), toneNeutral, "")
-					}
-				}
-			})
-		}
-		if targets {
-			for _, name := range res.Targets() {
-				dest, ok := routing.ResolveTarget(name, rows)
-				var meaning string
-				if ok {
-					meaning = a.destLabel(dest)
-				} else {
-					meaning = a.t("batch.target.chosen")
-				}
-				a.txt(c, "“"+name+"”  →  "+meaning, 12, 450, p.Text2).SingleLine()
-			}
+			a.kindChips(c, res.Counts)
 		}
 		if bad := res.Unrecognized; len(bad) > 0 {
 			a.hr(c)
 			a.txt(c, a.tn("batch.unrecognized", len(bad)), 12.5, 600, p.Warn)
-			for i, l := range bad {
-				if i == 6 {
-					a.txt(c, a.tn("batch.more", len(bad)-6), 12, 400, p.Text3)
-					break
-				}
-				ui.Row(c).Gap(8).Children(func() {
-					a.txt(c, a.t("batch.line", "n", strconv.Itoa(l.Line)), 11.5, 600, p.Text3).FontFeatures("tnum").SingleLine().Shrink(0)
-					ui.Column(c).Grow(1).Basis(0).Gap(1).Children(func() {
-						a.txt(c, l.Text, 12, 450, p.Text).Font("monospace").SingleLine()
-						a.txt(c, a.batchReason(l), 11.5, 400, p.Text3).LineHeight(1.35)
-					})
-				})
+			a.badLines(c, bad)
+		}
+	})
+}
+
+// kindChips says how many entries there are of each kind.
+func (a *App) kindChips(c *ui.Context, counts map[routing.EntryKind]int) {
+	ui.Row(c).Gap(6).Wrap().Children(func() {
+		for _, k := range routing.EntryKinds {
+			if cnt := counts[k]; cnt > 0 {
+				a.chip(c, a.entryKindLabel(k)+"  "+strconv.Itoa(cnt), toneNeutral, "")
 			}
 		}
 	})
 }
 
-// batchReason says in the person's language why a line was not understood.
+// badLines lists the first few lines of a list that cannot be used, each
+// with why.
+func (a *App) badLines(c *ui.Context, bad []routing.BatchBad) {
+	p := a.pl
+	for i, l := range bad {
+		if i == 6 {
+			a.txt(c, a.tn("batch.more", len(bad)-6), 12, 400, p.Text3)
+			break
+		}
+		ui.Row(c).Gap(8).Children(func() {
+			a.txt(c, a.t("batch.line", "n", strconv.Itoa(l.Line)), 11.5, 600, p.Text3).FontFeatures("tnum").SingleLine().Shrink(0)
+			ui.Column(c).Grow(1).Basis(0).Gap(1).Children(func() {
+				a.txt(c, l.Text, 12, 450, p.Text).Font("monospace").SingleLine()
+				a.txt(c, a.batchReason(l), 11.5, 400, p.Text3).LineHeight(1.35)
+			})
+		})
+	}
+}
+
+// batchReason says in the person's language why a line cannot be used.
 func (a *App) batchReason(l routing.BatchBad) string {
-	if typ, ok := strings.CutSuffix(l.Reason, " rules are not supported here"); ok {
-		return a.t("batch.bad.type", "type", typ)
+	switch l.Code {
+	case routing.BadType:
+		return a.t("batch.bad.type", "type", l.Arg)
+	case routing.BadDuplicate:
+		return a.t("exedit.bad.duplicate", "n", l.Arg)
+	case routing.BadTarget:
+		return a.t("exedit.bad.target", "target", l.Arg)
+	case routing.BadAmbiguous:
+		if len(l.Choices) == 0 {
+			return a.t("exedit.bad.ambiguous_none", "name", l.Arg)
+		}
+		return a.t("exedit.bad.ambiguous", "name", l.Arg, "choices", strings.Join(l.Choices, a.t("exedit.or")))
+	case routing.BadNoNode:
+		return a.t("exedit.bad.no_node", "name", l.Arg)
+	case routing.BadRegion:
+		return a.t("exedit.bad.region", "code", l.Arg)
 	}
 	return a.t("batch.bad.generic")
 }
 
-// ----------------------------------------------------------- many exceptions
+// ------------------------------------------------- the exceptions as text
 
-// batchDialog adds many exceptions from a pasted list.
-type batchDialog struct {
-	ed   batchEditor
-	dest routing.Dest
-	busy bool
-	err  string
+// exceptionsEditor edits all the exceptions at once, as text: one per line,
+// in order, each with its destination. Saving replaces the list.
+type exceptionsEditor struct {
+	doc  routing.ExceptionsText
+	text string
+	// The text is read once per change of it, of the nodes it can name or of
+	// the plan in force.
+	seen    string
+	seenVer [2]uint64
+	read    bool
+	draft   routing.ExceptionsDraft
+	busy    bool
+	err     string
 }
 
-func (a *App) openBatchException(text string) {
-	a.openDialog(&batchDialog{ed: batchEditor{text: text}, dest: routing.Follow()})
+// openExceptionsEditor opens the exceptions as text.
+func (a *App) openExceptionsEditor() {
+	doc := routing.WriteExceptions(a.rt().Exceptions, a.exceptionNames())
+	a.openDialog(&exceptionsEditor{doc: doc, text: doc.Text})
 }
 
-func (d *batchDialog) frame(a *App, c *ui.Context) dlgFrame {
-	res := d.ed.result()
-	n := len(res.Lines)
-	rows := a.rv().Rows
+// exceptionNames is what the text of the exceptions can name.
+func (a *App) exceptionNames() routing.Names {
+	nodes := a.liveNodes()
+	ns := routing.Names{Nodes: make([]routing.NamedNode, len(nodes)), Rows: a.rv().Rows}
+	regions := map[string]bool{}
+	for i, n := range nodes {
+		ns.Nodes[i] = routing.NamedNode{ID: n.ID, SubName: n.SubName, SubAlias: n.SubAlias}
+		regions[n.Region] = true
+	}
+	ns.Region = func(code string) bool {
+		_, known := regionNames[code]
+		return known || regions[code]
+	}
+	ns.Subs = make(map[string]string, len(a.subs))
+	for _, s := range a.subs {
+		ns.Subs[s.ID] = boolOr(s.Alias != "", s.Alias, s.Name)
+	}
+	return ns
+}
+
+// exceptionRule is an exception as a line of the text.
+func (a *App) exceptionRule(x routing.Exception) string {
+	return routing.ExceptionLine(x, routing.FormatTarget(x.Dest, a.exceptionNames()))
+}
+
+func (d *exceptionsEditor) result(a *App) *routing.ExceptionsDraft {
+	a.refreshNodes()
+	ver := [2]uint64{a.nodesVer, a.rtc.ver}
+	if !d.read || d.seen != d.text || d.seenVer != ver {
+		if d.read && d.seen != d.text {
+			d.err = ""
+		}
+		d.seen, d.seenVer, d.read = d.text, ver, true
+		d.draft = d.doc.Read(d.text, a.exceptionNames())
+	}
+	return &d.draft
+}
+
+func (d *exceptionsEditor) frame(a *App, c *ui.Context) dlgFrame {
+	dr := d.result(a)
 	return dlgFrame{
-		title: a.t("batchdlg.title"), subtitle: a.t("batchdlg.sub"), icon: "pin", tone: toneBlue, width: 560,
+		title: a.t("exedit.title"), subtitle: a.t("exedit.sub"), icon: "file-text", tone: toneBlue, width: 640,
 		body: func() {
-			a.batchBox(c, "bx-text", &d.ed).AutoFocus()
-			a.batchPreview(c, &d.ed, rows, true)
-			a.field(c, a.t("batchdlg.dest"), a.t("batchdlg.dest.hint"), func() {
-				ui.Row(c).Children(func() {
-					a.destButton(c, destOpts{key: "bx-dest", width: 260, title: a.t("batchdlg.title")}, d.dest, func(x routing.Dest) { d.dest = x })
-				})
-			})
+			area := a.area(c, "exed-text", &d.text, a.t("exedit.placeholder"), 8, 14)
+			area.AutoFocus()
+			a.txt(c, a.t("exedit.help"), 12, 400, a.pl.Text3).LineHeight(1.5)
+			a.exceptionsDraftView(c, d, dr)
 			if d.err != "" {
 				a.errorNote(c, d.err)
 			}
@@ -246,52 +297,149 @@ func (d *batchDialog) frame(a *App, c *ui.Context) dlgFrame {
 			if a.btn(c, btnSpec{kind: btnGhost, label: a.t("common.cancel")}).Clicked() {
 				a.dlgOpen = false
 			}
-			label := a.t("common.add")
-			if n > 0 {
-				label = a.tn("batchdlg.add", n)
-			}
-			if a.btn(c, btnSpec{kind: btnPrimary, label: label, busy: d.busy, disabled: n == 0}).Clicked() {
+			if a.btn(c, btnSpec{kind: btnPrimary, label: a.t("common.save"), busy: d.busy, disabled: !dr.Ready()}).Clicked() {
 				d.submit(a)
 			}
 		},
 	}
 }
 
-func (d *batchDialog) submit(a *App) {
-	if d.busy {
-		return
+// exceptionsDraftView shows what the text comes to: what changes, what each
+// destination stands for, what goes and what is wrong.
+func (a *App) exceptionsDraftView(c *ui.Context, d *exceptionsEditor, dr *routing.ExceptionsDraft) {
+	p := a.pl
+	ui.Column(c).Gap(10).Padding(12, 14).Radius(12).Background(p.Field).Border(1, p.Line).Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ic, t, msg := "check-circle", toneGood, ""
+			switch {
+			case len(dr.Problems) > 0:
+				ic, t, msg = "alert-circle", toneWarn, a.tn("exedit.problems", len(dr.Problems))
+			case dr.TooMany:
+				ic, t, msg = "alert-circle", toneWarn, a.t("err.too_many_exceptions")
+			case !dr.Changes():
+				ic, t, msg = "info", toneNeutral, a.t("exedit.unchanged")
+			default:
+				msg = a.exceptionsChanges(dr)
+				if len(dr.Removed) > 0 {
+					t = toneWarn
+				}
+			}
+			ui.Icon(c, icon(ic)).Size(16, 16).TextColor(a.toneColor(t))
+			a.txt(c, msg, 13, 650, p.Text).Grow(1).Basis(0).LineHeight(1.35)
+		})
+		if bad := dr.Problems; len(bad) > 0 {
+			a.badLines(c, bad)
+			strip := map[int]bool{}
+			for _, l := range bad {
+				if l.Code == routing.BadTarget {
+					strip[l.Line] = true
+				}
+			}
+			if len(strip) > 0 {
+				ui.Row(c).Children(func() {
+					if a.btn(c, btnSpec{kind: btnSecondary, small: true, label: a.t("exedit.strip")}).Clicked() {
+						d.text = routing.StripTargets(d.text, strip)
+					}
+				})
+			}
+		}
+		if gone := dr.Removed; len(gone) > 0 {
+			if len(dr.Problems) > 0 {
+				a.hr(c)
+			}
+			a.txt(c, a.t("exedit.removing"), 12.5, 600, p.Warn)
+			for i, x := range gone {
+				if i == 6 {
+					a.txt(c, a.tn("batch.more", len(gone)-6), 12, 400, p.Text3)
+					break
+				}
+				a.txt(c, a.exceptionRule(x), 12, 450, p.Text2).Font("monospace").SingleLine()
+			}
+		}
+		if len(dr.Problems) > 0 || len(dr.Removed) > 0 {
+			a.hr(c)
+		}
+		if n := len(dr.List); n > 0 {
+			a.txt(c, a.tn("exedit.count", n), 12, 500, p.Text2)
+			a.kindChips(c, dr.Counts)
+		} else {
+			a.txt(c, a.t("exedit.none"), 12, 500, p.Text2)
+		}
+		if ts := dr.Targets; len(ts) > 0 {
+			ui.Column(c).Gap(3).Children(func() {
+				for i, m := range ts {
+					if i == 8 {
+						a.txt(c, a.tn("batch.more", len(ts)-8), 12, 400, p.Text3)
+						break
+					}
+					a.txt(c, "“"+m.Target+"”  →  "+a.destLabel(m.Dest), 12, 450, p.Text2).SingleLine()
+				}
+			})
+		}
+	})
+}
+
+// exceptionsChanges sums up what saving the text changes.
+func (a *App) exceptionsChanges(dr *routing.ExceptionsDraft) string {
+	var parts []string
+	if dr.Added > 0 {
+		parts = append(parts, a.t("exedit.added", "n", strconv.Itoa(dr.Added)))
 	}
-	lines := append([]routing.BatchLine(nil), d.ed.result().Lines...)
-	if len(lines) == 0 {
+	if n := len(dr.Removed); n > 0 {
+		parts = append(parts, a.t("exedit.removed", "n", strconv.Itoa(n)))
+	}
+	if dr.Changed > 0 {
+		parts = append(parts, a.t("exedit.changed", "n", strconv.Itoa(dr.Changed)))
+	}
+	if dr.Reordered {
+		parts = append(parts, a.t("exedit.reordered"))
+	}
+	return strings.Join(parts, " · ")
+}
+
+func (d *exceptionsEditor) submit(a *App) {
+	dr := d.result(a)
+	if d.busy || !dr.Ready() {
 		return
 	}
 	d.busy, d.err = true, ""
-	dest := d.dest.Clone()
+	base, list, sent := d.doc.Base, dr.List, d.text
+	var after []routing.Exception
 	a.editRouting(func(s *routing.State) error {
-		rows := s.View().Rows
-		for _, l := range lines {
-			to := dest
-			if l.Target != "" {
-				if t, ok := routing.ResolveTarget(l.Target, rows); ok {
-					to = t
-				}
-			}
-			if _, err := s.UpsertException(l.Entry, to); err != nil {
-				return err
+		err := s.ReplaceExceptions(base, list)
+		if err == nil || errors.Is(err, routing.ErrExceptionsChanged) {
+			after = slices.Clone(s.Exceptions)
+			for i := range after {
+				after[i].Dest = after[i].Dest.Clone()
 			}
 		}
-		return nil
+		return err
 	}, func(err error) {
 		d.busy = false
-		if err != nil {
+		switch {
+		case errors.Is(err, routing.ErrExceptionsChanged):
+			// Carry the text over to the list as it is now: what the person
+			// changed stays, the rest takes the latest form.
+			d.doc, d.text = d.doc.Rebase(d.text, after, a.exceptionNames())
+			d.read = false
+			d.result(a)
+			d.err = a.t("exedit.rebased")
+			return
+		case err != nil:
 			d.err = a.explain(err)
 			return
 		}
-		if cur, ok := a.dlg.(*batchDialog); ok && cur == d {
+		a.rte.exOpen = true
+		a.toastInfo(a.t("exedit.done"))
+		if d.text != sent {
+			// Written to while it was being saved: what is new stays to be saved.
+			d.doc = routing.WriteExceptions(after, a.exceptionNames())
+			d.read = false
+			return
+		}
+		if cur, ok := a.dlg.(*exceptionsEditor); ok && cur == d {
 			a.dlgOpen = false
 		}
-		a.rte.exOpen = true
-		a.toastInfo(a.tn("batchdlg.done", len(lines)))
 	})
 }
 

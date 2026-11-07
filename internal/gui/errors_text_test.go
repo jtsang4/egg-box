@@ -27,7 +27,7 @@ import (
 func TestEveryErrorCodeIsTranslated(t *testing.T) {
 	errs := []error{
 		routing.ErrDuplicateName, routing.ErrNoName, routing.ErrBadEntry, routing.ErrLocked, routing.ErrNotMine,
-		routing.ErrTooManyExceptions, routing.ErrNoItem, routing.ErrNoException, routing.ErrNoPlan, routing.ErrNoSource,
+		routing.ErrTooManyExceptions, routing.ErrExceptionsChanged, routing.ErrNoItem, routing.ErrNoException, routing.ErrNoPlan, routing.ErrNoSource,
 		routing.ErrDuplicateSource, routing.ErrLastSource, routing.ErrNotInline, routing.ErrNoEntries, routing.ErrTooManyEntries,
 		app.ErrBadTarget, app.ErrLooksLikeSubscription, app.ErrNoNodes, app.ErrAuthorizationDeclined, app.ErrServiceSetup,
 		ruleurl.ErrAddress, ruledata.ErrTooLarge, ruledata.StatusError(503), &ruledata.ParseError{Err: rulefmt.ErrUnrecognized},

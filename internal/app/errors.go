@@ -166,6 +166,8 @@ func routingCode(err error) string {
 		return "plan_not_mine"
 	case errors.Is(err, routing.ErrTooManyExceptions):
 		return "too_many_exceptions"
+	case errors.Is(err, routing.ErrExceptionsChanged):
+		return "exceptions_changed"
 	case errors.Is(err, routing.ErrNoItem), errors.Is(err, routing.ErrNoException), errors.Is(err, routing.ErrNoPlan), errors.Is(err, routing.ErrNoSource):
 		return "not_found"
 	case errors.Is(err, routing.ErrDuplicateSource):

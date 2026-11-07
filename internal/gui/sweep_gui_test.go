@@ -168,8 +168,8 @@ func (h *harness) dialogCases() []dialogCase {
 		{"exception for a connection", func() {
 			a.openExceptionFor(routing.Entry{Kind: routing.EntryDomainSuffix, Value: "npmjs.org"}, routing.Direct())
 		}},
-		{"batch, empty", func() { a.openBatchException("") }},
-		{"batch, pasted", func() { a.openBatchException(pastedList) }},
+		{"exceptions as text", func() { a.openExceptionsEditor() }},
+		{"exceptions as text, pasted", func() { openEditorWith(a, pastedList) }},
 		{"test an address", func() { a.openTestURL("") }},
 		{"test an address, with one", func() { a.openTestURL("https://registry.npmjs.org/left-pad") }},
 		{"add item, catalog", func() { a.openAddItem() }},

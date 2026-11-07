@@ -720,7 +720,7 @@ func (d *addDialog) writeTab(a *App, c *ui.Context) {
 	a.area(c, "add-write", &d.hw.text, a.t("batch.placeholder"), 6, 9).AutoFocus()
 	// The preview reads the box as it is now.
 	shown := batchEditor{text: d.hw.text, read: true, seen: d.hw.text, res: res}
-	a.batchPreview(c, &shown, nil, false)
+	a.batchPreview(c, &shown)
 }
 
 // writeButton is the footer's button of the hand-written tab: on to the

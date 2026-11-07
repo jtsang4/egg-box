@@ -45,7 +45,10 @@ func init() {
 		add(shot{name: "dlg-exception-from-connection", run: onRouting(func(h *harness) {
 			h.app.openExceptionFor(routing.Entry{Kind: routing.EntryDomainSuffix, Value: "npmjs.org"}, routing.Direct())
 		})})
-		add(shot{name: "dlg-batch-preview", setup: streamingInSingapore, run: onRouting(func(h *harness) { h.app.openBatchException(pastedList) })})
+		add(shot{name: "dlg-exceptions-text", setup: nodesOfTheSameName, run: onRouting(func(h *harness) { h.app.openExceptionsEditor() })})
+		add(shot{name: "dlg-exceptions-text-edited", setup: streamingInSingapore, run: onRouting(func(h *harness) {
+			openEditorWith(h.app, "DOMAIN-SUFFIX,intranet.example,DIRECT\nDOMAIN-KEYWORD,ads-tracker,Streaming\nGEOIP,CN,DIRECT\nPROCESS-NAME,Updater,Somewhere\nDOMAIN-SUFFIX,new.example,REGION:JP\n# DOMAIN,off.example,REJECT\n")
+		})})
 		add(shot{name: "dlg-test-url", run: onRouting(func(h *harness) { h.app.openTestURL("https://registry.npmjs.org/left-pad") })})
 		add(shot{name: "dlg-test-url-refused", run: onRouting(func(h *harness) { h.app.openTestURL("gone.nowhere.example") })})
 		add(shot{name: "dlg-additem-catalog", h: 900, run: onRouting(func(h *harness) { h.app.openAddItem() })})

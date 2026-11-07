@@ -287,7 +287,7 @@ func (d *itemDialog) inlineBody(a *App, c *ui.Context, row routing.Row, src rout
 					d.editing = src.ID
 					lines := make([]string, len(src.Entries))
 					for i, e := range src.Entries {
-						lines[i] = entryLine(e)
+						lines[i] = routing.EntryLine(e)
 					}
 					d.edit = batchEditor{text: strings.Join(lines, "\n")}
 					d.err = ""
@@ -297,7 +297,7 @@ func (d *itemDialog) inlineBody(a *App, c *ui.Context, row routing.Row, src rout
 		return
 	}
 	a.area(c, "id-entries", &d.edit.text, a.t("batch.placeholder"), 5, 10).AutoFocus()
-	a.batchPreview(c, &d.edit, nil, false)
+	a.batchPreview(c, &d.edit)
 	res := d.edit.result()
 	ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
 		if a.btn(c, btnSpec{kind: btnGhost, small: true, label: a.t("common.cancel")}).Clicked() {
@@ -320,25 +320,6 @@ func (d *itemDialog) inlineBody(a *App, c *ui.Context, row routing.Row, src rout
 			})
 		}
 	})
-}
-
-// entryLine writes an entry the way the paste box reads it, with its kind.
-func entryLine(e routing.Entry) string {
-	if t, ok := clashTypeOf[e.Kind]; ok {
-		return t + "," + e.Value
-	}
-	return e.Value
-}
-
-var clashTypeOf = map[routing.EntryKind]string{
-	routing.EntryDomain:        "DOMAIN",
-	routing.EntryDomainSuffix:  "DOMAIN-SUFFIX",
-	routing.EntryDomainKeyword: "DOMAIN-KEYWORD",
-	routing.EntryDomainRegex:   "DOMAIN-REGEX",
-	routing.EntryIPCIDR:        "IP-CIDR",
-	routing.EntryPort:          "DST-PORT",
-	routing.EntryProcessName:   "PROCESS-NAME",
-	routing.EntryProcessPath:   "PROCESS-PATH",
 }
 
 func unsupportedCount(st app.SourceStatus) int {
