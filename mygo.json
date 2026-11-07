@@ -2,7 +2,7 @@
   "name": "EggBox",
   "slug": "egg-box",
   "identifier": "org.eggbox.app",
-  "version": "0.9.7",
+  "version": "0.9.8",
   "copyright": "© 2026 EggBox contributors",
   "publisher": "EggBox contributors",
   "icon": "resources/icon.png",
