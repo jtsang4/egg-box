@@ -27,7 +27,7 @@ func (s *State) AddException(x Exception) (Exception, error) {
 		return Exception{}, ErrTooManyExceptions
 	}
 	e := x.Entry().Normalize()
-	x.Kind, x.Value = e.Kind, e.Value
+	x.Kind, x.Value, x.Resolver = e.Kind, e.Value, NormalizeResolver(x.Resolver)
 	if x.ID == "" {
 		x.ID = NewID("x")
 	}
@@ -39,16 +39,15 @@ func (s *State) AddException(x Exception) (Exception, error) {
 // UpsertException sets where an entry goes: a new exception, or the
 // destination of the one that already has this match (and is then switched on).
 func (s *State) UpsertException(e Entry, d Dest) (Exception, error) {
-	e = e.Normalize()
-	for i, x := range s.Exceptions {
-		if x.Kind == e.Kind && x.Value == e.Value {
-			if err := d.Valid(false); err != nil {
-				return Exception{}, err
-			}
-			s.Exceptions[i].Dest, s.Exceptions[i].Enabled = d.Clone(), true
-			return s.Exceptions[i], nil
+	if x, ok := s.ExceptionFor(e); ok {
+		if err := d.Valid(false); err != nil {
+			return Exception{}, err
 		}
+		i := s.exception(x.ID)
+		s.Exceptions[i].Dest, s.Exceptions[i].Enabled = d.Clone(), true
+		return s.Exceptions[i], nil
 	}
+	e = e.Normalize()
 	return s.AddException(Exception{Kind: e.Kind, Value: e.Value, Dest: d, Enabled: true})
 }
 
@@ -67,9 +66,25 @@ func (s *State) UpdateException(id string, x Exception) error {
 		return err
 	}
 	e := x.Entry().Normalize()
-	x.Kind, x.Value = e.Kind, e.Value
+	x.Kind, x.Value, x.Resolver = e.Kind, e.Value, NormalizeResolver(x.Resolver)
 	x.Dest = x.Dest.Clone()
 	s.Exceptions[i] = x
+	return nil
+}
+
+// SetExceptionResolver changes how the names one exception matches are
+// looked up: "" as usual, dnsspec.Exit, or a DNS server.
+func (s *State) SetExceptionResolver(id, resolver string) error {
+	i := s.exception(id)
+	if i < 0 {
+		return ErrNoException
+	}
+	x := s.Exceptions[i]
+	x.Resolver = resolver
+	if err := x.Valid(); err != nil {
+		return err
+	}
+	s.Exceptions[i].Resolver = NormalizeResolver(resolver)
 	return nil
 }
 

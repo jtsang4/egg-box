@@ -1001,6 +1001,8 @@ func TestExplainClassifiesRoutingErrors(t *testing.T) {
 		{routing.ErrNotMine, "plan_not_mine"},
 		{routing.ErrTooManyExceptions, "too_many_exceptions"},
 		{routing.ErrExceptionsChanged, "exceptions_changed"},
+		{routing.ValidResolver("gopher://x"), "resolver_invalid"},
+		{routing.ErrResolverNotHost, "resolver_not_host"},
 		{routing.ErrNoItem, "not_found"},
 		{routing.ErrNoException, "not_found"},
 		{routing.ErrNoPlan, "not_found"},

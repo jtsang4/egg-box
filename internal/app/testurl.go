@@ -8,15 +8,18 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/sagernet/sing-box/option"
+	n "github.com/sagernet/sing/common/network"
 	"golang.org/x/net/idna"
 	"golang.org/x/net/publicsuffix"
 
 	"eggbox/internal/configgen"
+	"eggbox/internal/dnsspec"
 	"eggbox/internal/plancompile"
 	"eggbox/internal/routing"
 	"eggbox/internal/rulefmt"
@@ -154,8 +157,18 @@ func (s *Service) TestURL(ctx context.Context, raw string) (*TestURLResult, erro
 		res.Addrs = []netip.Addr{t.ip}
 		q.Addrs = res.Addrs
 	}
+	view := v.state.View()
+	looked := false
 	resolve := func() {
-		if len(q.Addrs) > 0 || res.Resolved || t.host == "" {
+		if len(q.Addrs) > 0 || looked || t.host == "" {
+			return
+		}
+		looked = true
+		// The core asks the resolver of the first rule whose names the name is
+		// among.
+		via := s.firstResolver(v, view, t.host)
+		if via == dnsspec.Exit {
+			// The core never looks such a name up on this side.
 			return
 		}
 		rctx, cancel := context.WithTimeout(ctx, 4*time.Second)
@@ -169,6 +182,13 @@ func (s *Service) TestURL(ctx context.Context, raw string) (*TestURLResult, erro
 		addrs, err := lookup(rctx, t.host)
 		res.Resolved = true
 		if err != nil || len(addrs) == 0 {
+			if via != "" && via != dnsspec.System {
+				// The rule names a server of its own, which may know what this
+				// machine's resolver does not: the name is not turned away for
+				// that, it is matched by name alone. The system's resolver is
+				// the one just asked.
+				return
+			}
 			res.ResolveErr = "no answer"
 			return
 		}
@@ -196,7 +216,6 @@ func (s *Service) TestURL(ctx context.Context, raw string) (*TestURLResult, erro
 		}
 	}
 
-	view := v.state.View()
 	finish := func(why Why, dest routing.Dest, id string) (*TestURLResult, error) {
 		res.Why, res.Dest = why, dest
 		if id != "" && dest.Kind != routing.DestDirect && dest.Kind != routing.DestReject {
@@ -217,12 +236,23 @@ func (s *Service) TestURL(ctx context.Context, raw string) (*TestURLResult, erro
 		return finish(Why{Kind: WhyUnresolved}, routing.Reject(), "")
 	}
 
-	// The local network.
+	// The local network, but for the private ranges the person's own rules
+	// claim: those are left to the rules.
 	if s.lib.Prefs().LANDirect {
-		private := false
-		for _, a := range q.Addrs {
-			private = private || a.IsPrivate() || a.IsLoopback() || a.IsLinkLocalUnicast()
+		// As the core has it: some address is private, and none is claimed.
+		claims := v.claims()
+		claimed := func(a netip.Addr) bool {
+			return slices.ContainsFunc(claims, func(c string) bool {
+				p, err := netip.ParsePrefix(c)
+				return err == nil && p.Contains(a)
+			})
 		}
+		private, anyClaimed := false, false
+		for _, a := range q.Addrs {
+			private = private || !n.IsPublicAddr(a)
+			anyClaimed = anyClaimed || claimed(a)
+		}
+		private = private && !anyClaimed
 		if !private && t.host != "" {
 			for _, suffix := range []string{"local", "lan", "localdomain", "home.arpa"} {
 				if t.host == suffix || strings.HasSuffix(t.host, "."+suffix) {
@@ -266,7 +296,7 @@ func (s *Service) TestURL(ctx context.Context, raw string) (*TestURLResult, erro
 	// The host-name part of every item, in the plan's order.
 	for _, row := range view.Rows {
 		rules, ok := v.res.Rules[row.Item.ID]
-		if !ok || len(rules.Domain) == 0 {
+		if !ok || len(rules.Domain) == 0 || v.skipped(row.Item.ID) {
 			continue
 		}
 		verdict := s.verdict(rules.Domain, q)
@@ -281,7 +311,7 @@ func (s *Service) TestURL(ctx context.Context, raw string) (*TestURLResult, erro
 
 	// Then the address part, once the name is looked up (if any item has one).
 	for _, row := range view.Rows {
-		if rules, ok := v.res.Rules[row.Item.ID]; ok && len(rules.IP) > 0 {
+		if rules, ok := v.res.Rules[row.Item.ID]; ok && len(rules.IP) > 0 && !v.skipped(row.Item.ID) {
 			if resolve(); res.ResolveErr != "" {
 				return refused()
 			}
@@ -290,7 +320,7 @@ func (s *Service) TestURL(ctx context.Context, raw string) (*TestURLResult, erro
 	}
 	for _, row := range view.Rows {
 		rules, ok := v.res.Rules[row.Item.ID]
-		if !ok || len(rules.IP) == 0 {
+		if !ok || len(rules.IP) == 0 || v.skipped(row.Item.ID) {
 			continue
 		}
 		verdict := s.verdict(rules.IP, q)
@@ -424,4 +454,62 @@ func connIP(dest string) netip.Addr {
 func ProcessName(p string) string {
 	p = strings.ReplaceAll(p, "\\", "/")
 	return path.Base(p)
+}
+
+// firstResolver is the resolver of the first rule whose names host is among,
+// exceptions then items, "" when no rule names one: dnsspec.Exit when the name
+// is left to the exit, which the core never looks up on this side. The core
+// asks its DNS rules in that order; configgen writes the resolve's guard from
+// the same order.
+func (s *Service) firstResolver(v *planView, view routing.View, host string) string {
+	if host == "" {
+		return ""
+	}
+	hq := rulefmt.Query{Domain: host}
+	// As configgen has it: a blocked rule's names are refused whatever it
+	// says, and a resolver that is not one is the usual lookup.
+	via := func(r string, d routing.Dest) string {
+		if d.Kind == routing.DestReject || routing.ValidResolver(r) != nil {
+			return ""
+		}
+		return r
+	}
+	for _, x := range v.state.Exceptions {
+		if !x.Enabled || !x.Kind.IsHost() {
+			continue
+		}
+		rule, err := plancompile.EntryRule(x.Entry())
+		if err != nil {
+			continue
+		}
+		if m, err := rulefmt.NewMatcher([]option.HeadlessRule{rule}); err == nil && m.Match(hq) == rulefmt.Match {
+			return via(x.Resolver, x.Dest)
+		}
+	}
+	for _, row := range view.Rows {
+		it := row.Item
+		rules, ok := v.res.Rules[it.ID]
+		if !it.Enabled || !ok || len(rules.Host) == 0 || v.skipped(it.ID) {
+			continue
+		}
+		if s.verdict(rules.Host, hq) == rulefmt.Match {
+			return via(it.Resolver, it.Dest)
+		}
+	}
+	return ""
+}
+
+// claims are the private ranges the configuration leaves to the rules: as it
+// was generated, or, before there is one, as the compiled plan says.
+func (v *planView) claims() []string {
+	if v.out != nil {
+		return v.out.LANClaims
+	}
+	return v.res.Input.Claims()
+}
+
+// skipped reports whether the configuration left an item out for want of
+// room: the core never sees its rules.
+func (v *planView) skipped(id string) bool {
+	return v.out != nil && slices.Contains(v.out.Skipped, id)
 }

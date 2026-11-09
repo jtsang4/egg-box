@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"net/netip"
 	"regexp"
 	"slices"
@@ -22,11 +23,14 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"eggbox/internal/dnsspec"
 )
 
 // FormatVersion is the version of the persisted State. Migrations only ever
-// move forward and are safe to run twice.
-const FormatVersion = 1
+// move forward and are safe to run twice (see Upgrade). Version 2 marks the
+// hand-written sources the person made (Source.Written).
+const FormatVersion = 2
 
 // NewID returns a short random identifier with a prefix ("x", "i", "p"...).
 func NewID(prefix string) string {
@@ -333,6 +337,10 @@ type Exception struct {
 	Value   string    `json:"value"`
 	Dest    Dest      `json:"dest"`
 	Enabled bool      `json:"enabled"`
+	// Resolver is how the names the exception matches are looked up: "" as
+	// usual, dnsspec.Exit for the exit to do it, or a DNS server, asked
+	// through the exception's exit (see dnsspec.NormalizeResolver).
+	Resolver string `json:"resolver,omitempty"`
 }
 
 // Entry is the exception's match.
@@ -343,7 +351,38 @@ func (x Exception) Valid() error {
 	if err := x.Entry().Valid(); err != nil {
 		return err
 	}
+	if err := ValidResolver(x.Resolver); err != nil {
+		return err
+	}
+	if x.Resolver != "" && !x.Kind.IsHost() {
+		return ErrResolverNotHost
+	}
 	return x.Dest.Valid(false)
+}
+
+// ErrResolverNotHost means a resolver was given to a rule that does not match
+// host names, so nothing it matches is looked up.
+var ErrResolverNotHost = errors.New("only a rule that matches host names can say how they are looked up")
+
+// ErrBadResolver means a resolver is neither "exit" nor a DNS server.
+var ErrBadResolver = errors.New("not a DNS server")
+
+// ValidResolver reports why a resolver cannot be used.
+func ValidResolver(r string) error {
+	if _, err := dnsspec.NormalizeResolver(r); err != nil {
+		return fmt.Errorf("%w: %q (%v)", ErrBadResolver, strings.TrimSpace(r), err)
+	}
+	return nil
+}
+
+// NormalizeResolver returns a resolver in the form it is kept in; one that
+// cannot be used is returned as it is, for Valid to report.
+func NormalizeResolver(r string) string {
+	n, err := dnsspec.NormalizeResolver(r)
+	if err != nil {
+		return r
+	}
+	return n
 }
 
 // -------------------------------------------------------- sources and items
@@ -368,6 +407,13 @@ type Source struct {
 	Name    string  `json:"name,omitempty"`
 	Project string  `json:"project,omitempty"`
 	Entries []Entry `json:"entries,omitempty"`
+	// Written marks entries the person wrote, or edited, as opposed to ones a
+	// provider's plan brought and nobody touched. Only theirs may claim a
+	// private range from the local network's direct rule.
+	Written bool `json:"written,omitempty"`
+	// Inherited are the private ranges a provider's plan had put in a source
+	// the person then edited: still the provider's, they claim nothing.
+	Inherited []string `json:"inherited,omitempty"`
 }
 
 // URLSource makes a source for a file.
@@ -375,9 +421,9 @@ func URLSource(url, name, project string) Source {
 	return Source{ID: sourceID(url), Kind: SourceURL, URL: url, Name: name, Project: project}
 }
 
-// InlineSource makes a source of hand-written entries.
+// InlineSource makes a source of entries the person wrote.
 func InlineSource(entries []Entry) Source {
-	return Source{ID: NewID("n"), Kind: SourceInline, Name: "", Entries: entries}
+	return Source{ID: NewID("n"), Kind: SourceInline, Name: "", Entries: entries, Written: true}
 }
 
 func sourceID(url string) string {
@@ -432,6 +478,10 @@ type Item struct {
 	// which DNS server answers; and so changing the destination between direct
 	// and a node never needs a new configuration.
 	Domestic bool `json:"domestic,omitempty"`
+	// Resolver is how the names the item matches are looked up, like an
+	// exception's: "" as Domestic says, dnsspec.Exit for the exit to do it, or
+	// a DNS server asked through the item's exit.
+	Resolver string `json:"resolver,omitempty"`
 }
 
 // Clone copies an item.
@@ -450,6 +500,7 @@ func cloneSources(in []Source) []Source {
 	out := append([]Source(nil), in...)
 	for i, s := range out {
 		out[i].Entries = append([]Entry(nil), s.Entries...)
+		out[i].Inherited = append([]string(nil), s.Inherited...)
 	}
 	return out
 }
@@ -574,6 +625,10 @@ type Overlay struct {
 	// the plan is refreshed and follow the item to a plan that has one of the
 	// same name.
 	Extra map[string][]Source `json:"extra,omitempty"`
+	// Resolver is how the names of the plan's items are looked up, where the
+	// person chose otherwise than the plan, keyed like Dest. An empty value
+	// stands for the default, chosen over a plan that names a resolver.
+	Resolver map[string]string `json:"resolver,omitempty"`
 	// Seen are the names the plan had when it was last looked at, to tell the
 	// person what a refresh added or removed.
 	Seen []string `json:"seen,omitempty"`
@@ -596,6 +651,9 @@ func (o *Overlay) Clone() *Overlay {
 		for k, v := range o.Enabled {
 			c.Enabled[k] = v
 		}
+	}
+	if len(o.Resolver) > 0 {
+		c.Resolver = maps.Clone(o.Resolver)
 	}
 	if len(o.Extra) > 0 {
 		c.Extra = make(map[string][]Source, len(o.Extra))

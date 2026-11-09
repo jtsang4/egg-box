@@ -24,6 +24,7 @@ const MaxEntries = 20000
 
 func (s Source) clone() Source {
 	s.Entries = append([]Entry(nil), s.Entries...)
+	s.Inherited = append([]string(nil), s.Inherited...)
 	return s
 }
 
@@ -203,7 +204,19 @@ func (s *State) SetEntries(itemID, sourceID string, entries []Entry) error {
 		if list[i].Kind != SourceInline {
 			return ErrNotInline
 		}
-		list[i].Entries = entries
+		if !list[i].Written {
+			// The provider's private ranges stay the provider's: editing the
+			// list makes only what the person adds theirs.
+			list[i].Inherited = appendClaims(nil, list[i].Entries, map[string]bool{})
+		}
+		// A range the person took out and writes in again later is theirs.
+		kept := map[string]bool{}
+		appendClaims(nil, entries, kept)
+		list[i].Inherited = slices.DeleteFunc(slices.Clone(list[i].Inherited), func(c string) bool { return !kept[c] })
+		if len(list[i].Inherited) == 0 {
+			list[i].Inherited = nil
+		}
+		list[i].Entries, list[i].Written = entries, true
 		return nil
 	}
 	return s.editItemErr(itemID,

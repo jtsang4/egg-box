@@ -21,8 +21,10 @@ type exceptionDialog struct {
 	kind  int
 	value string
 	dest  routing.Dest
-	err   string
-	busy  bool
+	// resolver is how the names are looked up; only rules about names have one.
+	resolver resolverEdit
+	err      string
+	busy     bool
 }
 
 // openException opens the dialog to add an exception, or to edit x.
@@ -30,6 +32,7 @@ func (a *App) openException(x *routing.Exception) {
 	d := &exceptionDialog{on: true, dest: routing.Follow()}
 	if x != nil {
 		d.id, d.on, d.kind, d.value, d.dest = x.ID, x.Enabled, entryKindIndex(x.Kind), x.Value, x.Dest.Clone()
+		d.resolver.sync(x.Resolver)
 	}
 	a.openDialog(d)
 }
@@ -37,7 +40,13 @@ func (a *App) openException(x *routing.Exception) {
 // openExceptionFor opens the dialog to add an exception that is already
 // filled in, from a connection or from the result of a test.
 func (a *App) openExceptionFor(e routing.Entry, dest routing.Dest) {
-	a.openDialog(&exceptionDialog{on: true, kind: entryKindIndex(e.Kind), value: e.Value, dest: dest})
+	d := &exceptionDialog{on: true, kind: entryKindIndex(e.Kind), value: e.Value, dest: dest}
+	// Adding what an exception already matches changes that exception: how
+	// its names are looked up stays unless the person changes it.
+	if x, ok := a.rt().ExceptionFor(e); ok {
+		d.resolver.sync(x.Resolver)
+	}
+	a.openDialog(d)
 }
 
 func (d *exceptionDialog) frame(a *App, c *ui.Context) dlgFrame {
@@ -74,6 +83,11 @@ func (d *exceptionDialog) frame(a *App, c *ui.Context) dlgFrame {
 						d.dest, func(x routing.Dest) { d.dest = x })
 				})
 			})
+			if kind.IsHost() && d.dest.Kind != routing.DestReject {
+				a.field(c, a.t("resolver.title"), "", func() {
+					a.resolverControl(c, "ex-resolver", &d.resolver, "", nil)
+				})
+			}
 			if d.err != "" {
 				a.errorNote(c, d.err)
 			}
@@ -98,14 +112,36 @@ func (d *exceptionDialog) submit(a *App) {
 		d.err = a.explain(err)
 		return
 	}
+	// Only a rule about names says how they are looked up. A blocked one is
+	// refused whatever it says, and the dialog does not show the choice, but
+	// keeps it for when the exception goes somewhere again.
+	resolver, keep := "", false
+	if entry.Kind.IsHost() {
+		resolver = d.resolver.value()
+		bad := routing.ValidResolver(resolver) != nil || d.resolver.mode == resolverServer && resolver == ""
+		switch {
+		case bad && d.dest.Kind == routing.DestReject:
+			// Hidden and not usable: what the exception had stays.
+			resolver, keep = d.resolver.seen, true
+		case bad:
+			d.resolver.err = a.t("err.resolver_invalid")
+			return
+		}
+	}
 	d.busy, d.err = true, ""
-	id, on, dest := d.id, d.on, d.dest.Clone()
+	id, on, dest, touched := d.id, d.on, d.dest.Clone(), d.resolver.touched && !keep
 	a.editRouting(func(s *routing.State) error {
 		if id == "" {
-			_, err := s.UpsertException(entry, dest)
-			return err
+			_, existed := s.ExceptionFor(entry)
+			x, err := s.UpsertException(entry, dest)
+			if err != nil || existed && !touched {
+				// An exception that already had this match keeps its own
+				// resolver unless the person changed what the dialog shows.
+				return err
+			}
+			return s.SetExceptionResolver(x.ID, resolver)
 		}
-		return s.UpdateException(id, routing.Exception{Kind: entry.Kind, Value: entry.Value, Dest: dest, Enabled: on})
+		return s.UpdateException(id, routing.Exception{Kind: entry.Kind, Value: entry.Value, Dest: dest, Enabled: on, Resolver: resolver})
 	}, func(err error) {
 		d.busy = false
 		if err != nil {
@@ -215,6 +251,14 @@ func (a *App) batchReason(l routing.BatchBad) string {
 		return a.t("exedit.bad.no_node", "name", l.Arg)
 	case routing.BadRegion:
 		return a.t("exedit.bad.region", "code", l.Arg)
+	case routing.BadResolver:
+		return a.t("exedit.bad.resolver", "value", l.Arg)
+	case routing.BadResolverHost:
+		return a.t("exedit.bad.resolver_host", "type", l.Arg)
+	case routing.BadResolverHere:
+		return a.t("batch.bad.resolver_here")
+	case routing.BadResolverTwice:
+		return a.t("exedit.bad.resolver_twice")
 	}
 	return a.t("batch.bad.generic")
 }
@@ -373,6 +417,17 @@ func (a *App) exceptionsDraftView(c *ui.Context, d *exceptionsEditor, dr *routin
 						break
 					}
 					a.txt(c, "“"+m.Target+"”  →  "+a.destLabel(m.Dest), 12, 450, p.Text2).SingleLine()
+				}
+			})
+		}
+		if rs := dr.Resolvers; len(rs) > 0 {
+			ui.Column(c).Gap(3).Children(func() {
+				for i, r := range rs {
+					if i == 8 {
+						a.txt(c, a.tn("list.more", len(rs)-8), 12, 400, p.Text3)
+						break
+					}
+					a.txt(c, "“dns="+r+"”  →  "+a.resolverLabel(r), 12, 450, p.Text2).SingleLine()
 				}
 			})
 		}

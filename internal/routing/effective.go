@@ -37,6 +37,8 @@ type Row struct {
 	// default" goes back to; for the user's own items they are the item's own.
 	DefaultDest Dest
 	DefaultOn   bool
+	// DefaultResolver is how the plan itself has the item's names looked up.
+	DefaultResolver string
 	// Overridden reports a choice of the user's laid over the plan.
 	Overridden bool
 	// Locked rows cannot be moved or removed.
@@ -110,7 +112,7 @@ func (s State) ViewOf(id string) View {
 	if p.Kind == PlanMine {
 		v := View{Plan: p, Overlay: &Overlay{}, Fallback: p.Fallback, FallbackDefault: p.Fallback}
 		for _, it := range p.Items {
-			v.Rows = append(v.Rows, Row{Item: it, Origin: OriginMine, DefaultDest: it.Dest, DefaultOn: it.Enabled})
+			v.Rows = append(v.Rows, Row{Item: it, Origin: OriginMine, DefaultDest: it.Dest, DefaultOn: it.Enabled, DefaultResolver: it.Resolver})
 		}
 		return v
 	}
@@ -124,12 +126,15 @@ func (s State) ViewOf(id string) View {
 	}
 	var base []Row
 	for _, it := range p.Items {
-		row := Row{Item: it, Origin: OriginPlan, DefaultDest: it.Dest, DefaultOn: it.Enabled, Locked: true}
+		row := Row{Item: it, Origin: OriginPlan, DefaultDest: it.Dest, DefaultOn: it.Enabled, DefaultResolver: it.Resolver, Locked: true}
 		if d, ok := lookup(ov.Dest, it); ok {
 			row.Item.Dest, row.Overridden = d, true
 		}
 		if on, ok := lookup(ov.Enabled, it); ok {
 			row.Item.Enabled, row.Overridden = on, true
+		}
+		if r, ok := lookup(ov.Resolver, it); ok {
+			row.Item.Resolver, row.Overridden = r, true
 		}
 		if extra, ok := lookup(ov.Extra, it); ok && len(extra) > 0 {
 			row.Item.Sources = append(cloneSources(it.Sources), cloneSources(extra)...)
@@ -160,7 +165,7 @@ func (s State) ViewOf(id string) View {
 }
 
 func overlayRow(o Item) Row {
-	return Row{Item: o, Origin: OriginOverlay, DefaultDest: o.Dest, DefaultOn: o.Enabled}
+	return Row{Item: o, Origin: OriginOverlay, DefaultDest: o.Dest, DefaultOn: o.Enabled, DefaultResolver: o.Resolver}
 }
 
 // lookup finds the user's choice for a plan item under any name it answers to.
@@ -233,6 +238,27 @@ func (s *State) SetItemDest(itemID string, d Dest) error {
 			}
 			clearKeys(ov.Dest, it)
 			ov.Dest[primary(it)] = d.Clone()
+		})
+}
+
+// SetItemResolver changes how the names an item of the active plan matches
+// are looked up: "" as usual, dnsspec.Exit, or a DNS server. For an item of a
+// plan kept up to date elsewhere the choice is laid over it, like a
+// destination.
+func (s *State) SetItemResolver(itemID, resolver string) error {
+	if err := ValidResolver(resolver); err != nil {
+		return err
+	}
+	r := NormalizeResolver(resolver)
+	return s.editItem(itemID, func(it *Item) { it.Resolver = r },
+		func(ov *Overlay, it Item) {
+			if ov.Resolver == nil {
+				ov.Resolver = map[string]string{}
+			}
+			clearKeys(ov.Resolver, it)
+			if r != it.Resolver {
+				ov.Resolver[primary(it)] = r
+			}
 		})
 }
 
@@ -335,7 +361,7 @@ func (s *State) RestoreDefault() error {
 	if mine != nil {
 		return ErrNotMine
 	}
-	ov.Dest, ov.Enabled, ov.Fallback = nil, nil, nil
+	ov.Dest, ov.Enabled, ov.Fallback, ov.Resolver = nil, nil, nil, nil
 	return nil
 }
 
@@ -565,6 +591,16 @@ func (s *State) Switch(id string) error {
 			}
 			clearKeys(ov.Dest, it)
 			clearKeys(ov.Enabled, it)
+			clearKeys(ov.Resolver, it)
+			// Only a resolver the person chose goes with them: one their own
+			// item has, or one laid over the plan's.
+			chosen := row.Origin == OriginMine && row.Item.Resolver != "" || row.Item.Resolver != row.DefaultResolver
+			if chosen && row.Item.Resolver != it.Resolver {
+				if ov.Resolver == nil {
+					ov.Resolver = map[string]string{}
+				}
+				ov.Resolver[primary(it)] = row.Item.Resolver
+			}
 			if !row.Item.Dest.Equal(it.Dest) {
 				if ov.Dest == nil {
 					ov.Dest = map[string]Dest{}
@@ -814,7 +850,7 @@ func (s *State) Customized() bool {
 		}
 	}
 	for _, o := range s.Overlays {
-		if o != nil && (len(o.Dest) > 0 || len(o.Enabled) > 0 || len(o.Items) > 0 || o.Fallback != nil) {
+		if o != nil && (len(o.Dest) > 0 || len(o.Enabled) > 0 || len(o.Items) > 0 || o.Fallback != nil || len(o.Resolver) > 0) {
 			return true
 		}
 	}

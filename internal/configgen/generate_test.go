@@ -248,6 +248,8 @@ func describe(r map[string]any) string {
 		what = "protocol:" + r["protocol"].(string)
 	case r["ip_is_private"] != nil:
 		what = "private"
+	case r["type"] == "logical":
+		what = "private-unclaimed"
 	case r["domain_suffix"] != nil:
 		what = "suffix"
 	default:

@@ -16,9 +16,13 @@ import (
 //	DOMAIN-SUFFIX,openai.com,REGION:US
 //	DOMAIN-SUFFIX,abema.tv,NODE:Aurora Cloud/Tokyo 01
 //	DOMAIN-SUFFIX,github.com
+//	DOMAIN-SUFFIX,corp.example,DIRECT,dns=10.0.0.53
+//	DOMAIN-KEYWORD,intra,NODE:Gateway,dns=exit
 //	# DOMAIN-SUFFIX,old.example.com,DIRECT
 //
 // No destination follows the main exit, and "#" in front switches a rule off.
+// "dns=" at the end says how the names a rule matches are looked up: by that
+// DNS server, through the rule's exit, or with "exit" by the exit itself.
 // The order of the lines is the order the exceptions are tried in.
 //
 // A node is written by its name, with the subscription in front when another
@@ -59,6 +63,9 @@ func ExceptionLine(x Exception, target string) string {
 	s := EntryLine(x.Entry())
 	if target != "" {
 		s += "," + quoteTarget(target)
+	}
+	if x.Resolver != "" {
+		s += "," + dnsOption + x.Resolver
 	}
 	if !x.Enabled {
 		s = "# " + s
@@ -354,6 +361,9 @@ type ExceptionsDraft struct {
 	// Targets are the distinct destinations the lines wrote, in order of
 	// appearance, with what each stands for.
 	Targets []TargetMeaning
+	// Resolvers are the distinct resolvers the lines named, in order of
+	// appearance, in the form they are kept in.
+	Resolvers []string
 	// Added and Changed count the exceptions that are new and those whose
 	// destination or switch changed; Removed are the ones that go.
 	Added, Changed int
@@ -392,6 +402,14 @@ func (t ExceptionsText) Read(text string, ns Names) ExceptionsDraft {
 		firstLine[k] = l.Line
 		target := l.Target
 		x := Exception{Kind: l.Entry.Kind, Value: l.Entry.Value, Enabled: !l.Disabled}
+		if l.Resolver != "" {
+			if bad := resolverProblem(l); bad != nil {
+				d.Problems = append(d.Problems, *bad)
+				pending[k] = true
+				continue
+			}
+			x.Resolver = NormalizeResolver(l.Resolver)
+		}
 		i, kept := t.byKey[k]
 		if kept {
 			x.ID = t.Base[i].ID
@@ -417,6 +435,9 @@ func (t ExceptionsText) Read(text string, ns Names) ExceptionsDraft {
 			shown[target] = true
 			d.Targets = append(d.Targets, TargetMeaning{Target: target, Dest: x.Dest.Clone()})
 		}
+		if r := x.Resolver; r != "" && !slices.Contains(d.Resolvers, r) {
+			d.Resolvers = append(d.Resolvers, r)
+		}
 	}
 	sort.SliceStable(d.Problems, func(a, b int) bool { return d.Problems[a].Line < d.Problems[b].Line })
 	d.TooMany = len(d.List) > MaxExceptions
@@ -432,7 +453,7 @@ func (t ExceptionsText) Read(text string, ns Names) ExceptionsDraft {
 			continue
 		}
 		kept = append(kept, k)
-		if b := t.Base[i]; b.Enabled != x.Enabled || !b.Dest.Equal(x.Dest) {
+		if b := t.Base[i]; b.Enabled != x.Enabled || !b.Dest.Equal(x.Dest) || b.Resolver != x.Resolver {
 			d.Changed++
 		}
 	}
@@ -522,7 +543,7 @@ func StripTargets(text string, lines map[int]bool) string {
 			continue
 		}
 		l := res.Lines[0]
-		all[i] = ExceptionLine(Exception{Kind: l.Entry.Kind, Value: l.Entry.Value, Enabled: !l.Disabled}, "")
+		all[i] = ExceptionLine(Exception{Kind: l.Entry.Kind, Value: l.Entry.Value, Enabled: !l.Disabled, Resolver: l.Resolver}, "")
 	}
 	return strings.Join(all, "\n")
 }
@@ -544,6 +565,7 @@ func (s *State) ReplaceExceptions(base, list []Exception) error {
 		if err := x.Valid(); err != nil {
 			return err
 		}
+		x.Resolver = NormalizeResolver(x.Resolver)
 		e := x.Entry().Normalize()
 		x.Kind, x.Value = e.Kind, e.Value
 		if k := entryKey(e); seen[k] {
@@ -563,6 +585,19 @@ func (s *State) ReplaceExceptions(base, list []Exception) error {
 
 func sameExceptions(a, b []Exception) bool {
 	return slices.EqualFunc(a, b, func(x, y Exception) bool {
-		return x.ID == y.ID && x.Kind == y.Kind && x.Value == y.Value && x.Enabled == y.Enabled && x.Dest.Equal(y.Dest)
+		return x.ID == y.ID && x.Kind == y.Kind && x.Value == y.Value && x.Enabled == y.Enabled && x.Dest.Equal(y.Dest) &&
+			x.Resolver == y.Resolver
 	})
+}
+
+// resolverProblem says why the resolver a line named cannot be used, or nil.
+func resolverProblem(l BatchLine) *BatchBad {
+	if !l.Entry.Kind.IsHost() {
+		return &BatchBad{Line: l.Line, Text: l.Text, Code: BadResolverHost, Arg: ClashType(l.Entry.Kind),
+			Reason: ErrResolverNotHost.Error()}
+	}
+	if err := ValidResolver(l.Resolver); err != nil {
+		return &BatchBad{Line: l.Line, Text: l.Text, Code: BadResolver, Arg: strings.TrimSpace(l.Resolver), Reason: err.Error()}
+	}
+	return nil
 }

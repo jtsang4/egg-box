@@ -19,6 +19,9 @@ type BatchLine struct {
 	// Disabled is set for a rule that was commented out ("# DOMAIN,…"), which
 	// only the exceptions editor reads: everywhere else it is a comment.
 	Disabled bool
+	// Resolver is what a "dns=…" option of the line said, as written; only the
+	// exceptions editor reads it.
+	Resolver string
 	// Text is the line as it was written, shortened.
 	Text string
 }
@@ -53,6 +56,16 @@ const (
 	BadNoNode = "no_node"
 	// BadRegion: a region code that is not known; Arg is the code.
 	BadRegion = "region"
+	// BadResolver: "dns=" names neither a DNS server nor exit; Arg is what it says.
+	BadResolver = "resolver"
+	// BadResolverHost: "dns=" on a rule that does not match host names, so
+	// nothing it matches is looked up; Arg is the rule's type.
+	BadResolverHost = "resolver_host"
+	// BadResolverHere: "dns=" in a list of an item's entries, where the item
+	// says it once for all of them.
+	BadResolverHere = "resolver_here"
+	// BadResolverTwice: a line says "dns=" twice.
+	BadResolverTwice = "resolver_twice"
 )
 
 // unsupportedType is the reason a rule of a type that is not supported here
@@ -108,24 +121,26 @@ var clashTypes = map[string]EntryKind{
 // so it can be shown.
 func ParseBatch(text string) BatchResult { return parseList(text, false) }
 
-// parseList reads a list. With disabled, a line that is a whole Clash rule
-// commented out with "#" is read as a rule that is switched off.
-func parseList(text string, disabled bool) BatchResult {
+// parseList reads a list. With exceptions, it is the text of the exceptions: a
+// line that is a whole Clash rule commented out with "#" is read as a rule
+// that is switched off, and a line may say how its names are looked up
+// ("dns=…"), which elsewhere is a line that cannot be used.
+func parseList(text string, exceptions bool) BatchResult {
 	res := BatchResult{Counts: map[EntryKind]int{}}
 	for i, raw := range listLines(text) {
 		n := i + 1
 		line := strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))
-		if disabled && strings.HasPrefix(line, "#") {
+		if exceptions && strings.HasPrefix(line, "#") {
 			// A rule commented out is a rule switched off; anything else
 			// after "#" is a comment.
 			rest := strings.TrimSpace(strings.TrimLeft(line, "#"))
 			if looksLikeRule(rest) {
-				entry, target, err := parseClashLine(rest)
+				entry, target, resolver, err := parseClashLine(rest)
 				if err != nil {
-					res.Unrecognized = append(res.Unrecognized, BatchBad{Line: n, Text: clip(raw, 120), Reason: err.Error(), Code: BadSyntax})
+					res.Unrecognized = append(res.Unrecognized, badLine(n, raw, err, exceptions))
 					continue
 				}
-				res.Lines = append(res.Lines, BatchLine{Line: n, Entry: entry, Target: target, Disabled: true, Text: clip(raw, 120)})
+				res.Lines = append(res.Lines, BatchLine{Line: n, Entry: entry, Target: target, Resolver: resolver, Disabled: true, Text: clip(raw, 120)})
 				res.Counts[entry.Kind]++
 				continue
 			}
@@ -144,19 +159,37 @@ func parseList(text string, disabled bool) BatchResult {
 		if line == "" {
 			continue
 		}
-		entry, target, err := parseBatchLine(line)
+		entry, target, resolver, err := parseBatchLine(line)
 		if err != nil {
-			bad := BatchBad{Line: n, Text: clip(raw, 120), Reason: err.Error(), Code: BadSyntax}
-			if t, ok := err.(unsupportedType); ok {
-				bad.Code, bad.Arg = BadType, string(t)
-			}
-			res.Unrecognized = append(res.Unrecognized, bad)
+			res.Unrecognized = append(res.Unrecognized, badLine(n, raw, err, exceptions))
 			continue
 		}
-		res.Lines = append(res.Lines, BatchLine{Line: n, Entry: entry, Target: target, Text: clip(raw, 120)})
+		if resolver != "" && !exceptions {
+			// Only an exception says how its names are looked up; an item
+			// says it once, for all its entries.
+			res.Unrecognized = append(res.Unrecognized, BatchBad{Line: n, Text: clip(raw, 120), Code: BadResolverHere,
+				Reason: "dns= is said by the item, not by its entries"})
+			continue
+		}
+		res.Lines = append(res.Lines, BatchLine{Line: n, Entry: entry, Target: target, Resolver: resolver, Text: clip(raw, 120)})
 		res.Counts[entry.Kind]++
 	}
 	return res
+}
+
+// badLine is a line that could not be read, with why.
+func badLine(n int, raw string, err error, exceptions bool) BatchBad {
+	bad := BatchBad{Line: n, Text: clip(raw, 120), Reason: err.Error(), Code: BadSyntax}
+	switch e := err.(type) {
+	case unsupportedType:
+		bad.Code, bad.Arg = BadType, string(e)
+	case resolverSyntax:
+		bad.Code = e.code
+		if !exceptions {
+			bad.Code = BadResolverHere
+		}
+	}
+	return bad
 }
 
 // listLines splits a list into its lines.
@@ -179,12 +212,57 @@ func clip(s string, n int) string {
 	return s
 }
 
-func parseBatchLine(line string) (Entry, string, error) {
+func parseBatchLine(line string) (Entry, string, string, error) {
 	if strings.Contains(line, ",") {
 		return parseClashLine(line)
 	}
 	e, err := guessEntry(line)
-	return e, "", err
+	return e, "", "", err
+}
+
+// dnsOption is how a line says how the names it matches are looked up:
+// "dns=10.0.0.53", "dns=exit".
+const dnsOption = "dns="
+
+// isDNSOption reports whether a field of a line is a "dns=…" option.
+func isDNSOption(f field) bool { return !f.quoted && hasPrefixFold(f.text, dnsOption) }
+
+// resolverSyntax is a "dns=…" option that cannot be read, with the code the
+// interface words it by.
+type resolverSyntax struct{ code, reason string }
+
+func (e resolverSyntax) Error() string { return e.reason }
+
+// isNoResolve reports whether a field of a line is the "no-resolve" option.
+func isNoResolve(f field) bool { return !f.quoted && strings.EqualFold(f.text, "no-resolve") }
+
+// cutDNSOption takes the "dns=…" fields after a line's value out of it: the
+// line without them, and what they said. A line says it once at most, with a
+// value.
+func cutDNSOption(line string, fs []field) (string, string, error) {
+	resolver, found := "", false
+	var kept []string
+	for i, f := range fs {
+		end := len(line)
+		if i+1 < len(fs) {
+			end = fs[i+1].start - 1
+		}
+		if i < 2 || !isDNSOption(f) {
+			kept = append(kept, line[f.start:end])
+			continue
+		}
+		if found {
+			return "", "", resolverSyntax{code: BadResolverTwice, reason: "dns= is given twice"}
+		}
+		resolver, found = strings.TrimSpace(f.text[len(dnsOption):]), true
+		if resolver == "" {
+			return "", "", resolverSyntax{code: BadResolver, reason: "dns= needs a DNS server, or exit"}
+		}
+	}
+	if !found {
+		return line, "", nil
+	}
+	return strings.Join(kept, ","), resolver, nil
 }
 
 // field is one comma-separated part of a Clash line.
@@ -302,15 +380,31 @@ func hasPrefixFold(s, prefix string) bool {
 	return len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix)
 }
 
-func parseClashLine(line string) (Entry, string, error) {
+func parseClashLine(line string) (Entry, string, string, error) {
 	fs := splitFields(line)
 	typ := strings.ToUpper(fs[0].text)
 	kind, ok := clashTypes[typ]
 	if !ok {
-		return Entry{}, "", unsupportedType(typ)
+		return Entry{}, "", "", unsupportedType(typ)
 	}
 	if len(fs) < 2 || fs[1].text == "" {
-		return Entry{}, "", fmt.Errorf("%s needs a value", typ)
+		return Entry{}, "", "", fmt.Errorf("%s needs a value", typ)
+	}
+	// "dns=…" may stand anywhere after the value. It comes off first, in one
+	// pass, so that neither a regular expression nor a node's name, which may
+	// hold commas, takes it in. A field in quotes is never an option.
+	line, resolver, err := cutDNSOption(line, fs)
+	if err != nil {
+		return Entry{}, "", "", err
+	}
+	if resolver != "" {
+		fs = splitFields(line)
+	}
+	// So does a "no-resolve" at the end, which a regular expression would
+	// otherwise take for its destination.
+	for len(fs) > 2 && isNoResolve(fs[len(fs)-1]) {
+		line = line[:fs[len(fs)-1].start-1]
+		fs = fs[:len(fs)-1]
 	}
 	value, rest := fs[1].text, fs[2:]
 	if !fs[1].quoted {
@@ -340,7 +434,7 @@ func parseClashLine(line string) (Entry, string, error) {
 		rest = nil
 	}
 	for _, f := range rest {
-		if !f.quoted && strings.EqualFold(f.text, "no-resolve") {
+		if isNoResolve(f) {
 			continue
 		}
 		target = f.text
@@ -355,9 +449,9 @@ func parseClashLine(line string) (Entry, string, error) {
 	}
 	e := Entry{Kind: kind, Value: value}.Normalize()
 	if err := e.Valid(); err != nil {
-		return Entry{}, "", err
+		return Entry{}, "", "", err
 	}
-	return e, target, nil
+	return e, target, resolver, nil
 }
 
 // ruleTypeWords are the words a Clash rule starts with. Alone on a line they

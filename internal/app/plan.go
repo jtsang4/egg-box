@@ -201,7 +201,7 @@ func (s *Service) planInfo(v *planView, seq uint64) PlanInfo {
 	}
 	for _, row := range view.Rows {
 		ci := v.res.Items[row.Item.ID]
-		is := ItemStatus{State: ci.State, Missing: ci.Missing, Unsupported: ci.Unsupported, Domain: ci.Domain, IP: ci.IP, Sources: len(row.Item.Sources)}
+		is := ItemStatus{State: ci.State, Missing: ci.Missing, Unsupported: ci.Unsupported, Domain: ci.Domain, IP: ci.IP, Host: ci.Host, Sources: len(row.Item.Sources)}
 		for _, src := range row.Item.Sources {
 			if src.Kind != routing.SourceURL {
 				continue

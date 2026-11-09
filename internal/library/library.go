@@ -43,7 +43,10 @@ const (
 
 // formatVersion is the version of library.json this code writes. Version 2
 // holds the routing state (plans, exceptions, the main exit) that replaced the
-// presets and the list of custom rules; see migrate.
+// presets and the list of custom rules; see migrate. The routing state has a
+// version of its own (routing.FormatVersion), upgraded where it is read, so
+// that what only it changes does not keep an older application from opening
+// the file.
 const formatVersion = 2
 
 // DefaultIntervalHours is how often a new subscription refreshes.
@@ -227,6 +230,12 @@ func Open(dir string, opts Options) (*Library, error) {
 		}
 		l.data.Version = formatVersion
 		l.data.Prefs, _ = l.data.Prefs.Normalize()
+		// What the upgrade adds is worked out again on every open, so a file
+		// that cannot be written now is not a reason not to open it: the next
+		// change saves it.
+		if l.data.Routing.Upgrade() {
+			_ = l.saveLocked()
+		}
 	}
 	return l, nil
 }

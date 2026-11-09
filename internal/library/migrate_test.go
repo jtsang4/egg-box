@@ -339,3 +339,79 @@ func TestRemovingASubscriptionKeepsItsPlanAsTheUsersOwn(t *testing.T) {
 		t.Fatalf("%+v", rows)
 	}
 }
+
+// A routing state of the first format gets its hand-written sources marked
+// as the person's, so the private ranges they name claim what they meant them
+// to; the entries a provider's plan brought stay unmarked. The library format
+// does not change, so an older application still opens the file.
+func TestUpgradeMarksWrittenSources(t *testing.T) {
+	dir := t.TempDir()
+	l := openWith(t, dir, library.NewMemorySecrets())
+	if err := l.UpdateRouting(func(st *routing.State) error {
+		if _, err := st.SaveAsMine("Mine"); err != nil {
+			return err
+		}
+		_, err := st.AddItem(routing.Item{Name: "Own", Dest: routing.Direct(), Enabled: true, Sources: []routing.Source{
+			routing.InlineSource([]routing.Entry{{Kind: routing.EntryIPCIDR, Value: "10.0.0.0/8"}}),
+			{ID: "nzz9q8w7e6r5t4", Kind: routing.SourceInline, Entries: []routing.Entry{{Kind: routing.EntryIPCIDR, Value: "192.168.0.0/16"}}},
+		}}, "")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// What the previous version wrote: routing state 1, no marks.
+	path := filepath.Join(dir, "library.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	rt := doc["routing"].(map[string]any)
+	if rt["version"] != float64(routing.FormatVersion) {
+		t.Fatalf("routing version %v", rt["version"])
+	}
+	rt["version"] = 1
+	var unmark func(v any)
+	unmark = func(v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			delete(x, "written")
+			for _, c := range x {
+				unmark(c)
+			}
+		case []any:
+			for _, c := range x {
+				unmark(c)
+			}
+		}
+	}
+	unmark(rt)
+	old, _ := json.Marshal(doc)
+	if err := os.WriteFile(path, old, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	again := openWith(t, dir, library.NewMemorySecrets())
+	var row routing.Row
+	for _, r := range again.Routing().View().Rows {
+		if r.Item.Name == "Own" {
+			row = r
+		}
+	}
+	if got := row.Item.Claims(); len(got) != 1 || got[0] != "10.0.0.0/8" {
+		t.Fatalf("claims after the upgrade = %v", got)
+	}
+	if v := again.Routing().Version; v != routing.FormatVersion {
+		t.Fatalf("routing version after the upgrade = %d", v)
+	}
+	raw, _ = os.ReadFile(path)
+	var head struct {
+		Version int `json:"version"`
+	}
+	if err := json.Unmarshal(raw, &head); err != nil || head.Version != 2 {
+		t.Fatalf("the library format changed: %d, %v", head.Version, err)
+	}
+}

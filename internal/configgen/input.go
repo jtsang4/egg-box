@@ -2,6 +2,8 @@ package configgen
 
 import (
 	"errors"
+	"net/netip"
+	"strings"
 
 	"github.com/sagernet/sing-box/option"
 
@@ -74,6 +76,16 @@ type Item struct {
 	// a running core can be told to send traffic elsewhere, but not to ask a
 	// different DNS server, and the exit is meant to be switchable at runtime.
 	Domestic bool
+	// Resolver overrides how the item's names are looked up (dnsspec): ""
+	// leaves it to Domestic, dnsspec.Exit leaves it to the exit (the names are
+	// answered with fake addresses and the exit is handed the name), anything
+	// else is a DNS server asked through the item's group, so it follows the
+	// item's exit at runtime.
+	Resolver string
+	// LANClaims are the private ranges the person wrote into the item: while
+	// the item is in the configuration, the local network's direct rule leaves
+	// them to the rules.
+	LANClaims []string
 }
 
 // Exception is a rule of the person's own, ahead of every item.
@@ -81,6 +93,12 @@ type Exception struct {
 	ID   string
 	Rule option.HeadlessRule
 	Exit Exit
+	// Resolver is like Item.Resolver; a DNS server is asked through the
+	// exception's exit.
+	Resolver string
+	// LANClaim is the private range the exception names, like an item's
+	// LANClaims: "" when it names none.
+	LANClaim string
 }
 
 // Input is everything Generate needs.
@@ -96,6 +114,37 @@ type Input struct {
 	Items []Item
 	// Fallback is where traffic nothing claimed goes.
 	Fallback Exit
+}
+
+// Claims are the private ranges the input's exceptions and items claim (see
+// Exception.LANClaim, Item.LANClaims), as the configuration has them when
+// every one of them makes it in; Output.LANClaims are those it has.
+func (in Input) Claims() []string { return claimsOf(in.Exceptions, in.Items) }
+
+// claimsOf gathers what exceptions and items claim, as valid prefixes without
+// repeats, in order.
+func claimsOf(xs []Exception, items []Item) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(c string) {
+		p, err := netip.ParsePrefix(strings.TrimSpace(c))
+		if err != nil {
+			return
+		}
+		if s := p.Masked().String(); !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	for _, x := range xs {
+		add(x.LANClaim)
+	}
+	for _, it := range items {
+		for _, c := range it.LANClaims {
+			add(c)
+		}
+	}
+	return out
 }
 
 // Resource is a file the configuration references as "res:<Name>".
@@ -149,6 +198,9 @@ const (
 	WarnItemSkipped = "item_skipped"
 	// WarnExceptionInvalid: an exception's rule could not be written.
 	WarnExceptionInvalid = "exception_invalid"
+	// WarnResolverInvalid: an item or exception names a resolver that is not a
+	// DNS server; its names are looked up as usual. Detail is its id.
+	WarnResolverInvalid = "resolver_invalid"
 )
 
 // Layout records where each node sits in the generated arrays, so an error
@@ -179,10 +231,13 @@ type Output struct {
 	// without restarting the core.
 	Digest string
 	// Skipped are the IDs of the items left out for want of room.
-	Skipped  []string
-	Dropped  []Dropped
-	Warnings []Warning
-	Layout   Layout
+	Skipped []string
+	// LANClaims are the private ranges the local network's direct rule leaves
+	// to the rules: the exceptions' and the admitted items'.
+	LANClaims []string
+	Dropped   []Dropped
+	Warnings  []Warning
+	Layout    Layout
 }
 
 // ErrNoNodes means there is nothing to connect through.

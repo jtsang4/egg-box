@@ -306,6 +306,9 @@ type ItemStatus struct {
 	Unsupported int
 	// Domain and IP count the conditions that made it into the configuration.
 	Domain, IP int
+	// Host counts the rules that steer DNS; with none, how the item's names
+	// are looked up does not matter.
+	Host int
 	// Sources is the number of sources the item has.
 	Sources int
 	// Oldest is the oldest successful check among the item's files; zero when

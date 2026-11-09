@@ -380,12 +380,15 @@ func (a *App) itemMenu(c *ui.Context, i int, row routing.Row, n int) func(m *ui.
 		if m.Item(a.t("subs.move_down")).Disabled(row.Locked || i == n-1).Chosen() {
 			a.editRouting(func(s *routing.State) error { return s.Move(id, 1) }, nil)
 		}
-		if row.Origin == routing.OriginPlan && (!it.Dest.Equal(row.DefaultDest) || it.Enabled != row.DefaultOn) {
+		if row.Origin == routing.OriginPlan && (!it.Dest.Equal(row.DefaultDest) || it.Enabled != row.DefaultOn || it.Resolver != row.DefaultResolver) {
 			m.Separator()
 			if m.Item(a.t("item.restore")).Chosen() {
-				dest, on := row.DefaultDest.Clone(), row.DefaultOn
+				dest, on, resolver := row.DefaultDest.Clone(), row.DefaultOn, row.DefaultResolver
 				a.editRouting(func(s *routing.State) error {
 					if err := s.SetItemDest(id, dest); err != nil {
+						return err
+					}
+					if err := s.SetItemResolver(id, resolver); err != nil {
 						return err
 					}
 					return s.SetItemEnabled(id, on)

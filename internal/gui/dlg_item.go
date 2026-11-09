@@ -23,14 +23,23 @@ var iconChoices = []string{
 // itemDialog shows what an item is made of, source by source, and lets the
 // person add to it, take away from it and write entries into it.
 type itemDialog struct {
-	id      string
-	name    string
-	named   bool // name holds what is being typed
-	editing string
-	edit    batchEditor
-	err     string
-	busy    bool
-	scroll  ui.ScrollState
+	id       string
+	resolver resolverEdit
+	// shadows are the item's entries exceptions decide, worked out once per
+	// change of the routing state.
+	shadows   []routing.Shadow
+	asksNames bool
+	// shadowVer is the routing state and the compilation they were worked
+	// out from.
+	shadowVer [2]uint64
+	shadowSet bool
+	name      string
+	named     bool // name holds what is being typed
+	editing   string
+	edit      batchEditor
+	err       string
+	busy      bool
+	scroll    ui.ScrollState
 }
 
 // openItem opens the detail of an item.
@@ -65,10 +74,27 @@ func (d *itemDialog) frame(a *App, c *ui.Context) dlgFrame {
 					a.editRouting(func(s *routing.State) error { return s.SetItemEnabled(id, on) }, nil)
 				}
 			})
+			if ver := [2]uint64{a.rtc.ver, a.snap.Plan.Seq}; !d.shadowSet || d.shadowVer != ver {
+				d.shadows, d.asksNames, d.shadowVer, d.shadowSet = a.rt().Shadowed(it), a.asksNames(it), ver, true
+			}
+			if it.Dest.Kind != routing.DestReject && (d.asksNames || it.Resolver != "") {
+				a.field(c, a.t("resolver.title"), "", func() {
+					id := it.ID
+					a.resolverControl(c, "id-resolver", &d.resolver, it.Resolver, func(r string) {
+						a.editRouting(func(s *routing.State) error { return s.SetItemResolver(id, r) }, func(err error) {
+							if err != nil {
+								d.resolver.reset()
+								d.resolver.err = a.explain(err)
+							}
+						})
+					})
+				})
+			}
 			if own {
 				d.ownerControls(a, c, row)
 			}
 			d.importNotes(a, c, it)
+			a.shadowNote(c, d.shadows)
 			a.hr(c)
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 				a.heading(c, a.t("itemdlg.sources")).Grow(1)

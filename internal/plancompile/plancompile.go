@@ -79,12 +79,17 @@ type ItemInfo struct {
 	Unsupported int
 	// Domain and IP count the host-name and address conditions that made it in.
 	Domain, IP int
+	// Host counts the rules that steer DNS: when there are none, how the
+	// item's names are looked up does not matter.
+	Host int
 }
 
 // ItemRules are the rules of an item as they were compiled, kept to answer
 // "which item would this address go to".
 type ItemRules struct {
 	Domain, IP []option.HeadlessRule
+	// Host are the rules among Domain that steer DNS.
+	Host []option.HeadlessRule
 }
 
 // NoticeCode says what a notice is about.
@@ -174,7 +179,7 @@ func (c *Compiler) Compile(o Options) (*Result, error) {
 			continue
 		}
 		exit := nodes.exit(x.Dest, false, regions, Notice{Owner: OwnerException, ID: x.ID}, res)
-		in.Exceptions = append(in.Exceptions, configgen.Exception{ID: x.ID, Rule: rule, Exit: exit})
+		in.Exceptions = append(in.Exceptions, configgen.Exception{ID: x.ID, Rule: rule, Exit: exit, Resolver: x.Resolver, LANClaim: x.Claim()})
 	}
 
 	missing := map[string]bool{}
@@ -194,6 +199,7 @@ func (c *Compiler) Compile(o Options) (*Result, error) {
 		in.Items = append(in.Items, configgen.Item{
 			ID: it.ID, Name: it.Name, Exit: exit,
 			Domain: cd.domain, IP: cd.ip, DNS: cd.dns, Process: cd.process, Domestic: it.Domestic,
+			Resolver: it.Resolver, LANClaims: it.Claims(),
 		})
 	}
 	res.Missing = sortedKeys(missing)
@@ -370,7 +376,9 @@ func (c *Compiler) item(it routing.Item, data Data, missing map[string]bool) com
 	if cd.ip, err = rulefmt.Compile(ip); err != nil {
 		cd.ip, cd.info.State = nil, ItemUnavailable
 	}
-	if host := rulefmt.HostRules(dom); len(host) > 0 {
+	host := rulefmt.HostRules(dom)
+	cd.rules.Host, cd.info.Host = host, len(host)
+	if len(host) > 0 {
 		if len(host) == len(dom) {
 			cd.dns = cd.domain
 		} else if cd.dns, err = rulefmt.Compile(host); err != nil {

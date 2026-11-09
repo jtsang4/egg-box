@@ -491,8 +491,20 @@ func (f *fixtureBackend) planInfo(st routing.State) app.PlanInfo {
 				is.Oldest = ss.Checked
 			}
 			is.Domain += ss.Domain
+			is.Host += ss.Domain
 			is.IP += ss.IP
 			is.Unsupported += unsupportedCount(ss)
+		}
+		// Hand-written entries count as the service counts them.
+		for _, src := range r.Item.Sources {
+			for _, e := range src.Entries {
+				if e.Kind.IsHost() {
+					is.Domain++
+					is.Host++
+				} else if e.Kind == routing.EntryIPCIDR {
+					is.IP++
+				}
+			}
 		}
 		if r.Item.Enabled && missing > 0 {
 			is.Missing = missing

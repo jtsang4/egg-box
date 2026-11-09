@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 
+	"eggbox/internal/dnsspec"
 	"eggbox/internal/rulefmt"
 )
 
@@ -21,8 +23,17 @@ const (
 	dnsDomestic  = "dns-domestic"
 	dnsRemote    = "dns-remote"
 	dnsBootstrap = "dns-bootstrap"
-	tagMixed     = "mixed-in"
-	tagReject    = "reject"
+	dnsFakeIP    = "dns-fakeip"
+	// dnsRulePrefix starts the tags of the servers rules name ("dns=…").
+	dnsRulePrefix = "dns-rule-"
+
+	// The ranges fake addresses are taken from, for the names whose exit
+	// looks them up (dnsspec.Exit).
+	fakeIPv4Range = "198.18.0.0/15"
+	fakeIPv6Range = "fc00::/18"
+	fakeIPTTL     = 1
+	tagMixed      = "mixed-in"
+	tagReject     = "reject"
 
 	// How often a node a group sends traffic to is measured, while traffic
 	// flows and the node has a stand-in.
@@ -42,10 +53,15 @@ const (
 //     does while running. An item that is blocked is a reject rule instead.
 //   - Rules run in layers: sniff and DNS (always), the local network, the
 //     exceptions, the host-name rules of all items, one resolve, the address
-//     rules of all items, the fallback.
-//   - DNS rules mirror the host-name rules: names that go direct are asked of
-//     the domestic server, blocked ones are refused, all others are asked of
-//     the remote one through the proxy.
+//     rules of all items, the fallback. The local network leaves alone the
+//     private ranges the person's own rules name (Input.LANClaims), so those
+//     rules can send them elsewhere.
+//   - DNS rules mirror the host-name rules, in the same order: names that go
+//     direct are asked of the domestic server, blocked ones are refused, all
+//     others are asked of the remote one through the proxy. A rule that names
+//     a resolver has its names asked of that server, through the rule's own
+//     exit, or answered with fake addresses so that its exit looks the name
+//     up; resolving on this side leaves those names alone.
 func Generate(in Input) (*Output, error) {
 	g := &generator{
 		in:        in,
@@ -87,6 +103,21 @@ type generator struct {
 	pins        []any
 	pinTag      map[string]string
 	findProcess bool
+
+	// The DNS servers rules name, by spec and detour, in the order made.
+	ruleServers   []any
+	ruleServerTag map[string]string
+	// hostSets are the rule sets that steer DNS, in the order their DNS rules
+	// are asked, each with whether it leaves its names to the exit.
+	hostSets []hostSet
+	// fakeIP is set once a rule leaves its names to its exit.
+	fakeIP bool
+}
+
+// hostSet is a rule set whose names a DNS rule decides.
+type hostSet struct {
+	tag  string
+	exit bool
 }
 
 func (g *generator) warn(code, detail string) {
@@ -204,17 +235,22 @@ func (g *generator) generate() (*Output, error) {
 		map[string]any{"clash_mode": ModeDirect, "outbound": TagDirect},
 		map[string]any{"clash_mode": ModeGlobal, "outbound": TagProxy},
 	)
+	// Layer 1: the local network, but for the ranges the person's own rules
+	// claim. Which exceptions make it in is known once they are written; the
+	// rule is completed then (see below).
+	private := map[string]any{"ip_is_private": true, "outbound": TagDirect}
 	if prefs.LANDirect {
 		routeRules = append(routeRules,
-			map[string]any{"ip_is_private": true, "outbound": TagDirect},
+			private,
 			map[string]any{"domain_suffix": []any{"local", "lan", "localdomain", "home.arpa"}, "outbound": TagDirect},
 		)
 	}
-	resolve := map[string]any{"action": "resolve"}
-	if !prefs.IPv6 {
-		resolve["strategy"] = "ipv4_only"
-	}
+	var admitted []Exception
+	resolve := g.resolveRule()
 	resolved := false
+	// guardFrom is where, in hostSets, the rules after the exceptions' resolve
+	// begin; -1 while there is none.
+	guardFrom := -1
 
 	// Layer 2: the exceptions.
 	for _, x := range g.in.Exceptions {
@@ -235,16 +271,35 @@ func (g *generator) generate() (*Output, error) {
 		}
 		g.ruleSets = append(g.ruleSets, map[string]any{"type": "inline", "tag": tag, "rules": []json.RawMessage{raw}})
 		out.Owners[tag] = Owner{Kind: OwnerException, ID: x.ID}
+		admitted = append(admitted, x)
 		if tr.Addr && !resolved {
 			routeRules = append(routeRules, resolve)
-			resolved = true
+			resolved, guardFrom = true, len(g.hostSets)
 		}
 		target, reject := g.staticTarget(x.Exit, "exception "+x.ID)
-		routeRules = append(routeRules, g.ruleTo(tag, target, reject))
 		if len(rulefmt.HostRules([]option.HeadlessRule{x.Rule})) == 1 {
-			dnsRules = append(dnsRules, g.dnsRuleFor(tag, x.Exit.Kind))
+			rules, server := g.dnsRulesFor(tag, x.Exit.Kind, x.Resolver, target, x.ID)
+			dnsRules = append(dnsRules, rules...)
+			// Once the exceptions' resolve has run, the DNS rules already
+			// looked the name up with this server.
+			if server != "" && !resolved {
+				routeRules = append(routeRules, g.resolveWith(tag, server))
+			}
 		}
+		routeRules = append(routeRules, g.ruleTo(tag, target, reject))
 		g.findProcess = g.findProcess || tr.Process
+	}
+
+	// The local network leaves alone what the exceptions and the items that
+	// made it in claim.
+	out.LANClaims = claimsOf(admitted, items)
+	if prefs.LANDirect && len(out.LANClaims) > 0 {
+		delete(private, "ip_is_private")
+		private["type"], private["mode"] = "logical", "and"
+		private["rules"] = []any{
+			map[string]any{"ip_is_private": true},
+			map[string]any{"ip_cidr": anyStrings(out.LANClaims), "invert": true},
+		}
 	}
 
 	// Layer 3: the host-name part of every item.
@@ -254,15 +309,19 @@ func (g *generator) generate() (*Output, error) {
 		if len(it.Domain) > 0 {
 			tag := "d-" + safeID(it.ID)
 			g.addSet(tag, it.Domain, Owner{Kind: OwnerItem, ID: it.ID})
-			routeRules = append(routeRules, g.ruleTo(tag, target, reject))
 			if len(it.DNS) > 0 {
 				dnsTag := tag
 				if !bytes.Equal(it.DNS, it.Domain) {
 					dnsTag = "h-" + safeID(it.ID)
 					g.addSet(dnsTag, it.DNS, Owner{Kind: OwnerItem, ID: it.ID})
 				}
-				dnsRules = append(dnsRules, g.dnsRuleFor(dnsTag, itemDNSKind(it)))
+				rules, server := g.dnsRulesFor(dnsTag, itemDNSKind(it), it.Resolver, target, it.ID)
+				dnsRules = append(dnsRules, rules...)
+				if server != "" && !resolved {
+					routeRules = append(routeRules, g.resolveWith(dnsTag, server))
+				}
 			}
+			routeRules = append(routeRules, g.ruleTo(tag, target, reject))
 		}
 		anyIP = anyIP || len(it.IP) > 0
 		g.findProcess = g.findProcess || it.Process
@@ -279,6 +338,14 @@ func (g *generator) generate() (*Output, error) {
 		tag := "p-" + safeID(it.ID)
 		g.addSet(tag, it.IP, Owner{Kind: OwnerItem, ID: it.ID})
 		routeRules = append(routeRules, g.ruleTo(tag, target, reject))
+	}
+
+	// Resolving among the exceptions must not touch a name that is left to
+	// its exit: it is not meant to be found on this side, and a failed resolve
+	// ends the connection. The resolve before the items' addresses needs no
+	// such care: every rule that could have said so came before it.
+	if guardFrom >= 0 {
+		maps.Copy(resolve, exitFirst(g.hostSets[guardFrom:]))
 	}
 
 	// Layer 6: whatever nothing claimed.
@@ -317,6 +384,17 @@ func (g *generator) generate() (*Output, error) {
 	if prefs.MixedPort > 0 {
 		inbounds = append(inbounds, map[string]any{"type": "mixed", "tag": tagMixed, "listen": "127.0.0.1", "listen_port": prefs.MixedPort})
 	}
+	// The fake-ip server is there only while a rule uses it: with it, the core
+	// takes every address of its range for a fake one, and a real host there
+	// could not be reached.
+	servers = append(servers, g.ruleServers...)
+	if g.fakeIP {
+		fake := map[string]any{"type": "fakeip", "tag": dnsFakeIP, "inet4_range": fakeIPv4Range}
+		if prefs.IPv6 {
+			fake["inet6_range"] = fakeIPv6Range
+		}
+		servers = append(servers, fake)
+	}
 	dns := map[string]any{"servers": servers, "rules": dnsRules, "final": dnsFinal, "reverse_mapping": true}
 	if !prefs.IPv6 {
 		dns["strategy"] = "ipv4_only"
@@ -332,13 +410,19 @@ func (g *generator) generate() (*Output, error) {
 	if g.findProcess {
 		route["find_process"] = true
 	}
+	// The fake addresses are kept across restarts, so a program that still
+	// holds one keeps reaching the name it stood for.
+	cacheFile := map[string]any{"enabled": true}
+	if g.fakeIP {
+		cacheFile["store_fakeip"] = true
+	}
 	root := map[string]any{
 		"log":          map[string]any{"level": "info", "timestamp": true},
 		"dns":          dns,
 		"inbounds":     inbounds,
 		"outbounds":    outbounds,
 		"route":        route,
-		"experimental": map[string]any{"cache_file": map[string]any{"enabled": true}},
+		"experimental": map[string]any{"cache_file": cacheFile},
 	}
 	if len(endpoints) > 0 {
 		root["endpoints"] = endpoints
@@ -564,6 +648,123 @@ func itemDNSKind(it Item) ExitKind {
 		return ExitDirect
 	}
 	return ExitMain
+}
+
+// dnsRulesFor is how the names of a rule set are looked up: as dnsRuleFor says
+// for its exit, unless the rule names a resolver (dnsspec). detour is the
+// outbound the rule's traffic goes to, which a server the rule names is asked
+// through; what is the id of the item or exception, for a warning. server is
+// the tag of the server the rule names, "" when it names none.
+func (g *generator) dnsRulesFor(setTag string, exit ExitKind, resolver, detour, what string) (rules []any, server string) {
+	at := len(g.hostSets)
+	g.hostSets = append(g.hostSets, hostSet{tag: setTag})
+	if exit == ExitReject || resolver == "" {
+		return []any{g.dnsRuleFor(setTag, exit)}, ""
+	}
+	r, err := dnsspec.NormalizeResolver(resolver)
+	if err != nil {
+		g.warn(WarnResolverInvalid, what)
+		return []any{g.dnsRuleFor(setTag, exit)}, ""
+	}
+	if r == dnsspec.Exit {
+		g.hostSets[at].exit, g.fakeIP = true, true
+		types := []any{"A"}
+		if g.prefs.IPv6 {
+			types = append(types, "AAAA")
+		}
+		// Other questions about the names get an empty answer: saying the
+		// name does not exist would make the system forget its address too.
+		// A fake address lives a second, as is usual: a program asks again
+		// soon, and after the configuration changed (the person moved to
+		// another network) it gets a real one instead of holding a fake
+		// address no rule maps back any more.
+		return []any{
+			map[string]any{"rule_set": []any{setTag}, "query_type": types, "server": dnsFakeIP, "rewrite_ttl": fakeIPTTL},
+			map[string]any{"rule_set": []any{setTag}, "action": "predefined", "rcode": "NOERROR"},
+		}, ""
+	}
+	tag := g.ruleServer(r, detour)
+	return []any{map[string]any{"rule_set": []any{setTag}, "server": tag}}, tag
+}
+
+// exitFirst is what makes a resolve skip the names whose first DNS rule, among
+// sets, leaves them to the exit: the resolve's condition, inverted, matches a
+// name in an exit set and in none of the sets asked before it. nil when no set
+// leaves its names to the exit.
+func exitFirst(sets []hostSet) map[string]any {
+	var alts, before []any
+	for _, s := range sets {
+		if !s.exit {
+			before = append(before, s.tag)
+			continue
+		}
+		in := map[string]any{"rule_set": []any{s.tag}}
+		if len(before) == 0 {
+			alts = append(alts, in)
+			continue
+		}
+		alts = append(alts, map[string]any{
+			"type": "logical", "mode": "and",
+			"rules": []any{in, map[string]any{"rule_set": append([]any(nil), before...), "invert": true}},
+		})
+	}
+	if len(alts) == 0 {
+		return nil
+	}
+	return map[string]any{"type": "logical", "mode": "or", "rules": alts, "invert": true}
+}
+
+// resolveWith looks the names of a rule set up with the server the rule
+// names, for connections that arrive as names (through the local proxy): left
+// alone, the direct outbound would ask the domestic server instead. A
+// connection that arrives as an address is not touched.
+func (g *generator) resolveWith(setTag, server string) map[string]any {
+	r := g.resolveRule()
+	r["rule_set"], r["server"] = []any{setTag}, server
+	return r
+}
+
+// resolveRule is a route rule that looks the destination's name up.
+func (g *generator) resolveRule() map[string]any {
+	r := map[string]any{"action": "resolve"}
+	if !g.prefs.IPv6 {
+		r["strategy"] = "ipv4_only"
+	}
+	return r
+}
+
+// ruleServer is the tag of a DNS server a rule names, asked through detour,
+// made the first time it is needed. The system's resolver is asked on this
+// machine whatever the detour; a direct detour is left out, as the core
+// refuses a detour to a plain direct outbound. spec is a server as
+// dnsspec.NormalizeResolver writes it, which always reads back.
+func (g *generator) ruleServer(spec, detour string) string {
+	srv, _ := dnsServerFor(spec)
+	if srv.system || detour == TagDirect {
+		detour = ""
+	}
+	key := spec + "\x00" + detour
+	if tag, ok := g.ruleServerTag[key]; ok {
+		return tag
+	}
+	if g.ruleServerTag == nil {
+		g.ruleServerTag = map[string]string{}
+	}
+	tag := dnsRulePrefix + strconv.Itoa(len(g.ruleServers)+1)
+	obj := cloneConfig(srv.obj)
+	obj["tag"] = tag
+	if detour != "" {
+		obj["detour"] = detour
+	}
+	// A server named by its name is found with the domestic server, which on
+	// an internal network can be the system's: the public bootstrap server
+	// would not know an internal name, and should not be asked for one.
+	if srv.hostname {
+		obj["domain_resolver"] = dnsDomestic
+	}
+	g.ruleServerTag[key] = tag
+	g.ruleServers = append(g.ruleServers, obj)
+	return tag
 }
 
 // dnsRuleFor sends the names of a rule set to the DNS server that fits where

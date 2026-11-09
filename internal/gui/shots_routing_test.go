@@ -49,6 +49,9 @@ func init() {
 		add(shot{name: "dlg-exceptions-text-edited", setup: streamingInSingapore, run: onRouting(func(h *harness) {
 			openEditorWith(h.app, "DOMAIN-SUFFIX,intranet.example,DIRECT\nDOMAIN-KEYWORD,ads-tracker,Streaming\nGEOIP,CN,DIRECT\nPROCESS-NAME,Updater,Somewhere\nDOMAIN-SUFFIX,new.example,REGION:JP\n# DOMAIN,off.example,REJECT\n")
 		})})
+		add(shot{name: "dlg-exceptions-text-dns", run: onRouting(func(h *harness) {
+			openEditorWith(h.app, "DOMAIN-SUFFIX,intranet.example,DIRECT,dns=10.0.0.53\nDOMAIN-KEYWORD,ads-tracker,REJECT\nPROCESS-NAME,Slack,dns=exit\nDOMAIN-SUFFIX,corp.example,dns=exit\n")
+		})})
 		add(shot{name: "dlg-test-url", run: onRouting(func(h *harness) { h.app.openTestURL("https://registry.npmjs.org/left-pad") })})
 		add(shot{name: "dlg-test-url-refused", run: onRouting(func(h *harness) { h.app.openTestURL("gone.nowhere.example") })})
 		add(shot{name: "dlg-additem-catalog", h: 900, run: onRouting(func(h *harness) { h.app.openAddItem() })})
@@ -71,6 +74,8 @@ func init() {
 		add(shot{name: "dlg-item", h: 900, run: onRouting(func(h *harness) { h.app.openItem("b-ai") })})
 		add(shot{name: "dlg-item-waiting", h: 900, setup: crowd, run: onRouting(func(h *harness) { h.app.openItem("b-ads") })})
 		add(shot{name: "dlg-item-own", h: 900, setup: crowd, run: onRouting(func(h *harness) { h.app.openItem(h.lastItem().ID) })})
+		add(shot{name: "dlg-item-intranet", h: 900, setup: nodeIntranet, run: onRouting(func(h *harness) { h.app.openItem(h.lastItem().ID) })})
+		add(shot{name: "dlg-item-dns-server", h: 900, setup: internalDNS, run: onRouting(func(h *harness) { h.app.openItem("b-ai") })})
 		add(shot{name: "dlg-node-picker", h: 900, run: onRouting(func(h *harness) {
 			h.app.pickNodeFor("Telegram", routing.Follow(), true, func(routing.Dest) {})
 		})})

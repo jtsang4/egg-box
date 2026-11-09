@@ -160,6 +160,10 @@ func routingCode(err error) string {
 		return "item_no_name"
 	case errors.Is(err, routing.ErrBadEntry):
 		return "entry_invalid"
+	case errors.Is(err, routing.ErrBadResolver):
+		return "resolver_invalid"
+	case errors.Is(err, routing.ErrResolverNotHost):
+		return "resolver_not_host"
 	case errors.Is(err, routing.ErrLocked):
 		return "plan_locked"
 	case errors.Is(err, routing.ErrNotMine):
