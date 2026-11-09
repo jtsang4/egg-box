@@ -607,6 +607,7 @@ var catalogZH = map[string]string{
 	"routing.sub.other":          "{n} 个分流项 · {plan}",
 	"routing.items":              "分流项",
 	"routing.order":              "从上到下依次匹配",
+	"routing.drag":               "拖动以调整顺序",
 	"routing.updating":           "正在更新规则…",
 	"routing.empty.title":        "还没有分流项",
 	"routing.empty.body":         "添加分流项，让某一类流量走指定的去向：可以选规则库里的服务、规则文件，或者自己写几条规则。",

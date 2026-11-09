@@ -135,6 +135,26 @@ func (s *State) MoveException(id string, delta int) error {
 	return nil
 }
 
+// MoveExceptionBefore puts an exception right before another one ("" puts it
+// last).
+func (s *State) MoveExceptionBefore(id, beforeID string) error {
+	i := s.exception(id)
+	if i < 0 {
+		return ErrNoException
+	}
+	if beforeID == id {
+		return nil
+	}
+	x := s.Exceptions[i]
+	s.Exceptions = slices.Delete(s.Exceptions, i, i+1)
+	at := s.exception(beforeID)
+	if at < 0 {
+		at = len(s.Exceptions)
+	}
+	s.Exceptions = slices.Insert(s.Exceptions, at, x)
+	return nil
+}
+
 // ExceptionIndex is the 1-based position of an exception, as people count them
 // ("exception #3"); 0 when there is none with the id.
 func (s State) ExceptionIndex(id string) int {

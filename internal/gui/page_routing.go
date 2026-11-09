@@ -2,6 +2,7 @@ package gui
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"time"
 
@@ -21,6 +22,10 @@ type routingState struct {
 }
 
 func (a *App) initRouting() {}
+
+// rowDrag is a row of a list (the items, the exceptions) being dragged to
+// another place in it.
+type rowDrag struct{ list, id string }
 
 // routingPage is where a person decides where each kind of traffic goes: the
 // plan in force, their own exceptions ahead of it, and the items of the plan.
@@ -224,11 +229,21 @@ func (a *App) exceptionsCard(c *ui.Context) {
 			return
 		}
 		a.hr(c)
+		ids := make([]string, n)
+		for i, x := range st.Exceptions {
+			ids[i] = x.ID
+		}
 		list := ui.List(c.Key("ex-list"), &a.rte.exList, n, func(i int) {
-			if i > 0 {
-				a.hr(c)
-			}
-			a.exceptionRow(c, i, st.Exceptions[i], n)
+			slot := ui.Column(c.Key("ex-slot-" + ids[i])).Gap(0)
+			slot.Children(func() {
+				if i > 0 {
+					a.hr(c)
+				}
+				a.exceptionRow(c, i, st.Exceptions[i], n)
+			})
+			a.dropRow(slot, "exceptions", ids, i, func(id, before string) {
+				a.editRouting(func(s *routing.State) error { return s.MoveExceptionBefore(id, before) }, nil)
+			})
 		})
 		list.Height(float32(min(n, 8)*exceptionRowH + min(n, 8) - 1)).Gap(0)
 	})
@@ -237,9 +252,13 @@ func (a *App) exceptionsCard(c *ui.Context) {
 func (a *App) exceptionRow(c *ui.Context, i int, x routing.Exception, n int) {
 	p := a.pl
 	on := x.Enabled
-	row := ui.Row(c.Key("ex-"+x.ID)).Height(exceptionRowH).Padding(0, 12, 0, 20).Gap(12).AlignItems(ui.Center)
+	row := ui.Row(c.Key("ex-"+x.ID)).Height(exceptionRowH).Padding(0, 12, 0, 8).Gap(12).AlignItems(ui.Center)
 	row.PopoverMenu(a.exceptionMenu(c, i, x, n))
+	if n > 1 {
+		a.dragRow(row, "exceptions", x.ID)
+	}
 	row.Children(func() {
+		a.grip(c, n > 1).Margin(0, -6, 0, 0)
 		a.txt(c, strconv.Itoa(i+1), 12, 600, p.Text3).FontFeatures("tnum").Width(22).SingleLine().Shrink(0)
 		ui.Column(c).Grow(1).Basis(0).Gap(3).Children(func() {
 			a.txt(c, exceptionTitle(x.Entry()), 13.5, 600, boolOr(on, p.Text, p.Text3)).Font("monospace").SingleLine()
@@ -306,9 +325,26 @@ func (a *App) itemsCard(c *ui.Context) {
 				}
 			})
 		}
-		for i, row := range v.Rows {
-			a.hr(c)
-			a.itemRow(c, i, row, n)
+		if n > 0 {
+			// A grip shows on the rows that move, and the room for one on
+			// those that do not, while any does.
+			movable := slices.ContainsFunc(v.Rows, func(r routing.Row) bool { return !r.Locked })
+			ids := make([]string, n)
+			for i, r := range v.Rows {
+				ids[i] = r.Item.ID
+			}
+			for i, row := range v.Rows {
+				slot := ui.Column(c.Key("it-slot-" + row.Item.ID)).Gap(0)
+				slot.Children(func() {
+					a.hr(c)
+					a.itemRow(c, i, row, n, movable)
+				})
+				if movable {
+					a.dropRow(slot, "items", ids, i, func(id, before string) {
+						a.editRouting(func(s *routing.State) error { return s.MoveBefore(id, before) }, nil)
+					})
+				}
+			}
 		}
 		a.hr(c)
 		a.fallbackRow(c)
@@ -317,15 +353,21 @@ func (a *App) itemsCard(c *ui.Context) {
 
 // itemRow is one item: its name and what it is made of, where it goes and
 // whether it is on.
-func (a *App) itemRow(c *ui.Context, i int, row routing.Row, n int) {
+func (a *App) itemRow(c *ui.Context, i int, row routing.Row, n int, movable bool) {
 	p := a.pl
 	it := row.Item
 	name := a.itemName(it)
 	on := it.Enabled
-	r := ui.Row(c.Key("it-"+it.ID)).Padding(8, 14, 8, 12).Gap(10).AlignItems(ui.Center)
+	r := ui.Row(c.Key("it-"+it.ID)).Padding(8, 14, 8, boolOr(movable, float32(8), 12)).Gap(10).AlignItems(ui.Center)
 	r.PopoverMenu(a.itemMenu(c, i, row, n))
+	if !row.Locked {
+		a.dragRow(r, "items", it.ID)
+	}
 	chips := a.itemChips(row)
 	r.Children(func() {
+		if movable {
+			a.grip(c, !row.Locked).Margin(0, -6, 0, 0)
+		}
 		open := ui.ButtonBase(c.Key("it-open-" + it.ID))
 		open.Label(name)
 		open.Grow(1).Basis(0).Padding(6, 8).Gap(12).Radius(12).AlignItems(ui.Center).Cursor(ui.CursorPointer)
@@ -362,6 +404,69 @@ func (a *App) itemRow(c *ui.Context, i int, row routing.Row, n int) {
 			a.editRouting(func(s *routing.State) error { return s.SetItemEnabled(id, on) }, nil)
 		}
 		a.btn(c, btnSpec{kind: btnGhost, icon: "more", iconOnly: true, small: true, tip: a.t("subs.more")}).PopoverMenuButton(a.itemMenu(c, i, row, n))
+	})
+}
+
+// grip is the handle that tells a row can be dragged to another place; a row
+// that cannot gets the room alone, so that the rows line up.
+func (a *App) grip(c *ui.Context, shown bool) ui.Element {
+	if !shown {
+		return ui.Box(c).Width(16).Height(16).Shrink(0)
+	}
+	return ui.Icon(c, icon("grip")).Size(16, 16).Shrink(0).TextColor(a.pl.Text3).Cursor(ui.CursorGrab).Tooltip(a.t("routing.drag"))
+}
+
+// dragRow makes row, the one of id in a list, draggable to another place in
+// it. The copy that follows the pointer is the row itself: a face of its own
+// keeps the rows it passes over from showing through. The row left in place
+// fades, as a list's does; the copy is painted without that.
+func (a *App) dragRow(row ui.Element, list, id string) {
+	row.Drag(rowDrag{list, id})
+	if row.Dragging() {
+		row.Background(a.pl.Raised).Radius(12).Border(1, a.pl.LineHi).Opacity(0.4)
+	}
+}
+
+// dropRow makes slot, which holds row i of a list whose rows are ids, take a
+// row of the same list dragged over it: a line on the edge nearer the pointer
+// shows where it would go, and move puts it there as it drops, before the
+// row named ("" for the end).
+func (a *App) dropRow(slot ui.Element, list string, ids []string, i int, move func(id, before string)) {
+	d, dropped := ui.Drop[rowDrag](slot)
+	if !dropped {
+		var over bool
+		if d, over = ui.DragOver[rowDrag](slot); !over {
+			return
+		}
+	}
+	from := slices.Index(ids, d.id)
+	if d.list != list || from < 0 {
+		return
+	}
+	to := i
+	if _, y, _ := slot.PointerPosition(); y >= slot.Bounds().H/2 {
+		to = i + 1
+	}
+	if to == from || to == from+1 {
+		return // where it is already
+	}
+	if dropped {
+		before := ""
+		if to < len(ids) {
+			before = ids[to]
+		}
+		move(d.id, before)
+		return
+	}
+	col := a.pl.Blue
+	slot.DrawOver(func(p *ui.Painter, r ui.Rect) {
+		// Inside the slot, so that a list's edge does not cut it off.
+		y := r.Y
+		if to > i {
+			y += r.H - 2
+		}
+		p.Fill(ui.Rect{X: r.X + 14, Y: y, W: r.W - 28, H: 2}, col, 1)
+		p.Fill(ui.Rect{X: r.X + 8, Y: min(max(y-3, r.Y), r.Y+r.H-8), W: 8, H: 8}, col, 4)
 	})
 }
 

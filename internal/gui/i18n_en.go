@@ -608,6 +608,7 @@ var catalogEN = map[string]string{
 	"routing.sub.other":          "{n} items · {plan}",
 	"routing.items":              "Items",
 	"routing.order":              "Tried from top to bottom",
+	"routing.drag":               "Drag to reorder",
 	"routing.updating":           "Updating rules…",
 	"routing.empty.title":        "No items yet",
 	"routing.empty.body":         "Add an item to send one kind of traffic somewhere specific: a service from the library, a rule file, or a few rules you write yourself.",

@@ -152,6 +152,36 @@ func (h *harness) toggleOnLine(row, anchor string) {
 	h.ui.Advance(400 * time.Millisecond)
 }
 
+// drag presses the line showing text, drags it to the height toY a little at
+// a time, as a hand does, and lets go there.
+func (h *harness) drag(text string, toY float32) {
+	h.t.Helper()
+	r, ok := h.ui.Find(text)
+	if !ok {
+		h.t.Fatalf("nothing shows %q; have %s", text, h.digest())
+	}
+	x, y := r.X+r.W/2, r.Y+r.H/2
+	h.ui.Press(x, y)
+	h.ui.Advance(16 * time.Millisecond)
+	const steps = 10
+	for k := 1; k <= steps; k++ {
+		h.ui.Move(x, y+(toY-y)*float32(k)/steps)
+		h.ui.Advance(16 * time.Millisecond)
+	}
+	h.ui.Release(x, toY)
+	h.settle()
+}
+
+// top is the top of the first line showing text.
+func (h *harness) top(text string) float32 {
+	h.t.Helper()
+	r, ok := h.ui.Find(text)
+	if !ok {
+		h.t.Fatalf("nothing shows %q; have %s", text, h.digest())
+	}
+	return r.Y
+}
+
 func (h *harness) called(prefix string) int {
 	n := 0
 	for _, c := range h.be.called() {
@@ -340,6 +370,59 @@ func TestRoutingMovingNeedsAPlanOfYourOwn(t *testing.T) {
 		}
 	}
 	h.mustHave("11 items · Work")
+}
+
+// The items of a plan of one's own are put in order by dragging them; those of
+// a plan kept up to date elsewhere stay where they are.
+func TestRoutingItemsAreDraggedIntoPlace(t *testing.T) {
+	h := routingHarness(t, harnessOpt{})
+	first := h.app.itemName(h.state().View().Rows[0].Item)
+	h.drag("Telegram", h.top(first)-4)
+	if h.called("edit-routing") != 0 || h.state().View().Rows[2].Item.ID != "b-telegram" {
+		t.Fatalf("an item of the shipped plan was dragged: %v", h.be.called())
+	}
+	h.mustNotHave("Goes to") // the press opened nothing either
+
+	h.click("More")
+	h.pick("Save as my plan…")
+	h.ui.Key(ui.Cmd, ui.KeyA)
+	h.typeText("Work")
+	h.enter()
+	h.settle()
+	names := func() []string {
+		var out []string
+		for _, r := range h.state().View().Rows {
+			out = append(out, h.app.itemName(r.Item))
+		}
+		return out
+	}
+	before := names()
+	if before[2] != "Telegram" {
+		t.Fatalf("order before dragging: %v", before)
+	}
+
+	// Up, above the first row: the press on the name drags, it opens nothing.
+	h.drag("Telegram", h.top(first)-4)
+	got := names()
+	if got[0] != "Telegram" || got[1] != before[0] || got[2] != before[1] || len(got) != len(before) {
+		t.Fatalf("after dragging to the top: %v (was %v)", got, before)
+	}
+	h.mustNotHave("Goes to")
+
+	// Down, onto the lower half of the last row: it goes last.
+	last := got[len(got)-1]
+	h.drag("Telegram", h.middle(last)+24)
+	got = names()
+	if got[len(got)-1] != "Telegram" || got[0] != before[0] {
+		t.Fatalf("after dragging to the end: %v", got)
+	}
+
+	// Let go where it already is: nothing is written.
+	n := h.called("edit-routing")
+	h.drag("Telegram", h.middle("Telegram")+6)
+	if h.called("edit-routing") != n {
+		t.Fatalf("dropping an item where it is wrote: %v", h.be.called())
+	}
 }
 
 // An item of the plan in force is copied to a plan of the person's own from its

@@ -599,6 +599,18 @@ func TestExceptions(t *testing.T) {
 	if s.ExceptionIndex(a.ID) != 1 {
 		t.Error("first stays first")
 	}
+	_ = s.MoveExceptionBefore(a.ID, "") // a, nw, b → nw, b, a
+	if s.ExceptionIndex(a.ID) != 3 || s.ExceptionIndex(nw.ID) != 1 {
+		t.Error("move to the end")
+	}
+	_ = s.MoveExceptionBefore(a.ID, nw.ID)
+	if s.ExceptionIndex(a.ID) != 1 || s.ExceptionIndex(nw.ID) != 2 || s.ExceptionIndex(b.ID) != 3 {
+		t.Error("move before another")
+	}
+	_ = s.MoveExceptionBefore(nw.ID, nw.ID) // before itself: stays where it is
+	if s.ExceptionIndex(nw.ID) != 2 {
+		t.Error("move before itself")
+	}
 	if err := s.UpdateException(b.ID, Exception{Kind: EntryDomain, Value: "Edited.test", Dest: Direct(), Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -616,6 +628,7 @@ func TestExceptions(t *testing.T) {
 		func() error { return s.SetExceptionDest("zz", Direct()) },
 		func() error { return s.SetExceptionEnabled("zz", true) },
 		func() error { return s.MoveException("zz", 1) },
+		func() error { return s.MoveExceptionBefore("zz", "") },
 		func() error { return s.UpdateException("zz", Exception{}) },
 	} {
 		if err := f(); !errors.Is(err, ErrNoException) {

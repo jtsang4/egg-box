@@ -473,6 +473,9 @@ func (s *State) MoveBefore(id, beforeID string) error {
 	if row.Locked {
 		return ErrLocked
 	}
+	if beforeID == id {
+		return nil
+	}
 	var order []string
 	for _, r := range v.Rows {
 		if r.Item.ID != id {

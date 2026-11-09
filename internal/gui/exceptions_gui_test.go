@@ -250,6 +250,32 @@ func TestExceptionsAreMovedCopiedAndDeleted(t *testing.T) {
 	}
 }
 
+func TestExceptionsAreDraggedIntoPlace(t *testing.T) {
+	h := exceptionsHarness(t)
+	values := func() []string {
+		var out []string
+		for _, x := range h.state().Exceptions {
+			out = append(out, x.Value)
+		}
+		return out
+	}
+	before := values()
+	if len(before) < 3 || before[0] != "intranet.example" {
+		t.Fatalf("exceptions before: %v", before)
+	}
+	last := before[len(before)-1]
+	h.drag(last, h.top(before[0])-8)
+	got := values()
+	if got[0] != last || got[1] != before[0] || len(got) != len(before) {
+		t.Fatalf("after dragging %s to the top: %v", last, got)
+	}
+	h.drag(before[0], h.middle(got[len(got)-1])+12)
+	got = values()
+	if got[len(got)-1] != before[0] {
+		t.Fatalf("after dragging %s to the end: %v", before[0], got)
+	}
+}
+
 func TestExceptionsEmptyCardTeaches(t *testing.T) {
 	h := routingHarness(t, harnessOpt{setup: func(be *fixtureBackend, _ *Options) {
 		be.arrange(func(st *routing.State) { st.Exceptions = nil })
