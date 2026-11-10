@@ -80,6 +80,8 @@ func init() {
 			h.app.pickNodeFor("Telegram", routing.Follow(), true, func(routing.Dest) {})
 		})})
 		add(shot{name: "dlg-region-picker", run: onRouting(func(h *harness) { h.app.openRegionPicker(h.app.liveNodes()[0]) })})
+		add(shot{name: "dlg-node-link", run: onRouting(func(h *harness) { h.app.openImportedNode("sub-local", "My nodes", h.nodeNamed("Sydney 01").Key) })})
+		add(shot{name: "dlg-node-link-none", run: onRouting(func(h *harness) { h.app.openImportedNode("sub-local", "My nodes", h.nodeNamed("Amsterdam 01").Key) })})
 	}
 }
 

@@ -144,9 +144,16 @@ func newFixture() *fixtureBackend {
 			s.IntervalHours = 0
 		}
 		f.subs = append(f.subs, s)
-		for _, n := range nodes {
+		for j, n := range nodes {
 			i := len(f.nodes)
-			f.nodes = append(f.nodes, library.ActiveNode{Node: fixtureNode(i, n), SubID: id, SubName: name, Auto: true})
+			node := fixtureNode(i, n)
+			if kind == library.KindLocal && j == 0 {
+				// Imported from a link, which was kept; the other one was not.
+				node = subscription.Node{Name: n, Type: "socks", Server: "127.0.0.1", Port: 1080,
+					Config: map[string]any{"type": "socks", "server": "127.0.0.1", "server_port": 1080, "version": "5"},
+					Link:   "socks5://127.0.0.1:1080#" + strings.ReplaceAll(n, " ", "%20")}
+			}
+			f.nodes = append(f.nodes, library.ActiveNode{Node: node, SubID: id, SubName: name, Auto: true, Imported: kind == library.KindLocal})
 		}
 	}
 	mk("sub-aurora", "Aurora Cloud", library.KindRemote, fixtureNodeNames[:9],
@@ -1006,6 +1013,41 @@ func (f *fixtureBackend) ImportNodes(ctx context.Context, name, text string) (li
 	f.ver++
 	f.mu.Unlock()
 	return s, nil
+}
+func (f *fixtureBackend) EditImportedNode(ctx context.Context, subID, key, link string) (subscription.Node, error) {
+	f.record("edit-node %s", subID)
+	if err := f.fail(); err != nil {
+		return subscription.Node{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, n := range f.nodes {
+		if n.SubID != subID || n.Key() != key {
+			continue
+		}
+		next, err := subscription.EditedLink(n.Node, link)
+		if err != nil {
+			return subscription.Node{}, library.ErrBadLink
+		}
+		f.nodes[i].Node = next
+		if n.Node.Name != next.Name {
+			f.rt.RenameNode(subID, n.Node.Name, routing.NodeID{Sub: subID, Name: next.Name, Hash: next.Key()})
+		}
+		f.ver++
+		return next, nil
+	}
+	return subscription.Node{}, library.ErrNoNode
+}
+func (f *fixtureBackend) Nodes(id string) ([]subscription.Node, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []subscription.Node
+	for _, n := range f.nodes {
+		if n.SubID == id {
+			out = append(out, n.Node.Clone())
+		}
+	}
+	return out, nil
 }
 func (f *fixtureBackend) RefreshSubscription(ctx context.Context, id string) (*library.RefreshResult, error) {
 	f.record("refresh %s", id)

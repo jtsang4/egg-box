@@ -100,8 +100,14 @@ func Explain(err error) Explanation {
 		return Explanation{Code: "authorization_declined", Detail: detail}
 	case errors.Is(err, ErrServiceSetup):
 		return Explanation{Code: "service_setup", Detail: detail}
-	case errors.Is(err, library.ErrNotFound):
+	case errors.Is(err, library.ErrNotFound), errors.Is(err, library.ErrNoNode):
 		return Explanation{Code: "not_found", Detail: detail}
+	case errors.Is(err, library.ErrBadLink):
+		return Explanation{Code: "node_bad_link", Detail: detail}
+	case errors.Is(err, library.ErrNodeTaken):
+		return Explanation{Code: "node_taken", Detail: detail}
+	case errors.Is(err, library.ErrNotImported):
+		return Explanation{Code: "node_not_imported", Detail: detail}
 	case errors.Is(err, context.DeadlineExceeded):
 		return Explanation{Code: "timeout", Detail: detail}
 	case errors.Is(err, context.Canceled):

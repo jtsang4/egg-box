@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -418,6 +419,74 @@ func (l *Library) AddLocal(name string, res *subscription.Result) (Subscription,
 	return added, nil
 }
 
+// Errors of EditNode.
+var (
+	// ErrNotImported means the subscription is fetched from a link: its nodes
+	// are the provider's, and the next refresh would undo an edit.
+	ErrNotImported = errors.New("only imported nodes can be edited")
+	// ErrNoNode means the subscription has no node with that key.
+	ErrNoNode = errors.New("no such node")
+	// ErrNodeTaken means another node of the same import already is that
+	// server, or already has that name.
+	ErrNodeTaken = errors.New("another node of this import already has that name or server")
+	// ErrBadLink means what was given is not one share link of a supported
+	// protocol. It says no more: what the parser says may quote the link, and
+	// links carry credentials.
+	ErrBadLink = errors.New("that is not a share link of a supported protocol")
+)
+
+// EditNode replaces the node whose key is key in an imported subscription
+// with the one a share link describes (see subscription.EditedLink), and
+// returns it as stored. The import itself and its other nodes stay. When the
+// node gets another name, every choice made of it in the routing state follows
+// it, in the same change.
+func (l *Library) EditNode(id, key, link string) (subscription.Node, error) {
+	var next subscription.Node
+	err := l.mutate(func() error {
+		s := l.find(id)
+		if s == nil {
+			return ErrNotFound
+		}
+		if s.Kind != KindLocal {
+			return ErrNotImported
+		}
+		nodes, err := l.nodesLocked(id)
+		if err != nil {
+			return err
+		}
+		at := slices.IndexFunc(nodes, func(n subscription.Node) bool { return n.Key() == key })
+		if at < 0 {
+			return ErrNoNode
+		}
+		was := nodes[at]
+		if next, err = subscription.EditedLink(was, link); err != nil {
+			return ErrBadLink
+		}
+		for i, n := range nodes {
+			if i != at && (n.Key() == next.Key() || strings.EqualFold(n.Name, next.Name)) {
+				return ErrNodeTaken
+			}
+		}
+		nodes[at] = next
+		if err := l.writeNodes(id, nodes); err != nil {
+			return err
+		}
+		l.nodes[id] = nodes
+		if was.Name != next.Name {
+			// A node is known by its import and its name (routing.NodeID): what
+			// was chosen for a node of the new name that is gone now applies
+			// to this one, as after a refresh that brings that name back.
+			l.data.Routing.RenameNode(id, was.Name, routing.NodeID{
+				Sub: id, Name: next.Name, Hash: next.Key(), Region: subscription.Region(next.Name)})
+		}
+		return nil
+	})
+	if err != nil {
+		return subscription.Node{}, err
+	}
+	return next.Clone(), nil
+}
+
 // Edit changes a subscription's settings. fn may change Name, Alias, Enabled,
 // NoAuto, IntervalHours, UserAgent, Include and Exclude; everything else is kept.
 func (l *Library) Edit(id string, fn func(*Subscription)) error {
@@ -597,6 +666,8 @@ type ActiveNode struct {
 	SubAlias string
 	// Auto is false when the subscription is kept out of the automatic choice.
 	Auto bool
+	// Imported is set for a node of an import, which can be edited.
+	Imported bool
 }
 
 // Key identifies the node's server (see subscription.Node.Key).
@@ -631,7 +702,7 @@ func (l *Library) ActiveNodes() ([]ActiveNode, error) {
 				continue
 			}
 			seen[n.Key()] = true
-			out = append(out, ActiveNode{Node: n, SubID: s.ID, SubName: s.Name, SubAlias: s.Alias, Auto: !s.NoAuto})
+			out = append(out, ActiveNode{Node: n, SubID: s.ID, SubName: s.Name, SubAlias: s.Alias, Auto: !s.NoAuto, Imported: s.Kind == KindLocal})
 		}
 	}
 	return out, nil

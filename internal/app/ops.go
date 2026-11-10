@@ -169,6 +169,18 @@ func (s *Service) ImportNodes(ctx context.Context, name, text string) (library.S
 	return sub, nil
 }
 
+// EditImportedNode replaces the node whose key is key in an imported
+// subscription with the one a share link describes (see library.EditNode),
+// and applies the change when connected. It returns the node as stored.
+func (s *Service) EditImportedNode(ctx context.Context, subID, key, link string) (subscription.Node, error) {
+	stored, err := s.lib.EditNode(subID, key, link)
+	if err != nil {
+		return subscription.Node{}, err
+	}
+	s.reapplyIfOnline(ctx)
+	return stored, nil
+}
+
 // refreshFlight is a refresh under way and, once done, what came of it.
 type refreshFlight struct {
 	done chan struct{}

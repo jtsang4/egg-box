@@ -8,6 +8,7 @@ import (
 	"eggbox/internal/configgen"
 	"eggbox/internal/library"
 	"eggbox/internal/routing"
+	"eggbox/internal/subscription"
 )
 
 // Backend is what the interface needs from the application layer. It is
@@ -66,6 +67,12 @@ type Backend interface {
 
 	AddSubscription(ctx context.Context, name, link string, o library.RemoteOptions) (library.Subscription, *library.RefreshResult, error)
 	ImportNodes(ctx context.Context, name, text string) (library.Subscription, error)
+	// EditImportedNode replaces a node of an import with the one a share link
+	// describes (see app.Service.EditImportedNode).
+	EditImportedNode(ctx context.Context, subID, key, link string) (subscription.Node, error)
+	// Nodes are a subscription's nodes as stored, before its filters and
+	// whether it is enabled or not.
+	Nodes(id string) ([]subscription.Node, error)
 	RefreshSubscription(ctx context.Context, id string) (*library.RefreshResult, error)
 	RefreshAll(ctx context.Context) (int, error)
 	EditSubscription(ctx context.Context, id string, fn func(*library.Subscription)) error
@@ -82,6 +89,9 @@ type Backend interface {
 
 // ServiceBackend adapts the application service to Backend.
 type ServiceBackend struct{ *app.Service }
+
+// Nodes are a subscription's nodes as stored.
+func (b ServiceBackend) Nodes(id string) ([]subscription.Node, error) { return b.Library().Nodes(id) }
 
 // Subscriptions lists the library's subscriptions.
 func (b ServiceBackend) Subscriptions() []library.Subscription {

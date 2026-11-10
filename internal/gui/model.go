@@ -38,6 +38,9 @@ type nodeEntry struct {
 	// Ambiguous is set when another subscription offers a node of the same
 	// name, so the name alone does not say which one it is.
 	Ambiguous bool
+	// Imported is set for a node of an import, which can be edited as its
+	// share link.
+	Imported bool
 	// NoAuto keeps the node out of the automatic choice, by its own setting or
 	// its subscription's.
 	NoAuto bool
@@ -131,6 +134,7 @@ func (a *App) refreshNodes() {
 			Ambiguous: len(names[n.Node.Name]) > 1,
 			NoAuto:    pref.NoAuto || !n.Auto,
 			Corrected: pref.Region != "",
+			Imported:  n.Imported,
 		})
 		live = append(live, routing.LiveNode{Sub: n.SubID, Name: n.Node.Name, Hash: n.Node.Key(), Region: region})
 	}

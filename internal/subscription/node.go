@@ -38,6 +38,11 @@ type Node struct {
 	Endpoint bool `json:"endpoint,omitempty"`
 	// Config is the complete sing-box object without its "tag".
 	Config map[string]any `json:"config"`
+	// Link is the share link the node was read from, as written, when it came
+	// from one. Only an import keeps it, to show and edit the node as its
+	// link; a subscription's nodes are the provider's and drop it (see
+	// WithoutLinks). It is no part of the node's identity (Key).
+	Link string `json:"link,omitempty"`
 }
 
 // Key identifies the server behind a node independently of its display name,
@@ -267,4 +272,16 @@ func cloneValue(v any) any {
 func truthy(v any) bool {
 	b, _ := v.(bool)
 	return b
+}
+
+// WithoutLinks returns the nodes without the links they were read from: what
+// a subscription keeps, since its nodes are never edited and the links would
+// only be a second copy of their credentials.
+func WithoutLinks(nodes []Node) []Node {
+	out := make([]Node, len(nodes))
+	for i, n := range nodes {
+		n.Link = ""
+		out[i] = n
+	}
+	return out
 }

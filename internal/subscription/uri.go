@@ -32,6 +32,7 @@ func parseLinks(text string) (nodes []Node, skipped []Skipped) {
 			skipped = append(skipped, skippedFrom(line, err))
 			continue
 		}
+		n.Link = line
 		nodes = append(nodes, n)
 	}
 	return nodes, skipped
@@ -50,6 +51,34 @@ func skippedFrom(line string, err error) Skipped {
 		s.Name = sl.Fragment
 	}
 	return s
+}
+
+// ErrNotOneLink means an edited link is empty or is more than one line.
+var ErrNotOneLink = errors.New("give exactly one share link")
+
+// EditedLink reads the link a person wrote for a node that was was, the way
+// the node will be stored: the link kept with it, its name cleaned as an
+// import cleans names. When the link still names the node the way was's own
+// link did, the node keeps was's name: an import may have renamed it to tell
+// it from another of the same name, and editing the port must not undo that.
+// A link that names nothing gets a name made from what it now points at.
+func EditedLink(was Node, link string) (Node, error) {
+	link = strings.TrimSpace(link)
+	if link == "" || strings.ContainsAny(link, "\r\n") {
+		return Node{}, ErrNotOneLink
+	}
+	n, err := ParseLink(link)
+	if err != nil {
+		return Node{}, err
+	}
+	n.Link = link
+	if was.Link != "" {
+		if old, err := ParseLink(was.Link); err == nil && n.Name != "" && old.Name == n.Name && was.Name != "" {
+			n.Name = was.Name
+		}
+	}
+	kept, _ := Dedupe([]Node{n})
+	return kept[0], nil
 }
 
 // ParseLink parses one share link (vless://, vmess://, trojan://, ss://,

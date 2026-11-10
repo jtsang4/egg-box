@@ -220,6 +220,25 @@ func (a *App) subMenu(c *ui.Context, idx int, s library.Subscription) func(m *ui
 		if m.Item(a.t("common.edit")).Chosen() {
 			a.openEditSubscription(s)
 		}
+		if !remote {
+			// Every node of the import, those it leaves out or that are off
+			// included: fixing one may be why they are.
+			mine, _ := a.be.Nodes(id)
+			switch {
+			case len(mine) == 1:
+				if m.Item(a.t("subs.edit_node")).Chosen() {
+					a.openNodeLink(id, s.Name, mine[0])
+				}
+			case len(mine) > 1:
+				m.Submenu(a.t("subs.edit_node"), func(sm *ui.Menu) {
+					for _, n := range mine {
+						if sm.Item(n.Name).Chosen() {
+							a.openNodeLink(id, s.Name, n)
+						}
+					}
+				})
+			}
+		}
 		if remote {
 			if m.Item(a.t("subs.copy_link")).Chosen() {
 				if link, err := a.be.Link(id); err == nil {

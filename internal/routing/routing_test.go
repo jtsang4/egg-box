@@ -815,3 +815,47 @@ func TestNewPlanStartsEmptyOrAsACopyOfAnyPlan(t *testing.T) {
 		t.Errorf("a plan that is not there: %v", err)
 	}
 }
+
+// A node the person renamed keeps every choice made of it.
+func TestRenameNode(t *testing.T) {
+	old := NodeID{Sub: "s1", Name: "Gateway", Hash: "h1"}
+	other := NodeID{Sub: "s2", Name: "Gateway", Hash: "h9"}
+	s := NewState()
+	s.Main = ToNode(old)
+	s.Recent = []NodeID{old, other}
+	s.Exceptions = []Exception{{ID: "x1", Kind: EntryDomainSuffix, Value: "corp.example", Dest: ToNode(old), Enabled: true}}
+	if _, err := s.SaveAsMine("Mine"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetItemDest(s.View().Rows[1].Item.ID, ToNode(old)); err != nil {
+		t.Fatal(err)
+	}
+	s.SetNodeAuto(old, false)
+	s.SetNodeAuto(other, false)
+
+	next := NodeID{Sub: "s1", Name: "Gateway 2", Hash: "h2"}
+	if !s.RenameNode("s1", "Gateway", next) {
+		t.Fatal("nothing changed")
+	}
+	if *s.Main.Node != next || *s.Exceptions[0].Dest.Node != next || *s.View().Rows[1].Item.Dest.Node != next {
+		t.Fatalf("destinations: main %v exception %v item %v", s.Main.Node, s.Exceptions[0].Dest.Node, s.View().Rows[1].Item.Dest.Node)
+	}
+	if s.Recent[0] != next || s.Recent[1] != other {
+		t.Fatalf("recent = %v", s.Recent)
+	}
+	if !s.NodePref(next).NoAuto || s.NodePref(next).Hash != "h2" || !s.NodePref(other).NoAuto {
+		t.Fatalf("prefs = %+v", s.Nodes)
+	}
+	if _, ok := s.Nodes[old.Key()]; ok {
+		t.Fatal("the old name's preferences stayed")
+	}
+	if s.RenameNode("s1", "Gateway", next) {
+		t.Fatal("renaming what is no longer there changed something")
+	}
+	// A name already among the recent ones is one entry.
+	s.Recent = []NodeID{next, {Sub: "s1", Name: "Other"}}
+	s.RenameNode("s1", "Other", next)
+	if len(s.Recent) != 1 || s.Recent[0] != next {
+		t.Fatalf("recent = %v", s.Recent)
+	}
+}

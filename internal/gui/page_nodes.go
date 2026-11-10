@@ -888,6 +888,9 @@ func (a *App) nodeMenu(c *ui.Context, n nodeEntry) func(m *ui.Menu) {
 		if m.Item(a.t("nodes.set_region")).Chosen() {
 			a.openRegionPicker(n)
 		}
+		if n.Imported && m.Item(a.t("nodes.edit_link")).Chosen() {
+			a.openImportedNode(n.SubID, n.SubName, n.Key)
+		}
 		m.Separator()
 		if m.Item(a.t("nodes.copy_name")).Chosen() {
 			c.WriteClipboard(n.Name)

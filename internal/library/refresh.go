@@ -82,6 +82,7 @@ func (l *Library) Refresh(ctx context.Context, id string, opts RefreshOptions) (
 		return nil, err
 	}
 
+	res.Nodes = subscription.WithoutLinks(res.Nodes)
 	old, _ := l.Nodes(id)
 	added, removed := diffNodes(old, res.Nodes)
 	if err := l.writeNodes(id, res.Nodes); err != nil {

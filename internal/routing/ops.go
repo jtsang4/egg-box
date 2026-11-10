@@ -251,6 +251,46 @@ func (s *State) visitDests(fn func(*Dest)) {
 	}
 }
 
+// RenameNode follows a node the person renamed: every choice made of the node
+// called oldName in subscription sub (destinations, the recent main exits, the
+// node's own preferences) now names next. It reports whether anything changed.
+func (s *State) RenameNode(sub, oldName string, next NodeID) bool {
+	if next.Sub != sub || next.Name == oldName {
+		return false
+	}
+	changed := false
+	was := NodeID{Sub: sub, Name: oldName}
+	pref, hasPref := s.Nodes[was.Key()]
+	if hasPref && pref.Region != "" {
+		// The region the person set for the node is the one it counts as.
+		next.Region = pref.Region
+	}
+	s.visitDests(func(d *Dest) {
+		if d.Kind == DestNode && d.Node != nil && d.Node.Key() == was.Key() {
+			n := next
+			*d.Node, changed = n, true
+		}
+	})
+	for i, r := range s.Recent {
+		if r.Key() == was.Key() {
+			s.Recent[i], changed = next, true
+		}
+	}
+	// The new name may have been there already: it is one node.
+	seen := map[string]bool{}
+	s.Recent = slices.DeleteFunc(s.Recent, func(r NodeID) bool {
+		dup := seen[r.Key()]
+		seen[r.Key()] = true
+		return dup
+	})
+	if hasPref {
+		delete(s.Nodes, was.Key())
+		pref.Hash = next.Hash
+		s.Nodes[next.Key()], changed = pref, true
+	}
+	return changed
+}
+
 // RefreshIdentities brings every pinned node's identity up to date with the
 // live nodes: a node found under a new name (or with new settings or region)
 // is followed; one that is gone keeps its identity, so the person is told
