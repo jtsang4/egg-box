@@ -69,7 +69,7 @@ func matches(t *testing.T, p *Parsed, domain string) bool {
 	return v == Match
 }
 
-// The dot rules of docs/routing.md 5.3, one table per dialect.
+// The dot rules of docs/routing/rule-sources.md section 3, one table per dialect.
 func TestDomainListDotRules(t *testing.T) {
 	list := "+.plus.example.net\n.dot.example.net\n*.star.example.net\nexact.example.net\n"
 	cases := []struct {
