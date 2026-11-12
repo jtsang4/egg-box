@@ -86,16 +86,19 @@ func TestSystemHostSnapshotAndUplinkFitTogether(t *testing.T) {
 		t.Error("an uplink without a name")
 	}
 	// The analysis must not take the system's own tunnels for another VPN: no
-	// conflict may name an interface that does not hold the default route.
+	// conflict may name an interface that does not carry default traffic. A
+	// VPN carries it with the default route or with the halves it splits it
+	// into (0/1 + 128/1, or 1/8 ... 128/1), as EggBox's own tunnel does: with
+	// no ours given here, a connected EggBox is rightly another VPN.
 	for _, c := range routecheck.Analyze(snap) {
 		var held bool
 		for _, r := range routes {
-			if i, ok := interfaceByIndex(ifaces, r.IfIndex); ok && i.Name == c.Interface && r.IsDefault() && !r.Scoped {
+			if i, ok := interfaceByIndex(ifaces, r.IfIndex); ok && i.Name == c.Interface && r.Dest.IsValid() && r.Dest.Bits() <= 1 && !r.Scoped {
 				held = true
 			}
 		}
 		if !held {
-			t.Errorf("conflict %v names an interface that does not hold the system's default", c)
+			t.Errorf("conflict %v names an interface that carries no default traffic", c)
 		}
 	}
 }
