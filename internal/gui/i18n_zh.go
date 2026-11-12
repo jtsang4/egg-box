@@ -286,7 +286,7 @@ var catalogZH = map[string]string{
 	"import.title":            "导入节点",
 	"import.sub":              "添加你已有的节点",
 	"import.content":          "节点",
-	"import.formats":          "分享链接（vless://、trojan://、ss://…）、Clash 配置或 sing-box 配置。",
+	"import.formats":          "分享链接（vless://、trojan://、ss://、snell://…）、Clash 配置或 sing-box 配置。",
 	"import.name.placeholder": "可选，例如 我的节点",
 	"import.action":           "导入",
 	"import.action.n.one":     "导入 {n} 个节点",

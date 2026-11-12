@@ -287,7 +287,7 @@ var catalogEN = map[string]string{
 	"import.title":            "Import nodes",
 	"import.sub":              "Add nodes you already have",
 	"import.content":          "Nodes",
-	"import.formats":          "Share links (vless://, trojan://, ss://…), a Clash profile or a sing-box configuration.",
+	"import.formats":          "Share links (vless://, trojan://, ss://, snell://…), a Clash profile or a sing-box configuration.",
 	"import.name.placeholder": "Optional — for example My nodes",
 	"import.action":           "Import",
 	"import.action.n.one":     "Import {n} node",

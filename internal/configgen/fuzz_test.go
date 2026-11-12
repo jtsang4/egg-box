@@ -33,6 +33,18 @@ func FuzzProviderContent(f *testing.F) {
   {"type":"trojan","tag":"T","server":"t.example.com","server_port":443,"password":"pw","tls":{"enabled":true,"server_name":"t.example.com"}},
   {"type":"vless","tag":"E","server":"e.example.com","server_port":443,"uuid":"` + uuid + `","tls":{"enabled":true,"certificate_path":"/etc/passwd"}},
   {"type":"selector","tag":"S","outbounds":["T","E"]}]}`))
+	f.Add([]byte(`proxies:
+  - {name: "SN4", type: snell, server: s4.example.com, port: 443, psk: pw, version: 4, obfs-opts: {mode: http, host: www.example.org}}
+  - {name: "SN6", type: snell, server: s6.example.com, port: 443, psk: test-psk-0001, version: 6, reuse: true}
+  - {name: "SH", type: ssh, server: h.example.com, port: 22, username: u, password: pw}
+  - {name: "ST", type: ss, server: st.example.com, port: 443, cipher: aes-128-gcm, password: pw, plugin: shadow-tls, plugin-opts: {host: www.example.org, password: stpw, version: 3}}
+  - {name: "WG", type: wireguard, ip: 172.16.0.2, private-key: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=, peers: [{server: w.example.com, port: 2480, public-key: AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=}]}
+`))
+	f.Add([]byte(`{"outbounds":[
+  {"type":"shadowsocks","tag":"SS","method":"aes-128-gcm","password":"pw","detour":"st"},
+  {"type":"shadowtls","tag":"st","server":"st.example.com","server_port":443,"version":3,"password":"x","tls":{"enabled":true,"server_name":"www.example.org","certificate_path":"/etc/passwd"}},
+  {"type":"ssh","tag":"K","server":"k.example.com","server_port":22,"password":"pw","private_key_path":"/root/.ssh/id"},
+  {"type":"snell","tag":"N","server":"n.example.com","server_port":1,"version":6,"psk":"short"}]}`))
 	f.Add([]byte("vless://" + uuid + "@x.example.com:443#a\nvless://" + uuid + "@x.example.com:443#a\ntrojan://pw@y.example.com:1#direct\n"))
 	f.Add([]byte(""))
 	f.Add([]byte("\x00\xff\xfe"))

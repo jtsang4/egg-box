@@ -3,19 +3,23 @@ package configgen_test
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
+	"golang.org/x/crypto/ssh"
 
 	"eggbox/internal/agent/engine"
 	"eggbox/internal/agent/engine/singbox"
@@ -38,6 +42,12 @@ func links() []string {
 		"ss://" + b64("aes-256-gcm:pw") + "@us1.example.com:8388#US%2001",
 		"ss://" + b64("aes-128-gcm:pw") + "@us2.example.com:443/?plugin=obfs-local%3Bobfs%3Dtls%3Bobfs-host%3Dwww.example.org#US%2002",
 		"anytls://pw@sg1.example.com:443?sni=sg1.example.com#SG%2001",
+		"snell://test-psk-0001@sg2.example.com:1366?version=6&mode=default&reuse=true#SG%2002",
+		"snell://pw@sg3.example.com:1367?version=4&obfs=http&obfs-host=www.example.org#SG%2003",
+		"ss://" + b64("aes-128-gcm:pw") + "@st.example.com:443/?plugin=shadow-tls%3Bhost%3Dwww.example.org%3Bpassword%3Dstpw%3Bversion%3D3#SG%2004",
+		"ssh://u:pw@ssh1.example.com:22#SG%2005",
+		"https://u:pw@hp.example.com:8443?sni=hp.example.com#HTTPS%20proxy",
+		"ssh://u@ssh2.example.com:2222?private-key=" + url.QueryEscape(testSSHKey()) + "&host-key=" + url.QueryEscape(testSSHHostKey()) + "#SG%2006",
 		"socks5://u:p@proxy.example.com:1080#Plain%20SOCKS",
 		"trojan://pw@dup.example.com:443#Proxy", // collides with a fixed tag
 		"trojan://pw@dup2.example.com:443#direct",
@@ -59,6 +69,25 @@ func links() []string {
 		l = append(l, "wireguard://"+priv+"@wg.example.com:51820?publickey="+pub+"&address=10.9.0.2/32#WG")
 	}
 	return l
+}
+
+// testSSHKey is a made-up ed25519 key in OpenSSH's PEM form. It is made once:
+// the encoding carries random check bytes, and the fixtures must not change
+// between two generations.
+var testSSHKey = sync.OnceValue(func() string {
+	block, err := ssh.MarshalPrivateKey(ed25519.NewKeyFromSeed(bytes.Repeat([]byte{4}, 32)), "")
+	if err != nil {
+		panic(err)
+	}
+	return string(pem.EncodeToMemory(block))
+})
+
+func testSSHHostKey() string {
+	pub, err := ssh.NewPublicKey(ed25519.NewKeyFromSeed(bytes.Repeat([]byte{5}, 32)).Public())
+	if err != nil {
+		panic(err)
+	}
+	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pub)))
 }
 
 func b64(s string) string {
@@ -1234,4 +1263,87 @@ func TestTunCanBeTurnedOff(t *testing.T) {
 	if p := inbounds(generate(t, in))["mixed"]; p == nil || p["listen_port"] != float64(1080) {
 		t.Errorf("a chosen port is kept with TUN off, got %v", p)
 	}
+}
+
+func TestShadowTLSNodeGoesThroughItsDetour(t *testing.T) {
+	in := baseInput(t)
+	st := nodeNamed(t, in.Nodes, "SG 04")
+	out := generate(t, in)
+	accept(t, out)
+
+	var cfg struct {
+		Outbounds []map[string]any `json:"outbounds"`
+	}
+	if err := json.Unmarshal(out.JSON, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	tag := out.Tags[st.Key()]
+	byTag := map[string]map[string]any{}
+	viaIndex := -1
+	for i, o := range cfg.Outbounds {
+		byTag[o["tag"].(string)] = o
+		if o["tag"] == configgen.DetourPrefix+tag {
+			viaIndex = i
+		}
+		if members, ok := o["outbounds"].([]any); ok {
+			for _, m := range members {
+				if s, _ := m.(string); strings.HasPrefix(s, configgen.DetourPrefix) {
+					t.Fatalf("group %v offers the detour %q as a node", o["tag"], s)
+				}
+			}
+		}
+	}
+	ss, via := byTag[tag], byTag[configgen.DetourPrefix+tag]
+	if ss["type"] != "shadowsocks" || ss["detour"] != configgen.DetourPrefix+tag {
+		t.Fatalf("shadowsocks outbound = %v", ss)
+	}
+	if via["type"] != "shadowtls" || via["server"] != "st.example.com" || via["password"] != "stpw" {
+		t.Fatalf("shadowtls outbound = %v", via)
+	}
+	if st.Protocol() != "Shadowsocks + ShadowTLS" {
+		t.Fatal(st.Protocol())
+	}
+
+	// An issue with the detour drops the node it belongs to, and only it.
+	_, dropped, changed := configgen.Heal(in, out, []configgen.PathIssue{{Path: fmt.Sprintf("$.outbounds[%d].tls", viaIndex), Message: "x"}})
+	if !changed || len(dropped) != 1 || dropped[0].Name != "SG 04" {
+		t.Fatalf("dropped = %+v", dropped)
+	}
+}
+
+func TestDetourTagsCannotBeTakenByANode(t *testing.T) {
+	in := baseInput(t)
+	st := nodeNamed(t, in.Nodes, "SG 04")
+	impostor := nodeNamed(t, in.Nodes, "SG 01")
+	impostor.Node = impostor.Node.Clone()
+	impostor.Name = configgen.DetourPrefix + "SG 04"
+	impostor.Config["server"], impostor.Server = "other.example.com", "other.example.com"
+	in.Nodes = append(in.Nodes, impostor)
+	out := generate(t, in)
+	accept(t, out)
+	if got := out.Tags[impostor.Key()]; got == configgen.DetourPrefix+out.Tags[st.Key()] {
+		t.Fatalf("a node took the detour tag %q", got)
+	}
+}
+
+func TestClashWireGuardWithSeveralPeersIsAccepted(t *testing.T) {
+	if !singbox.WireGuardCompiled {
+		t.Skip("WireGuard is not compiled in")
+	}
+	key := func(b byte) string { return base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{b}, 32)) }
+	res, err := subscription.Parse([]byte(`proxies:
+  - name: WG multi
+    type: wireguard
+    ip: 172.16.0.2
+    private-key: ` + key(1) + `
+    peers:
+      - {server: a.example.com, port: 2480, public-key: ` + key(2) + `, allowed-ips: ["0.0.0.0/0"]}
+      - {server: b.example.com, port: 2481, public-key: ` + key(3) + `, allowed-ips: ["::/0"]}
+`))
+	if err != nil || len(res.Nodes) != 1 {
+		t.Fatalf("parse: %v %+v", err, res)
+	}
+	in := baseInput(t)
+	in.Nodes = append(in.Nodes, configgen.Node{Node: res.Nodes[0]})
+	accept(t, generate(t, in))
 }

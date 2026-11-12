@@ -33,6 +33,7 @@ var (
 		"certificate_directory_path", // reads a directory of certificates
 		"external_ui",                // serves a directory over HTTP
 		"initial_path",               // remote rule set seed file (remote rule sets are denied)
+		"private_key_path",           // SSH key file: imports carry the key inline
 	)
 
 	// coveredBySectionDeny are path-like fields that only exist inside sections

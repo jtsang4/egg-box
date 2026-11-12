@@ -230,7 +230,7 @@ func TestShadowsocksForms(t *testing.T) {
 	n = mustLink(t, "ss://"+b64("aes-128-gcm:pw")+"@s.example.com:443/?plugin=simple-obfs;obfs=tls;obfs-host=x.example#unescaped")
 	eq(t, n, "plugin", "obfs-local")
 	eq(t, n, "plugin_opts", "obfs=tls;obfs-host=x.example")
-	wantCode(t, "ss://"+b64("aes-128-gcm:pw")+"@s.example.com:443/?plugin=shadow-tls%3Bhost%3Dx#st", SkipUnsupportedFeature)
+	wantCode(t, "ss://"+b64("aes-128-gcm:pw")+"@s.example.com:443/?plugin=kcptun%3Bkey%3Dx#kcp", SkipUnsupportedFeature)
 
 	// Unsupported cipher and broken links.
 	_, err := ParseLink("ss://" + b64("rc5-cfb:pw") + "@s.example.com:443#bad")
@@ -378,7 +378,7 @@ func TestValidate(t *testing.T) {
 		"empty server": func(n *Node) { n.Server = " " },
 		"port zero":    func(n *Node) { n.Port = 0 },
 		"no password":  func(n *Node) { n.Config["password"] = "" },
-		"bad type":     func(n *Node) { n.Type = "ssh" },
+		"bad type":     func(n *Node) { n.Type = "tor" },
 	} {
 		n := good.Clone()
 		mut(&n)

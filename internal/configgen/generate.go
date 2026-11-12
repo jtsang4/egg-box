@@ -367,6 +367,14 @@ func (g *generator) generate() (*Output, error) {
 			layout.Endpoints = append(layout.Endpoints, p.node.Key())
 			continue
 		}
+		if p.node.Detour != nil {
+			via := cloneConfig(p.node.Detour)
+			via["tag"] = DetourPrefix + p.tag
+			cfg["detour"] = via["tag"]
+			// Both outbounds belong to the node: an issue with either drops it.
+			outbounds = append(outbounds, via)
+			layout.Outbounds = append(layout.Outbounds, p.node.Key())
+		}
 		outbounds = append(outbounds, cfg)
 		layout.Outbounds = append(layout.Outbounds, p.node.Key())
 	}
@@ -898,7 +906,7 @@ func placeNodes(in []Node, out *Output) []placedNode {
 	reserved := map[string]bool{
 		TagProxy: true, TagAuto: true, TagDirect: true, TagTun: true, tagReject: true, tagMixed: true,
 	}
-	prefixes := []string{RegionPrefix, SelectorPrefix, PinPrefix, "dns-"}
+	prefixes := []string{RegionPrefix, SelectorPrefix, PinPrefix, DetourPrefix, "dns-"}
 	used := map[string]bool{}
 	var nodes []placedNode
 	for _, n := range in {

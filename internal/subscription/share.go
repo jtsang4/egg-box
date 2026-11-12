@@ -40,8 +40,11 @@ func splitShare(raw string) (*shareLink, bool) {
 	if l.Query == nil {
 		l.Query = url.Values{}
 	}
-	if j := strings.Index(rest, "/"); j >= 0 {
-		rest = rest[:j]
+	// The path starts at the first '/' after the credentials, which may
+	// themselves hold one (base64 user names, unescaped passwords).
+	at := strings.LastIndex(rest, "@")
+	if j := strings.Index(rest[at+1:], "/"); j >= 0 {
+		rest = rest[:at+1+j]
 	}
 	if j := strings.LastIndex(rest, "@"); j >= 0 {
 		l.UserInfo = rest[:j]

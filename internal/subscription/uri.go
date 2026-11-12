@@ -82,7 +82,7 @@ func EditedLink(was Node, link string) (Node, error) {
 }
 
 // ParseLink parses one share link (vless://, vmess://, trojan://, ss://,
-// hysteria2:// ...).
+// hysteria2://, snell:// ...).
 func ParseLink(link string) (Node, error) {
 	link = strings.TrimSpace(link)
 	i := strings.Index(link, "://")
@@ -110,6 +110,12 @@ func ParseLink(link string) (Node, error) {
 		n, err = parseTUIC(link)
 	case "anytls":
 		n, err = parseAnyTLS(link)
+	case "snell":
+		n, err = parseSnell(link)
+	case "ssh":
+		n, err = parseSSH(link)
+	case "http", "https":
+		n, err = parseHTTP(link)
 	case "socks", "socks5", "socks5h":
 		n, err = parseSOCKS(link)
 	case "wireguard", "wg":
@@ -482,19 +488,26 @@ func parseShadowsocks(raw string) (Node, error) {
 	method = ssMethodAlias(strings.ToLower(strings.TrimSpace(method)))
 	cfg := map[string]any{"type": "shadowsocks", "server": server, "server_port": port, "method": method, "password": password}
 
+	n := Node{Name: name, Type: "shadowsocks", Server: server, Port: port, Config: cfg}
 	if q := parseQuery(query); q.Get("plugin") != "" {
 		pname, popts, _ := strings.Cut(q.Get("plugin"), ";")
 		switch pname {
 		case "simple-obfs", "obfs-local", "obfs":
 			pname = "obfs-local"
 		case "v2ray-plugin":
+		case "shadow-tls", "shadowtls":
+			o := pluginOpts(popts)
+			return shadowTLSSpec{
+				Host: o["host"], Password: o["password"], Version: o["version"],
+				Fingerprint: o["fp"], ALPN: splitList(strings.ReplaceAll(o["alpn"], "|", ",")),
+			}.over(n)
 		default:
 			return Node{}, skip(SkipUnsupportedFeature, "Shadowsocks plugin %q is not supported", pname)
 		}
 		cfg["plugin"] = pname
 		setIf(cfg, "plugin_opts", popts)
 	}
-	return Node{Name: name, Type: "shadowsocks", Server: server, Port: port, Config: cfg}, nil
+	return n, nil
 }
 
 // ssMethodAlias maps the names other clients use to sing-box's.
@@ -767,4 +780,54 @@ func asString(v any) string {
 		return strconv.FormatBool(t)
 	}
 	return fmt.Sprint(v)
+}
+
+// parseHTTP reads http://user:password@host:port#name and its TLS form
+// https://. Only a bare proxy address counts: a line in a plain-text
+// subscription that is a web address (a path, no port) is not a server.
+func parseHTTP(raw string) (Node, error) {
+	l, ok := splitShare(raw)
+	if !ok {
+		return Node{}, skip(SkipInvalid, "not a valid link")
+	}
+	rest := raw[len(l.Scheme)+3:]
+	if j := strings.IndexAny(rest, "?#"); j >= 0 {
+		rest = rest[:j]
+	}
+	if j := strings.LastIndex(rest, "@"); j >= 0 {
+		rest = rest[j+1:] // base64 credentials may hold a '/'
+	}
+	if j := strings.Index(rest, "/"); j >= 0 && strings.TrimRight(rest[j:], "/") != "" {
+		return Node{}, skip(SkipUnsupportedProtocol, "web addresses are not proxy servers")
+	}
+	if l.PortSpec == "" {
+		return Node{}, skip(SkipUnsupportedProtocol, "web addresses are not proxy servers")
+	}
+	for k := range l.Query {
+		switch k {
+		case "sni", "peer", "insecure", "allowInsecure", "skip-cert-verify":
+		default: // a query of its own (a token...) makes it a web address
+			return Node{}, skip(SkipUnsupportedProtocol, "web addresses are not proxy servers")
+		}
+	}
+	if err := hostPort(l); err != nil {
+		return Node{}, err
+	}
+	user, password, hasPassword := l.user()
+	if !hasPassword && user != "" {
+		// http://base64(user:pass)@host:port, as some clients export it.
+		if dec, ok := decodeBase64(user); ok {
+			if u, p, found := strings.Cut(string(dec), ":"); found {
+				user, password = u, p
+			}
+		}
+	}
+	cfg := map[string]any{"type": "http", "server": l.Host, "server_port": l.Port}
+	setIf(cfg, "username", user)
+	setIf(cfg, "password", password)
+	if l.Scheme == "https" {
+		t := tlsSpec{Enabled: true, ServerName: l.param("sni", "peer"), Insecure: l.flag("insecure", "allowInsecure", "skip-cert-verify")}
+		cfg["tls"] = t.object()
+	}
+	return Node{Name: nodeName(l), Type: "http", Server: l.Host, Port: l.Port, Config: cfg}, nil
 }

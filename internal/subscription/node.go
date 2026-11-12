@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
 	"strings"
 )
 
@@ -30,7 +31,7 @@ type Node struct {
 	// Dedupe makes names unique.
 	Name string `json:"name"`
 	// Type is the sing-box type: vless, vmess, trojan, shadowsocks, hysteria,
-	// hysteria2, tuic, anytls, socks, http, wireguard.
+	// hysteria2, tuic, anytls, snell, ssh, socks, http, wireguard.
 	Type   string `json:"type"`
 	Server string `json:"server"`
 	Port   int    `json:"port"`
@@ -38,6 +39,10 @@ type Node struct {
 	Endpoint bool `json:"endpoint,omitempty"`
 	// Config is the complete sing-box object without its "tag".
 	Config map[string]any `json:"config"`
+	// Detour is the sing-box outbound, without its "tag", that the node's
+	// connections go through, for protocols that ride on another: Shadowsocks
+	// over ShadowTLS. It is nil for every other node.
+	Detour map[string]any `json:"detour,omitempty"`
 	// Link is the share link the node was read from, as written, when it came
 	// from one. Only an import keeps it, to show and edit the node as its
 	// link; a subscription's nodes are the provider's and drop it (see
@@ -50,7 +55,12 @@ type Node struct {
 func (n Node) Key() string {
 	cfg := cloneMap(n.Config)
 	delete(cfg, "tag")
-	raw, _ := json.Marshal(map[string]any{"type": n.Type, "endpoint": n.Endpoint, "config": cfg})
+	id := map[string]any{"type": n.Type, "endpoint": n.Endpoint, "config": cfg}
+	if n.Detour != nil {
+		// Only when present, so the keys of all other nodes stay what they were.
+		id["detour"] = n.Detour
+	}
+	raw, _ := json.Marshal(id)
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:8])
 }
@@ -58,6 +68,7 @@ func (n Node) Key() string {
 // Clone returns a deep copy.
 func (n Node) Clone() Node {
 	n.Config = cloneMap(n.Config)
+	n.Detour = cloneMap(n.Detour)
 	return n
 }
 
@@ -86,7 +97,7 @@ func (n Node) Protocol() string {
 	label := map[string]string{
 		"vless": "VLESS", "vmess": "VMess", "trojan": "Trojan", "shadowsocks": "Shadowsocks",
 		"hysteria": "Hysteria", "hysteria2": "Hysteria2", "tuic": "TUIC", "anytls": "AnyTLS",
-		"socks": "SOCKS", "http": "HTTP", "wireguard": "WireGuard", "snell": "Snell",
+		"socks": "SOCKS", "http": "HTTP", "wireguard": "WireGuard", "snell": "Snell", "ssh": "SSH",
 	}[n.Type]
 	if label == "" {
 		label = strings.ToUpper(n.Type)
@@ -95,6 +106,9 @@ func (n Node) Protocol() string {
 		if r, ok := tls["reality"].(map[string]any); ok && truthy(r["enabled"]) {
 			return label + " Reality"
 		}
+	}
+	if t, _ := n.Detour["type"].(string); t == "shadowtls" {
+		return label + " + ShadowTLS"
 	}
 	return label
 }
@@ -122,7 +136,7 @@ const (
 // decides what actually runs; this list keeps unknown things out of the library.
 var supportedTypes = map[string]bool{
 	"vless": true, "vmess": true, "trojan": true, "shadowsocks": true, "hysteria": true,
-	"hysteria2": true, "tuic": true, "anytls": true, "socks": true, "http": true, "wireguard": true,
+	"hysteria2": true, "tuic": true, "anytls": true, "snell": true, "ssh": true, "socks": true, "http": true, "wireguard": true,
 }
 
 // Validate checks that a node carries what its protocol needs. It is the last
@@ -136,6 +150,11 @@ func (n Node) Validate() error {
 	}
 	if n.Port < 1 || n.Port > 65535 {
 		return fmt.Errorf("port %d is out of range", n.Port)
+	}
+	if n.Detour != nil {
+		if err := validateDetour(n); err != nil {
+			return err
+		}
 	}
 	need := func(keys ...string) error {
 		for _, k := range keys {
@@ -166,6 +185,13 @@ func (n Node) Validate() error {
 		return need("uuid")
 	case "hysteria2":
 		return need("password")
+	case "snell":
+		if err := need("psk"); err != nil {
+			return err
+		}
+		return validateSnell(n.Config)
+	case "ssh":
+		return validateSSH(n.Config)
 	case "hysteria":
 		if s, _ := n.Config["auth_str"].(string); s == "" {
 			if s, _ := n.Config["auth"].(string); s == "" {
@@ -179,6 +205,18 @@ func (n Node) Validate() error {
 		peers, _ := n.Config["peers"].([]any)
 		if len(peers) == 0 {
 			return errors.New("peers are missing")
+		}
+		for _, p := range peers {
+			peer, _ := p.(map[string]any)
+			ips, ok := stringList(peer["allowed_ips"])
+			if !ok {
+				return errors.New("the allowed IPs of a WireGuard peer cannot be read")
+			}
+			for _, ip := range ips {
+				if _, err := netip.ParsePrefix(ip); err != nil {
+					return errors.New("the allowed IPs of a WireGuard peer cannot be read")
+				}
+			}
 		}
 	}
 	return nil
@@ -284,4 +322,41 @@ func WithoutLinks(nodes []Node) []Node {
 		out[i] = n
 	}
 	return out
+}
+
+// validateDetour checks the outbound a node goes through. Only Shadowsocks
+// over ShadowTLS is a chain a provider hands out as one server.
+func validateDetour(n Node) error {
+	if t, _ := n.Detour["type"].(string); t != "shadowtls" || n.Type != "shadowsocks" {
+		return errors.New("proxy chaining is only supported for Shadowsocks over ShadowTLS")
+	}
+	if _, chained := n.Detour["detour"]; chained {
+		return errors.New("ShadowTLS cannot go through another proxy")
+	}
+	if s, _ := n.Detour["server"].(string); strings.TrimSpace(s) == "" {
+		return errors.New("the ShadowTLS server address is empty")
+	}
+	if p, ok := exactInt(n.Detour["server_port"]); !ok || p < 1 || p > 65535 {
+		return fmt.Errorf("ShadowTLS port %d is out of range", p)
+	}
+	v, ok := exactInt(n.Detour["version"])
+	if _, present := n.Detour["version"]; !present {
+		v, ok = 1, true
+	}
+	if !ok {
+		return errors.New("the ShadowTLS version is not a number")
+	}
+	switch v {
+	case 0, 1:
+	case 2, 3:
+		if s, _ := n.Detour["password"].(string); s == "" {
+			return errors.New("the ShadowTLS password is missing")
+		}
+	default:
+		return fmt.Errorf("ShadowTLS version %d is not supported", v)
+	}
+	if tls, _ := n.Detour["tls"].(map[string]any); !truthy(tls["enabled"]) {
+		return errors.New("ShadowTLS needs TLS")
+	}
+	return nil
 }

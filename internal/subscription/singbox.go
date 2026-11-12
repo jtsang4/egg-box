@@ -43,6 +43,25 @@ func parseSingBox(data []byte) ([]Node, []Skipped, error) {
 		return nil, nil, errors.New("the file is not a sing-box configuration")
 	}
 
+	// A ShadowTLS outbound is not a server of its own: it carries the
+	// Shadowsocks outbounds that name it as their detour.
+	shadowTLS := map[string]map[string]any{}
+	carried := map[string]bool{}
+	for _, o := range outbounds {
+		if obj, ok := o.(map[string]any); ok && obj["type"] == "shadowtls" {
+			if tag, _ := obj["tag"].(string); tag != "" {
+				shadowTLS[tag] = obj
+			}
+		}
+	}
+	for _, o := range outbounds {
+		if obj, ok := o.(map[string]any); ok && obj["type"] == "shadowsocks" {
+			if d, _ := obj["detour"].(string); shadowTLS[d] != nil {
+				carried[d] = true
+			}
+		}
+	}
+
 	var nodes []Node
 	var skipped []Skipped
 	handle := func(raw any, endpoint bool) {
@@ -55,7 +74,10 @@ func parseSingBox(data []byte) ([]Node, []Skipped, error) {
 		if !endpoint && structuralTypes[typ] {
 			return
 		}
-		n, err := singBoxNode(obj, endpoint)
+		if !endpoint && typ == "shadowtls" && carried[name] {
+			return
+		}
+		n, err := singBoxNode(obj, endpoint, shadowTLS)
 		if err == nil {
 			err = n.Validate()
 			if err != nil {
@@ -82,7 +104,7 @@ func parseSingBox(data []byte) ([]Node, []Skipped, error) {
 	return nodes, skipped, nil
 }
 
-func singBoxNode(obj map[string]any, endpoint bool) (Node, error) {
+func singBoxNode(obj map[string]any, endpoint bool, shadowTLS map[string]map[string]any) (Node, error) {
 	typ, _ := obj["type"].(string)
 	name, _ := obj["tag"].(string)
 	if !supportedTypes[typ] {
@@ -93,7 +115,15 @@ func singBoxNode(obj map[string]any, endpoint bool) (Node, error) {
 	}
 	cfg, _ := normalizeNumbers(obj).(map[string]any)
 	delete(cfg, "tag")
-	if d, ok := cfg["detour"].(string); ok {
+	var detour map[string]any
+	if d, ok := cfg["detour"].(string); ok && typ == "shadowsocks" && shadowTLS[d] != nil {
+		detour, _ = normalizeNumbers(shadowTLS[d]).(map[string]any)
+		delete(detour, "tag")
+		for _, k := range dialFields {
+			delete(detour, k)
+		}
+		delete(cfg, "detour")
+	} else if ok {
 		if d != "" && d != "direct" {
 			return Node{}, skip(SkipUnsupportedFeature, "proxy chaining (detour) is not supported")
 		}
@@ -101,6 +131,9 @@ func singBoxNode(obj map[string]any, endpoint bool) (Node, error) {
 	}
 	for _, k := range dialFields {
 		delete(cfg, k)
+	}
+	if p, _ := cfg["private_key_path"].(string); p != "" {
+		return Node{}, skip(SkipUnsupportedFeature, "SSH keys read from a file are not supported")
 	}
 	if sys, _ := cfg["system"].(bool); sys {
 		return Node{}, skip(SkipUnsupportedFeature, "system WireGuard interfaces are not supported")
@@ -127,6 +160,16 @@ func singBoxNode(obj map[string]any, endpoint bool) (Node, error) {
 				n.Port = intOf(strings.SplitN(first, ":", 2)[0])
 			}
 		}
+	}
+	if detour != nil {
+		if d, _ := detour["detour"].(string); d == "" || d == "direct" {
+			delete(detour, "detour")
+		}
+		// The server is the one ShadowTLS reaches; Shadowsocks only rides on it.
+		n.Detour = detour
+		n.Server, _ = detour["server"].(string)
+		n.Port = intOf(detour["server_port"])
+		cfg["server"], cfg["server_port"] = n.Server, n.Port
 	}
 	return n, nil
 }

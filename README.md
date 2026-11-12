@@ -24,8 +24,9 @@ agentd (Windows Service / macOS LaunchDaemon)  ──▶  embedded sing-box core
 
 - **Subscriptions.** Remote links (refreshed on a schedule, with traffic and expiry read from the provider's headers) and
   local imports (pasted links, files). Formats: sing-box JSON, Clash YAML, plain or base64 share links. Protocols: VLESS
-  (including Reality), VMess, Trojan, Shadowsocks, Hysteria2, TUIC, AnyTLS, WireGuard, SOCKS and HTTP. Links are
-  credentials: they live in the system keychain, never in an ordinary file, a log or a diagnostic report.
+  (including Reality), VMess, Trojan, Shadowsocks (including over ShadowTLS), Hysteria, Hysteria2, TUIC, AnyTLS, Snell
+  (v4/v5 and v6), WireGuard, SSH, SOCKS and HTTP. Links are credentials: they live in the system keychain, never in an
+  ordinary file, a log or a diagnostic report.
 - **Nodes.** Grouped by region, latency tests, a main exit that is "Automatic" (the fastest node), the fastest node of a
   region, or one node. Latency is the round trip of a request on a connection already open through the node (what mihomo
   calls "unified delay"), so it compares with other clients; the handshakes of a new connection are not counted. A node

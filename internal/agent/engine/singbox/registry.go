@@ -2,8 +2,9 @@
 //
 // The core runs as root / SYSTEM, so this package registers an explicit
 // allow-list of protocols instead of the upstream "include" registry, which
-// also links SSH, Tor, Tailscale, management APIs and other features a
-// network client never needs. Anything not registered here cannot be
+// also links Tor, Tailscale, OpenVPN, management APIs and other features a
+// network client never needs. (SSH is registered as a proxy protocol; the
+// policy refuses its private_key_path, so a key is only ever given inline.) Anything not registered here cannot be
 // instantiated even if a configuration names it; internal/agent/policy
 // rejects such configurations earlier with a readable message.
 package singbox
@@ -32,6 +33,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/shadowtls"
 	"github.com/sagernet/sing-box/protocol/snell"
 	"github.com/sagernet/sing-box/protocol/socks"
+	"github.com/sagernet/sing-box/protocol/ssh"
 	"github.com/sagernet/sing-box/protocol/trojan"
 	"github.com/sagernet/sing-box/protocol/tun"
 	"github.com/sagernet/sing-box/protocol/vless"
@@ -95,6 +97,7 @@ func OutboundRegistry() *outbound.Registry {
 	trojan.RegisterOutbound(registry)
 	shadowtls.RegisterOutbound(registry)
 	anytls.RegisterOutbound(registry)
+	ssh.RegisterOutbound(registry)
 	registerQUICOutbounds(registry)
 	return registry
 }

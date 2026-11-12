@@ -220,7 +220,8 @@ func TestLogLevelFollowsAgentSetting(t *testing.T) {
 
 func TestTypeAllowLists(t *testing.T) {
 	cases := []struct{ name, cfg, code string }{
-		{"ssh outbound", `{"outbounds":[{"type":"ssh","tag":"s","server":"x","private_key_path":"/root/.ssh/id"}]}`, "type_not_allowed"},
+		{"ssh key file", `{"outbounds":[{"type":"ssh","tag":"s","server":"x","private_key_path":"/root/.ssh/id"}]}`, "path_not_allowed"},
+		{"ssh key file as a resource", `{"outbounds":[{"type":"ssh","tag":"s","server":"x","private_key_path":"res:id"}]}`, "path_not_allowed"},
 		{"tor outbound", `{"outbounds":[{"type":"tor","tag":"t","executable_path":"/bin/sh"}]}`, "type_not_allowed"},
 		{"tailscale endpoint", `{"endpoints":[{"type":"tailscale","tag":"ts"}]}`, "type_not_allowed"},
 		{"socks inbound in production", `{"inbounds":[{"type":"socks","tag":"s"}]}`, "type_not_allowed"},
@@ -243,6 +244,10 @@ func TestProtocolOutboundsAreAllowed(t *testing.T) {
 	  {"type":"hysteria2","tag":"h2","server":"a","server_port":1,"password":"x"},
 	  {"type":"tuic","tag":"tu","server":"a","server_port":1,"uuid":"u","password":"x"},
 	  {"type":"anytls","tag":"at","server":"a","server_port":1,"password":"x"},
+	  {"type":"snell","tag":"sn","server":"a","server_port":1,"version":6,"psk":"0123456789ab","reuse":true},
+	  {"type":"ssh","tag":"sh","server":"a","server_port":22,"user":"u","password":"x","private_key":"k","host_key":["ssh-ed25519 AAAA"]},
+	  {"type":"shadowtls","tag":"st","server":"a","server_port":443,"version":3,"password":"x","tls":{"enabled":true,"server_name":"a"}},
+	  {"type":"shadowsocks","tag":"ss-st","method":"aes-128-gcm","password":"x","detour":"st"},
 	  {"type":"selector","tag":"sel","outbounds":["ss"]},
 	  {"type":"urltest","tag":"ut","outbounds":["ss"]}
 	],"endpoints":[{"type":"wireguard","tag":"wg","private_key":"k","peers":[]}]}`
@@ -543,7 +548,7 @@ func TestSchemaKeyIsDropped(t *testing.T) {
 }
 
 func TestIssuesCarryJSONPaths(t *testing.T) {
-	res := mustFail(t, prod(), `{"outbounds":[{"type":"direct","tag":"a"},{"type":"ssh","tag":"b"}]}`, "type_not_allowed")
+	res := mustFail(t, prod(), `{"outbounds":[{"type":"direct","tag":"a"},{"type":"tor","tag":"b"}]}`, "type_not_allowed")
 	if got := res.Errors()[0].Path; got != "$.outbounds[1].type" {
 		t.Fatalf("path = %q", got)
 	}

@@ -39,6 +39,9 @@ const (
 	// PinPrefix starts the tag of the group that gives a node pinned by an
 	// exception its stand-in.
 	PinPrefix = "pin-"
+	// DetourPrefix starts the tag of the outbound a node goes through (the
+	// ShadowTLS under a Shadowsocks node); the rest is the node's tag.
+	DetourPrefix = "via-"
 	// FallbackID is the item identifier of the fallback.
 	FallbackID = "fallback"
 )

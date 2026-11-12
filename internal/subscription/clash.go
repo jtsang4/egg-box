@@ -2,6 +2,7 @@ package subscription
 
 import (
 	"fmt"
+	"net/netip"
 	"strconv"
 	"strings"
 
@@ -211,8 +212,18 @@ func clashNode(m cm) (Node, error) {
 		cfg := base("shadowsocks")
 		cfg["method"] = ssMethodAlias(strings.ToLower(m.str("cipher", "method")))
 		cfg["password"] = m.str("password")
+		var stls *shadowTLSSpec
 		switch plugin := strings.ToLower(m.str("plugin")); plugin {
 		case "":
+		case "shadow-tls", "shadowtls":
+			o := m.obj("plugin-opts")
+			stls = &shadowTLSSpec{
+				Host: o.str("host"), Password: o.str("password"), Version: o.str("version"),
+				Fingerprint: m.str("client-fingerprint"), Insecure: o.boolean("skip-cert-verify"), ALPN: o.list("alpn"),
+			}
+			if o.str("fingerprint") != "" && !stls.Insecure {
+				return Node{}, skip(SkipUnsupportedFeature, "certificate pinning is not supported")
+			}
 		case "obfs", "simple-obfs", "obfs-local":
 			o := m.obj("plugin-opts")
 			var opts []string
@@ -249,6 +260,9 @@ func clashNode(m cm) (Node, error) {
 		}
 		if m.boolean("udp-over-tcp") {
 			cfg["udp_over_tcp"] = true
+		}
+		if stls != nil {
+			return stls.over(node("shadowsocks", cfg))
 		}
 		return node("shadowsocks", cfg), nil
 
@@ -454,30 +468,107 @@ func clashNode(m cm) (Node, error) {
 				addresses = append(addresses, v)
 			}
 		}
-		if len(m.list("peers")) > 0 || toCM(m["peers"]) != nil {
-			return Node{}, skip(SkipUnsupportedFeature, "multi-peer WireGuard is not supported")
-		}
-		reserved := ""
-		if r := m.list("reserved"); len(r) == 3 {
-			reserved = strings.Join(r, ",")
-		} else if rl, ok := m["reserved"].([]any); ok && len(rl) == 3 {
-			parts := make([]string, 3)
-			for i, e := range rl {
-				parts[i] = asString(e)
-			}
-			reserved = strings.Join(parts, ",")
-		}
 		if len(addresses) == 0 {
 			return Node{}, skip(SkipInvalid, "the WireGuard address is missing")
 		}
-		n := wireguardNode(name, server, port, m.str("private-key"), m.str("public-key"), m.str("pre-shared-key"), addresses, reserved, m.str("mtu"))
+		raw, _ := m["peers"].([]any)
+		if len(raw) == 0 {
+			if toCM(m["peers"]) != nil {
+				return Node{}, skip(SkipInvalid, "the WireGuard peers cannot be read")
+			}
+			return wireguardNode(name, server, port, m.str("private-key"), m.str("public-key"), m.str("pre-shared-key"), addresses, clashReserved(m), m.str("mtu")), nil
+		}
+		// Several peers: the first one is the server the node is shown as.
+		var n Node
+		var peers []any
+		for i, e := range raw {
+			p := toCM(e)
+			if p == nil || p.str("server") == "" || p.num("port") < 1 || p.num("port") > 65535 || p.str("public-key") == "" {
+				return Node{}, skip(SkipInvalid, "a WireGuard peer is incomplete")
+			}
+			one := wireguardNode(name, p.str("server"), p.num("port"), m.str("private-key"), p.str("public-key"), p.str("pre-shared-key"), addresses, clashReserved(p), m.str("mtu"))
+			peer := one.Config["peers"].([]any)[0].(map[string]any)
+			if ips := p.list("allowed-ips"); len(ips) > 0 {
+				prefixes, ok := wireguardPrefixes(ips)
+				if !ok {
+					return Node{}, skip(SkipInvalid, "the allowed IPs of a WireGuard peer cannot be read")
+				}
+				peer["allowed_ips"] = anySlice(prefixes)
+			}
+			if i == 0 {
+				n = one
+			}
+			peers = append(peers, peer)
+		}
+		n.Config["peers"] = peers
 		return n, nil
 
-	case "ssr", "snell", "mieru", "ssh", "masque", "sudoku", "trusttunnel":
+	case "snell":
+		o := m.obj("obfs-opts")
+		return snellSpec{
+			Server:   server,
+			Port:     port,
+			PSK:      m.str("psk"),
+			Version:  m.str("version"),
+			ObfsMode: o.str("mode"),
+			ObfsHost: o.str("host"),
+			Mode:     m.str("mode"),
+			Reuse:    m.boolean("reuse"),
+		}.node(name)
+
+	case "ssh":
+		return sshSpec{
+			Server:     server,
+			Port:       port,
+			User:       m.str("username", "user"),
+			Password:   m.str("password"),
+			PrivateKey: m.str("private-key", "privateKey"),
+			Passphrase: m.str("private-key-passphrase"),
+			HostKeys:   m.list("host-key"),
+			HostKeyAlg: m.list("host-key-algorithms"),
+		}.node(name)
+
+	case "ssr", "mieru", "masque", "sudoku", "trusttunnel":
 		return Node{}, skip(SkipUnsupportedProtocol, "%s is not supported", typ)
 	case "direct", "dns", "reject", "reject-drop", "pass", "compatible":
 		return Node{}, skip(SkipInfoEntry, "%s is not a proxy server", typ)
 	default:
 		return Node{}, skip(SkipUnsupportedProtocol, "%s is not supported", typ)
 	}
+}
+
+// clashReserved reads WireGuard's reserved bytes, written as "1,2,3" or [1, 2, 3].
+func clashReserved(m cm) string {
+	if r := m.list("reserved"); len(r) == 3 {
+		return strings.Join(r, ",")
+	}
+	if rl, ok := m["reserved"].([]any); ok && len(rl) == 3 {
+		parts := make([]string, 3)
+		for i, e := range rl {
+			parts[i] = asString(e)
+		}
+		return strings.Join(parts, ",")
+	}
+	return ""
+}
+
+// wireguardPrefixes reads allowed IPs, taking a bare address for itself alone
+// the way Clash clients do.
+func wireguardPrefixes(ips []string) ([]string, bool) {
+	out := make([]string, 0, len(ips))
+	for _, s := range ips {
+		if !strings.Contains(s, "/") {
+			a, err := netip.ParseAddr(s)
+			if err != nil {
+				return nil, false
+			}
+			s = netip.PrefixFrom(a, a.BitLen()).String()
+		}
+		p, err := netip.ParsePrefix(s)
+		if err != nil {
+			return nil, false
+		}
+		out = append(out, p.String())
+	}
+	return out, true
 }
