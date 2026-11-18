@@ -3,6 +3,7 @@ package gui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 )
@@ -53,7 +54,7 @@ func TestPhoneConnectAsksForTheVPNFirst(t *testing.T) {
 func TestPhoneVPNDeclinedDoesNotConnect(t *testing.T) {
 	h := newHarness(t, harnessOpt{phone: true, setup: func(be *fixtureBackend, o *Options) {
 		offline(be, o)
-		o.AllowVPN = func(context.Context) error { be.record("allow-vpn"); return errors.New("declined") }
+		o.AllowVPN = func(context.Context) error { be.record("allow-vpn"); return fmt.Errorf("asked: %w", ErrVPNDeclined) }
 	}})
 	h.click("Connect")
 	h.settle()
@@ -61,6 +62,19 @@ func TestPhoneVPNDeclinedDoesNotConnect(t *testing.T) {
 		t.Fatal("connected although the VPN was declined")
 	}
 	h.mustHave("EggBox may not connect yet")
+}
+
+func TestPhoneVPNThatCannotBeSetUpSaysWhy(t *testing.T) {
+	h := newHarness(t, harnessOpt{phone: true, setup: func(be *fixtureBackend, o *Options) {
+		offline(be, o)
+		o.AllowVPN = func(context.Context) error { return errors.New("IPC failed") }
+	}})
+	h.click("Connect")
+	h.settle()
+	if slices.Contains(h.be.called(), "connect ignore=false") {
+		t.Fatal("connected although the VPN could not be set up")
+	}
+	h.mustHave("IPC failed")
 }
 
 func TestPhoneSettingsLeaveOutTheDesktop(t *testing.T) {

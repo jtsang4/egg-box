@@ -1,0 +1,15 @@
+{
+  "mobile": {
+    "id": "eggboxvpn",
+    "ios": {
+      "sources": ["ios/*.swift"],
+      "class": "EggBoxVPNPlugin",
+      "frameworks": ["NetworkExtension"],
+      "infoPlist": { "EggBoxAppGroup": "group.org.eggbox.app" },
+      "entitlements": {
+        "com.apple.developer.networking.networkextension": ["packet-tunnel-provider"],
+        "com.apple.security.application-groups": ["group.org.eggbox.app"]
+      }
+    }
+  }
+}

@@ -30,7 +30,8 @@ var catalogZH = map[string]string{
 	"tab.settings": "设置",
 
 	"vpn.denied.title": "EggBox 暂时无法连接",
-	"vpn.denied.body":  "需要你允许它创建 VPN。请再次连接，并在系统询问时选择允许。",
+	"vpn.failed.title": "无法设置 VPN",
+	"vpn.denied.body":  "需要你允许它创建 VPN。请再次连接，并在系统询问时允许。",
 
 	// phases
 	"phase.connected":         "已连接",

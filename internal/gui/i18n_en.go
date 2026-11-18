@@ -33,7 +33,8 @@ var catalogEN = map[string]string{
 
 	// the phone's permission to be the VPN
 	"vpn.denied.title": "EggBox may not connect yet",
-	"vpn.denied.body":  "It needs your permission to set up a VPN. Connect again and choose OK when the system asks.",
+	"vpn.failed.title": "The VPN could not be set up",
+	"vpn.denied.body":  "It needs your permission to set up a VPN. Connect again and allow it when the system asks.",
 
 	// phases
 	"phase.connected":         "Connected",

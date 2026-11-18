@@ -42,7 +42,7 @@ func (a *App) connect(ignoreConflicts bool) {
 		// person needs.
 		if a.opt.AllowVPN != nil {
 			if err := a.opt.AllowVPN(ctx); err != nil {
-				return errVPNNotAllowed{err}
+				return allowError{err}
 			}
 		}
 		return a.be.Connect(ctx, app.ConnectOptions{IgnoreRouteConflicts: ignoreConflicts})
@@ -50,9 +50,14 @@ func (a *App) connect(ignoreConflicts bool) {
 		if err == nil {
 			return
 		}
-		var denied errVPNNotAllowed
-		if errors.As(err, &denied) {
+		if errors.Is(err, ErrVPNDeclined) {
 			a.pushToast(&toast{tone: toneWarn, icon: "lock", title: a.t("vpn.denied.title"), body: a.t("vpn.denied.body"), ttl: 8 * time.Second})
+			return
+		}
+		if errors.As(err, new(allowError)) {
+			// The service never heard of it, so no notice says it: say it
+			// here, in the system's words.
+			a.pushToast(&toast{tone: toneBad, icon: "alert-circle", title: a.t("vpn.failed.title"), body: err.Error(), ttl: 8 * time.Second})
 			return
 		}
 		// The service already reported the failure as a notice; a route
@@ -65,11 +70,15 @@ func (a *App) connect(ignoreConflicts bool) {
 	})
 }
 
-// errVPNNotAllowed is the person declining, or the system refusing, the VPN.
-type errVPNNotAllowed struct{ err error }
+// ErrVPNDeclined is what Options.AllowVPN returns, wrapped or not, when the
+// person declined to let EggBox be the device's VPN.
+var ErrVPNDeclined = errors.New("the VPN was not allowed")
 
-func (e errVPNNotAllowed) Error() string { return "the VPN was not allowed: " + e.err.Error() }
-func (e errVPNNotAllowed) Unwrap() error { return e.err }
+// allowError is Options.AllowVPN failing, before the service was asked.
+type allowError struct{ err error }
+
+func (e allowError) Error() string { return e.err.Error() }
+func (e allowError) Unwrap() error { return e.err }
 
 func (a *App) disconnect() {
 	a.job("connect", func(ctx context.Context) error { return a.be.Disconnect(ctx) }, nil)

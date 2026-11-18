@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"sync"
 
@@ -12,6 +13,7 @@ import (
 	"eggbox/internal/agent/platform"
 	"eggbox/internal/agent/platform/phoneplat"
 	"eggbox/internal/brand"
+	"eggbox/internal/gui"
 	"eggbox/internal/phone/androidhost"
 	"eggbox/internal/phone/droidvpn"
 	"eggbox/internal/phone/tunnel"
@@ -64,7 +66,7 @@ func allowVPN(ctx context.Context) error {
 		return err
 	}
 	if !ok {
-		return androidhost.ErrNotAllowed
+		return fmt.Errorf("%w: %w", gui.ErrVPNDeclined, androidhost.ErrNotAllowed)
 	}
 	return nil
 }
