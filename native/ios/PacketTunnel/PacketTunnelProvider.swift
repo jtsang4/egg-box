@@ -27,10 +27,12 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             return
         }
         startMonitor()
-        let ctx = Unmanaged.passUnretained(self).toOpaque()
+        // The provider, as the core's callbacks find it: an address, which is
+        // Sendable, rather than the pointer, which is not.
+        let ctx = UInt(bitPattern: Unmanaged.passUnretained(self).toOpaque())
         DispatchQueue.global(qos: .userInitiated).async {
             let failure = dir.path.withCString { path in
-                EggboxTunnelStart(UnsafeMutablePointer(mutating: path), eggboxApply, eggboxCancel, ctx)
+                EggboxTunnelStart(UnsafeMutablePointer(mutating: path), eggboxApply, eggboxCancel, UnsafeMutableRawPointer(bitPattern: ctx))
             }
             if let failure {
                 let message = String(cString: failure)

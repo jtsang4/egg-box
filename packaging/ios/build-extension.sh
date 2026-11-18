@@ -86,7 +86,7 @@ xcrun --sdk "$sdk" swiftc -target "$target" -sdk "$sdk_path" -O \
   native/ios/PacketTunnel/PacketTunnelProvider.swift \
   -L "$work" -leggboxcore -lresolv \
   -framework Foundation -framework Network -framework NetworkExtension -framework Security -framework UIKit \
-  -Xlinker -e -Xlinker _NSExtensionMain -Xlinker -dead_strip "${extra[@]}" \
+  -Xlinker -e -Xlinker _NSExtensionMain -Xlinker -dead_strip ${extra[@]+"${extra[@]}"} \
   -o "$appex/PacketTunnel"
 
 fill native/ios/PacketTunnel/Info.plist > "$appex/Info.plist"

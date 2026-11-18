@@ -41,7 +41,7 @@ func validateSnell(cfg map[string]any) error {
 	switch version {
 	case 4:
 		if hasMode {
-			return errors.New("Snell v4 has no mode")
+			return errors.New("the Snell v4 protocol has no mode")
 		}
 		if s, ok := obfs.(string); hasObfs && (!ok || (s != "" && s != "none" && s != "http" && s != "tls")) {
 			return errors.New("the Snell obfs mode is not supported")
@@ -56,7 +56,7 @@ func validateSnell(cfg map[string]any) error {
 			return errors.New("a Snell v6 PSK must be 12 to 255 bytes")
 		}
 		if hasObfs || cfg["obfs_host"] != nil {
-			return errors.New("Snell v6 has no obfs")
+			return errors.New("the Snell v6 protocol has no obfs")
 		}
 		if s, ok := mode.(string); hasMode && (!ok || (s != "" && s != "default" && s != "unshaped" && s != "unsafe-raw")) {
 			return errors.New("the Snell v6 mode is not supported")
