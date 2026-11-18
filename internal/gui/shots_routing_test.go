@@ -117,7 +117,7 @@ func init() {
 		// Every dialog that is tall enough to matter, in the smallest window the
 		// application allows.
 		for _, name := range []string{
-			"batch, pasted", "add item, catalog", "add item, confirm", "add item, write", "choose a node",
+			"exceptions as text, pasted", "add item, catalog", "add item, confirm", "add item, write", "choose a node",
 			"add a subscription", "item of one's own", "item whose update failed", "test an address, with one", "welcome",
 		} {
 			name := name
