@@ -17,6 +17,7 @@ import (
 	"time"
 
 	box "github.com/sagernet/sing-box"
+	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/daemon"
 	"github.com/sagernet/sing-box/option"
@@ -51,6 +52,9 @@ const (
 type Engine struct {
 	reg          RegistryOptions
 	closeTimeout time.Duration
+	// platform is the phone's system, which makes the TUN; nil on desktops,
+	// where the core makes it itself.
+	platform Platform
 
 	// tunExists and tunCheckEvery drive the TUN watchdog; tests replace them.
 	tunExists     func(name string) bool
@@ -72,6 +76,37 @@ func New(reg RegistryOptions) *Engine {
 		tunExists: interfaceExists, tunCheckEvery: 2 * time.Second,
 		exited: make(chan engine.ExitEvent, 1),
 	}
+}
+
+// Platform is a phone's system, which owns the VPN interface: the core asks
+// it for the TUN and for the networks of the device instead of reading them
+// itself (see internal/phone/tunnel).
+type Platform interface {
+	adapter.PlatformInterface
+	// TunName is the interface the last OpenInterface made.
+	TunName() string
+	// Lost delivers when the system took the tunnel away.
+	Lost() <-chan error
+	// ResetLost forgets a loss reported for an earlier tunnel.
+	ResetLost()
+	// CloseTun ends the system's VPN once the core let go of it.
+	CloseTun()
+}
+
+// NewWithPlatform returns an idle engine whose TUN the phone's system makes.
+func NewWithPlatform(reg RegistryOptions, p Platform) *Engine {
+	e := New(reg)
+	e.platform = p
+	return e
+}
+
+// context is ctx with the core's registries and, on a phone, its platform.
+func (e *Engine) context(ctx context.Context) context.Context {
+	ctx = Context(ctx, e.reg)
+	if e.platform != nil {
+		ctx = service.ContextWith[adapter.PlatformInterface](ctx, e.platform)
+	}
+	return ctx
 }
 
 var _ engine.Engine = (*Engine)(nil)
@@ -150,7 +185,7 @@ func (e *Engine) Check(ctx context.Context, p engine.Prepared) (err error) {
 			err = fmt.Errorf("the core crashed while checking the configuration: %v", r)
 		}
 	}()
-	cctx := service.ExtendContext(Context(ctx, e.reg))
+	cctx := service.ExtendContext(e.context(ctx))
 	options, err := sjson.UnmarshalExtendedContext[option.Options](cctx, p.JSON)
 	if err != nil {
 		return fmt.Errorf("decode config: %w", err)
@@ -197,7 +232,10 @@ func (e *Engine) Start(ctx context.Context, p engine.Prepared) error {
 		return fmt.Errorf("prepare config: %w", err)
 	}
 
-	sctx, cancel := context.WithCancel(Context(context.Background(), e.reg))
+	if e.platform != nil {
+		e.platform.ResetLost()
+	}
+	sctx, cancel := context.WithCancel(e.context(context.Background()))
 	svc := daemon.NewStartedService(daemon.ServiceOptions{Context: sctx, Handler: platformHandler{}, LogMaxLines: 2000})
 	s := &session{svc: svc, ctx: sctx, cancel: cancel, closed: make(chan struct{})}
 	s.state.Store(stateStarting)
@@ -246,12 +284,24 @@ func (e *Engine) Start(ctx context.Context, p engine.Prepared) error {
 		return err
 	}
 
-	tun := discoverTun(ctx, p)
+	var tun string
+	switch {
+	case e.platform != nil && p.HasTun:
+		// The system made the interface and named it; it also tells when it
+		// takes it away, which an app cannot see by polling (Android refuses
+		// apps the netlink calls behind net.Interfaces).
+		tun = e.platform.TunName()
+	default:
+		tun = discoverTun(ctx, p)
+	}
 	e.mu.Lock()
 	s.tun = tun
 	e.mu.Unlock()
 	s.state.Store(stateRunning)
-	if tun != "" {
+	switch {
+	case e.platform != nil && p.HasTun:
+		go e.watchLost(s)
+	case tun != "":
 		go e.watchTun(s, tun)
 	}
 	return nil
@@ -298,6 +348,11 @@ func (e *Engine) beginClose(s *session) {
 				err = s.svc.CloseService()
 				s.svc.Close()
 			}()
+			if e.platform != nil {
+				// The core closed its copy of the interface; the system's
+				// VPN stays up until it is told.
+				e.platform.CloseTun()
+			}
 			s.cancel()
 			s.closeErr = err
 			e.mu.Lock()
@@ -362,6 +417,25 @@ func (e *Engine) watchTun(s *session, name string) {
 			}
 		}
 		return
+	}
+}
+
+// watchLost reports the core as dead when the phone's system ended the VPN:
+// the person turned it off in the system's settings, or another app's VPN
+// replaced it. The answer is the same as for a crash.
+func (e *Engine) watchLost(s *session) {
+	select {
+	case <-s.ctx.Done():
+	case err := <-e.platform.Lost():
+		if s.closing.Load() {
+			return
+		}
+		if s.crashed.CompareAndSwap(false, true) {
+			select {
+			case e.exited <- engine.ExitEvent{Err: err, Revoked: true}:
+			default:
+			}
+		}
 	}
 }
 

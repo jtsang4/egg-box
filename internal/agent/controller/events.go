@@ -18,6 +18,10 @@ func (c *Controller) watchEngineExit() {
 		case <-c.root.Done():
 			return
 		case ev := <-exited:
+			if ev.Revoked {
+				c.submitInternal("engine-exit", true, c.revokedJob(ev.Err))
+				continue
+			}
 			c.submitInternal("engine-exit", true, c.coreExitedJob(ev.Err))
 		}
 	}
@@ -46,6 +50,21 @@ func (c *Controller) coreExitedJob(cause error) func(context.Context) *agentapi.
 			return success("cleaned up after the core exited")
 		}
 		return c.reconnectJob("core exited", 1)(ctx)
+	}
+}
+
+// revokedJob ends the connection the phone's system ended, as a disconnect
+// the person asked for: reconnecting would undo their choice in the system's
+// settings, or fight the other VPN that took over.
+func (c *Controller) revokedJob(cause error) func(context.Context) *agentapi.OperationResult {
+	return func(ctx context.Context) *agentapi.OperationResult {
+		if !isUp(c.state().conn) {
+			return success("ignored")
+		}
+		if cause != nil {
+			c.logAgent("info", "%v", cause)
+		}
+		return c.disconnectJob("the system ended the VPN")(ctx)
 	}
 }
 

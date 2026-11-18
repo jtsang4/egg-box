@@ -1,0 +1,18 @@
+<!-- The VPN service of the core, merged into the application's manifest. The
+     system alone binds it (BIND_VPN_SERVICE). Always-on VPN is not offered:
+     the core runs in the application, which the system would start without. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <service
+            android:name="eggbox.internal.phone.droidvpn.EggBoxVpnService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON"
+                android:value="false" />
+        </service>
+    </application>
+</manifest>

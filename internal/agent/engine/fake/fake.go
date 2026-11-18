@@ -132,6 +132,22 @@ func (e *Engine) Crash(err error) {
 	}
 }
 
+// Revoke simulates a phone's system ending the VPN (the person turned it off
+// in the settings).
+func (e *Engine) Revoke(err error) {
+	e.mu.Lock()
+	wasRunning := e.running
+	e.running = false
+	e.endRunLocked()
+	e.mu.Unlock()
+	if wasRunning {
+		select {
+		case e.exited <- engine.ExitEvent{Err: err, Revoked: true}:
+		default:
+		}
+	}
+}
+
 // Calls returns the recorded call log.
 func (e *Engine) Calls() []string {
 	e.mu.Lock()

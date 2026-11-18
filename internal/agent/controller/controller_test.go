@@ -581,6 +581,21 @@ func TestCoreCrashTriggersReconnect(t *testing.T) {
 	h.requireOwns()
 }
 
+func TestSystemEndingTheVPNIsADisconnect(t *testing.T) {
+	h := newHarness(t)
+	h.connected(tunConfig)
+	h.eng.Revoke(errors.New("the system ended the VPN: turned off in the settings"))
+	st := h.waitConn(agentapi.ConnectionState_CONNECTION_STATE_DISCONNECTED)
+	if st.IntentConnected || h.intent.Load().Connected || st.LastError != "" {
+		t.Fatalf("a VPN the person turned off stays off, without an error: %+v", st)
+	}
+	settle()
+	if n := len(h.eng.Started()); n != 1 {
+		t.Fatalf("the core started %d times: nothing may reconnect after the system ended the VPN", n)
+	}
+	h.requireClean()
+}
+
 func TestCoreCrashWithoutIntentJustCleansUp(t *testing.T) {
 	h := newHarness(t)
 	h.connected(tunConfig)

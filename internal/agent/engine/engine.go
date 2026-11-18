@@ -34,6 +34,10 @@ type Prepared struct {
 // ExitEvent reports a core that stopped without being asked to.
 type ExitEvent struct {
 	Err error
+	// Revoked is a phone's system ending the VPN on the person's behalf: they
+	// turned it off in the system's settings, or another application's VPN
+	// took its place. It is a decision, not a crash: nothing reconnects.
+	Revoked bool
 }
 
 // LogSink receives the core's log lines.

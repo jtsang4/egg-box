@@ -5,8 +5,10 @@
 //
 // The demonstration mode of the application uses it with the simulated core
 // and the simulated platform, so the interface can be run and looked at
-// without a privileged service and without touching the network. Nothing in
-// here opens a socket or changes the host.
+// without a privileged service and without touching the network. Phones use it
+// for real (Production): there the application is the only process allowed to
+// run the VPN, and the system, not a privileged service, owns the interface.
+// Nothing in here opens a socket or changes the host by itself.
 package inproc
 
 import (
@@ -48,6 +50,12 @@ type Options struct {
 	Logger *slog.Logger
 	// Tune adjusts the controller configuration.
 	Tune func(*controller.Config)
+	// Policy is the configuration gate; nil allows what the demonstration's
+	// simulated core does.
+	Policy *policy.Policy
+	// Production runs the agent as a release build does: not in development
+	// mode, and with the controller's own timings.
+	Production bool
 }
 
 // Agent is a running in-process agent.
@@ -76,13 +84,17 @@ func Start(ctx context.Context, o Options) (*Agent, error) {
 	if o.AuthorizedUser == "" {
 		o.AuthorizedUser = "demo"
 	}
+	if o.Policy == nil {
+		o.Policy = policy.New(policy.Options{WireGuard: true, QUIC: true, DHCP: true})
+	}
 	d, err := daemon.Build(daemon.Config{
-		DataDir: o.DataDir, Driver: o.Driver, Engine: o.Engine,
-		Policy:  policy.New(policy.Options{WireGuard: true, QUIC: true, DHCP: true}),
-		Version: o.Version, AuthorizedUser: o.AuthorizedUser, DevMode: true,
+		DataDir: o.DataDir, Driver: o.Driver, Engine: o.Engine, Policy: o.Policy,
+		Version: o.Version, AuthorizedUser: o.AuthorizedUser, DevMode: !o.Production,
 		Logger: o.Logger,
 		Tune: func(c *controller.Config) {
-			c.Netwatch = netwatch.Config{Quiet: 300 * time.Millisecond, WakeQuiet: time.Second, Max: 3 * time.Second}
+			if !o.Production {
+				c.Netwatch = netwatch.Config{Quiet: 300 * time.Millisecond, WakeQuiet: time.Second, Max: 3 * time.Second}
+			}
 			if o.Tune != nil {
 				o.Tune(c)
 			}
