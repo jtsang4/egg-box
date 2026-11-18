@@ -9,7 +9,12 @@ var phoneShots = []shot{
 	{name: "phone-home-empty", setup: emptyLibrary},
 	{name: "phone-home"},
 	{name: "phone-home-failed", setup: failedConnection},
-	{name: "phone-welcome", setup: introduction},
+	{name: "phone-welcome", setup: phoneIntroduction},
+	{name: "phone-welcome-2", setup: phoneIntroduction, run: func(h *harness) { h.click(translate(h.app.lang, "welcome.next")) }},
+	{name: "phone-welcome-3", setup: phoneIntroduction, run: func(h *harness) {
+		h.click(translate(h.app.lang, "welcome.next"))
+		h.click(translate(h.app.lang, "welcome.next"))
+	}},
 	{name: "phone-nodes", run: tapTab("tab.nodes")},
 	{name: "phone-subscriptions", run: func(h *harness) { tapTab("tab.nodes")(h); h.click(translate(h.app.lang, "nav.subscriptions")) }},
 	{name: "phone-routing", run: tapTab("tab.routing")},
@@ -22,6 +27,13 @@ var phoneShots = []shot{
 		h.app.openAddSubscription()
 	}},
 	{name: "phone-import", run: func(h *harness) { h.app.openImport() }},
+}
+
+// phoneIntroduction is a phone's first run: the agent is in the application,
+// so there is no service to allow.
+func phoneIntroduction(be *fixtureBackend, o *Options) {
+	be.set.OnboardingDone = false
+	be.snap = be.disconnectedSnapshot()
 }
 
 // tapTab taps a tab of the bar.

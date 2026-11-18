@@ -167,6 +167,11 @@ func (a *App) dialogLayer(c *ui.Context) {
 			a.dlgFooter = ui.Rect{}
 			if f.buttons != nil {
 				foot := ui.Row(c).Padding(14, 24, 20, 24).Gap(10).Justify(ui.End).AlignItems(ui.Center)
+				if a.compact() {
+					// A narrow screen takes the buttons on two lines rather than
+					// cutting one off.
+					foot.Padding(12, 18, 16, 18).Wrap()
+				}
 				foot.Children(f.buttons)
 				a.dlgFooter = foot.Bounds()
 			}

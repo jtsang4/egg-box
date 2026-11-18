@@ -167,7 +167,10 @@ func (a *App) welcomeService(c *ui.Context) {
 	p := a.pl
 	ok := a.serviceAllowed()
 	ui.Column(c).Gap(6).AlignItems(ui.Center).Children(func() {
-		a.txt(c, a.t("welcome.service.title"), 22, 720, p.Text).LetterSpacing(-0.5)
+		title := a.txt(c, a.t("welcome.service.title"), 22, 720, p.Text).LetterSpacing(-0.5)
+		if a.compact() {
+			title.TextAlign(ui.Center) // it takes two lines there
+		}
 		a.txt(c, a.pk("welcome.service.body"), 13.5, 400, p.Text2).LineHeight(1.55).TextAlign(ui.Center)
 	})
 	// Before the button is pressed this tells what is about to be asked; once
@@ -217,6 +220,31 @@ func (a *App) welcomeSubscription(c *ui.Context) {
 }
 
 // welcomeButtons are the controls of a step.
+// phoneWelcomeLast is the last step's buttons on a phone: the two ways to
+// bring nodes across the screen, one above the other, and the way back and
+// the way out under them.
+func (a *App) phoneWelcomeLast(c *ui.Context) {
+	ui.Column(c).Grow(1).Gap(10).Children(func() {
+		if a.btn(c, btnSpec{kind: btnPrimary, label: a.t("subs.add"), icon: "plus"}).Clicked() {
+			a.finishWelcome()
+			a.openAddSubscription()
+		}
+		if a.btn(c, btnSpec{kind: btnSecondary, label: a.t("subs.import"), icon: "file-text"}).Clicked() {
+			a.finishWelcome()
+			a.openImport()
+		}
+		ui.Row(c).Children(func() {
+			if a.btn(c, btnSpec{kind: btnGhost, label: a.t("welcome.back")}).Clicked() {
+				a.boot.step = 1
+			}
+			ui.Box(c).Grow(1)
+			if a.btn(c, btnSpec{kind: btnGhost, label: a.t("welcome.later")}).Clicked() {
+				a.finishWelcome()
+			}
+		})
+	})
+}
+
 func (a *App) welcomeButtons(c *ui.Context, step int) {
 	grow := func() { ui.Box(c).Grow(1) }
 	switch step {
@@ -252,6 +280,10 @@ func (a *App) welcomeButtons(c *ui.Context, step int) {
 			a.boot.step = 2
 		}
 	default:
+		if a.compact() {
+			a.phoneWelcomeLast(c)
+			return
+		}
 		if a.btn(c, btnSpec{kind: btnGhost, label: a.t("welcome.back")}).Clicked() {
 			a.boot.step = 1
 		}
