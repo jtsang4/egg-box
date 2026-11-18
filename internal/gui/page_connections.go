@@ -52,7 +52,9 @@ func (a *App) connectionsPage(c *ui.Context) {
 		a.connToolbar(c)
 		rows := a.visibleConns()
 		a.card(c).Grow(1).Padding(0).Gap(0).Clip().Children(func() {
-			a.connHeader(c)
+			if !a.compact() {
+				a.connHeader(c)
+			}
 			if len(rows) == 0 {
 				ui.Column(c).Grow(1).Justify(ui.Center).Children(func() {
 					a.emptyState(c, "search", a.t("conns.none.title"), a.t("conns.none.body"), nil)
@@ -62,6 +64,10 @@ func (a *App) connectionsPage(c *ui.Context) {
 			a.conn.list.Key = func(i int) any { return rows[i].ID }
 			jumpOnChange(&a.conn.list, &a.conn.sig, strconv.Itoa(a.conn.filter)+"|"+a.conn.query)
 			ui.List(c.Key("conn-list"), &a.conn.list, len(rows), func(i int) {
+				if a.compact() {
+					a.phoneConnRow(c, rows[i])
+					return
+				}
 				a.connRow(c, rows[i])
 			}).Grow(1)
 		})
@@ -69,6 +75,20 @@ func (a *App) connectionsPage(c *ui.Context) {
 }
 
 func (a *App) connToolbar(c *ui.Context) {
+	if a.compact() {
+		// The search across the screen, the filter under it.
+		ui.Column(c.Key("conn-toolbar")).Gap(10).Children(func() {
+			a.search(c, "conn-q", &a.conn.query, a.t("conns.search"), 0)
+			w, _ := c.Size()
+			sel := a.conn.filter
+			if a.segmented(c, "conn-filter", &sel, []segItem{
+				{a.t("conns.filter.open"), ""}, {a.t("conns.filter.closed"), ""}, {a.t("conns.filter.all"), ""},
+			}, segOpts{small: true, fill: true, width: w - 2*phonePad - 8}) {
+				a.conn.filter = sel
+			}
+		})
+		return
+	}
 	ui.Row(c.Key("conn-toolbar")).Gap(12).AlignItems(ui.Center).Children(func() {
 		a.search(c, "conn-q", &a.conn.query, a.t("conns.search"), 0)
 		sel := a.conn.filter
@@ -227,6 +247,69 @@ func (a *App) connRow(c *ui.Context, cn app.Conn) {
 					}
 				}
 			})
+		})
+		a.hr(c)
+	})
+}
+
+// phoneConnRow is a connection on a phone: where it goes, how and from which
+// application on the left, what it moved on the right.
+func (a *App) phoneConnRow(c *ui.Context, cn app.Conn) {
+	p := a.pl
+	open := cn.Open()
+	ui.Column(c).Children(func() {
+		r := ui.Row(c).Padding(10, 8, 10, 14).Gap(10).AlignItems(ui.Center)
+		r.PopoverMenu(func(m *ui.Menu) {
+			if m.Item(a.t("conns.copy_host")).Chosen() {
+				c.WriteClipboard(connName(cn))
+			}
+			if m.Item(a.t("conns.copy_dest")).Chosen() {
+				c.WriteClipboard(cn.Destination)
+			}
+			a.futureMenu(m, cn)
+			if open {
+				m.Separator()
+				if m.Item(a.t("conns.close")).Chosen() {
+					a.closeConn(cn.ID)
+				}
+			}
+		})
+		r.Children(func() {
+			ui.Column(c).Grow(1).Basis(0).Gap(4).Children(func() {
+				a.txt(c, connName(cn), 13.5, 600, boolOr(open, p.Text, p.Text3)).SingleLine()
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					a.outboundChip(c, cn)
+					if why := a.whyLabel(cn.Why); why != "" {
+						a.txt(c, why, 11.5, 400, p.Text3).SingleLine().Shrink(1)
+					}
+				})
+				end := a.now
+				if !open {
+					end = cn.Closed
+				}
+				line := fmtDuration(end.Sub(cn.Created))
+				if cn.Process != "" {
+					line = appName(cn.Process) + "  ·  " + line
+				}
+				a.txt(c, line, 11.5, 400, p.Text3).SingleLine()
+			})
+			ui.Column(c).Gap(4).AlignItems(ui.End).Shrink(0).Children(func() {
+				ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+					ui.Icon(c, icon("arrow-down")).Size(11, 11).TextColor(p.BlueText)
+					a.txt(c, fmtBytes(float64(cn.Down)), 12, 600, p.Text2).FontFeatures("tnum").SingleLine()
+				})
+				ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+					ui.Icon(c, icon("arrow-up")).Size(11, 11).TextColor(p.Cyan)
+					a.txt(c, fmtBytes(float64(cn.Up)), 12, 600, p.Text2).FontFeatures("tnum").SingleLine()
+				})
+			})
+			if open {
+				if a.btn(c, btnSpec{kind: btnGhost, icon: "x", iconOnly: true, small: true, tip: a.t("conns.close")}).Clicked() {
+					a.closeConn(cn.ID)
+				}
+			} else {
+				ui.Box(c).Width(30).Height(1)
+			}
 		})
 		a.hr(c)
 	})

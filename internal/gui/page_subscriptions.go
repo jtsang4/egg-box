@@ -76,36 +76,40 @@ func (a *App) subCard(c *ui.Context, idx int, s library.Subscription) {
 		card.Opacity(0.72)
 	}
 	card.Children(func() {
-		ui.Row(c).Padding(18, 20, 14, 18).Gap(14).AlignItems(ui.Center).Children(func() {
-			a.monogram(c, s.Name, 46)
-			ui.Column(c).Grow(1).Basis(0).Gap(5).Children(func() {
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					a.txt(c, s.Name, 15.5, 650, p.Text).SingleLine()
-					if remote {
-						a.chip(c, a.t("subs.kind.remote"), toneNeutral, "cloud")
-					} else {
-						a.chip(c, a.t("subs.kind.local"), toneNeutral, "inbox")
-					}
-					a.statusChip(c, st)
+		if a.compact() {
+			a.phoneSubHeader(c, idx, s, st, refreshing)
+		} else {
+			ui.Row(c).Padding(18, 20, 14, 18).Gap(14).AlignItems(ui.Center).Children(func() {
+				a.monogram(c, s.Name, 46)
+				ui.Column(c).Grow(1).Basis(0).Gap(5).Children(func() {
+					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+						a.txt(c, s.Name, 15.5, 650, p.Text).SingleLine()
+						if remote {
+							a.chip(c, a.t("subs.kind.remote"), toneNeutral, "cloud")
+						} else {
+							a.chip(c, a.t("subs.kind.local"), toneNeutral, "inbox")
+						}
+						a.statusChip(c, st)
+					})
+					a.txt(c, a.subLine(s), 12.5, 400, p.Text3).SingleLine()
 				})
-				a.txt(c, a.subLine(s), 12.5, 400, p.Text3).SingleLine()
-			})
-			if remote {
-				tip := a.t("subs.update")
-				if a.btn(c, btnSpec{kind: btnGhost, icon: "refresh", iconOnly: true, tip: tip, busy: refreshing, disabled: !s.Enabled}).Clicked() {
-					a.refreshOne(s.ID)
+				if remote {
+					tip := a.t("subs.update")
+					if a.btn(c, btnSpec{kind: btnGhost, icon: "refresh", iconOnly: true, tip: tip, busy: refreshing, disabled: !s.Enabled}).Clicked() {
+						a.refreshOne(s.ID)
+					}
 				}
-			}
-			more := a.btn(c, btnSpec{kind: btnGhost, icon: "more", iconOnly: true, tip: a.t("subs.more")})
-			more.PopoverMenuButton(a.subMenu(c, idx, s))
-			on := s.Enabled
-			if a.toggle(c, "sub-on-"+s.ID, &on, a.t("subs.enabled")) {
-				id := s.ID
-				a.job("sub-edit-"+id, func(ctx context.Context) error {
-					return a.be.EditSubscription(ctx, id, func(x *library.Subscription) { x.Enabled = on })
-				}, func(err error) { a.fail(err) })
-			}
-		})
+				more := a.btn(c, btnSpec{kind: btnGhost, icon: "more", iconOnly: true, tip: a.t("subs.more")})
+				more.PopoverMenuButton(a.subMenu(c, idx, s))
+				on := s.Enabled
+				if a.toggle(c, "sub-on-"+s.ID, &on, a.t("subs.enabled")) {
+					id := s.ID
+					a.job("sub-edit-"+id, func(ctx context.Context) error {
+						return a.be.EditSubscription(ctx, id, func(x *library.Subscription) { x.Enabled = on })
+					}, func(err error) { a.fail(err) })
+				}
+			})
+		}
 		if s.LastError != "" {
 			a.subError(c, s)
 		}
@@ -122,6 +126,45 @@ func (a *App) subCard(c *ui.Context, idx int, s library.Subscription) {
 	})
 }
 
+// phoneSubHeader is the head of a subscription's card on a phone: the name
+// and its line beside the switch, its kind, state and actions under them.
+func (a *App) phoneSubHeader(c *ui.Context, idx int, s library.Subscription, st subStatus, refreshing bool) {
+	p := a.pl
+	remote := s.Kind == library.KindRemote
+	ui.Column(c).Padding(14, 16, 10, 14).Gap(10).Children(func() {
+		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+			a.monogram(c, s.Name, 40)
+			ui.Column(c).Grow(1).Basis(0).Gap(3).Children(func() {
+				a.txt(c, s.Name, 15.5, 650, p.Text).SingleLine()
+				a.txt(c, a.subLine(s), 12, 400, p.Text3).MaxLines(2).LineHeight(1.35)
+			})
+			on := s.Enabled
+			if a.toggle(c, "sub-on-"+s.ID, &on, a.t("subs.enabled")) {
+				id := s.ID
+				a.job("sub-edit-"+id, func(ctx context.Context) error {
+					return a.be.EditSubscription(ctx, id, func(x *library.Subscription) { x.Enabled = on })
+				}, func(err error) { a.fail(err) })
+			}
+		})
+		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+			if remote {
+				a.chip(c, a.t("subs.kind.remote"), toneNeutral, "cloud")
+			} else {
+				a.chip(c, a.t("subs.kind.local"), toneNeutral, "inbox")
+			}
+			a.statusChip(c, st)
+			ui.Spacer(c)
+			if remote {
+				if a.btn(c, btnSpec{kind: btnGhost, icon: "refresh", iconOnly: true, small: true, tip: a.t("subs.update"), busy: refreshing, disabled: !s.Enabled}).Clicked() {
+					a.refreshOne(s.ID)
+				}
+			}
+			more := a.btn(c, btnSpec{kind: btnGhost, icon: "more", iconOnly: true, small: true, tip: a.t("subs.more")})
+			more.PopoverMenuButton(a.subMenu(c, idx, s))
+		})
+	})
+}
+
 // subPlanRow tells that the subscription came with a routing plan and offers
 // to use it.
 func (a *App) subPlanRow(c *ui.Context, s library.Subscription, plan *routing.Plan) {
@@ -130,8 +173,15 @@ func (a *App) subPlanRow(c *ui.Context, s library.Subscription, plan *routing.Pl
 	ui.Row(c.Key("sub-plan-"+s.ID)).Padding(12, 20, 14, 20).Gap(12).AlignItems(ui.Center).Children(func() {
 		a.iconTile(c, "layers", boolOr(active, toneBlue, toneNeutral), 32)
 		ui.Column(c).Grow(1).Basis(0).Gap(2).Children(func() {
-			a.txt(c, a.tn("subs.plan", len(plan.Items)), 13.5, 650, p.Text).SingleLine()
-			a.txt(c, boolOr(active, a.t("subs.plan.active"), a.t("subs.plan.hint")), 12, 400, p.Text3).SingleLine()
+			title := a.txt(c, a.tn("subs.plan", len(plan.Items)), 13.5, 650, p.Text)
+			hint := a.txt(c, boolOr(active, a.t("subs.plan.active"), a.t("subs.plan.hint")), 12, 400, p.Text3)
+			if a.compact() {
+				title.MaxLines(2)
+				hint.MaxLines(2)
+			} else {
+				title.SingleLine()
+				hint.SingleLine()
+			}
 		})
 		if active {
 			a.chip(c, a.t("subs.plan.in_use"), toneGood, "check-circle")

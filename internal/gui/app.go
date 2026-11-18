@@ -84,6 +84,13 @@ type Options struct {
 	// ClosePanel closes the tray panel; Quit quits the application.
 	ClosePanel func()
 	Quit       func()
+	// Phone lays the interface out for a phone: one page at a time under a
+	// bar of tabs, a column wide, without what a desktop alone has (tray,
+	// login item, the privileged service and its settings).
+	Phone bool
+	// AllowVPN asks the person, the first time, to let the application be the
+	// device's VPN, before it connects (phones); nil when nothing is asked.
+	AllowVPN func(ctx context.Context) error
 }
 
 // The smallest the window can be made; every screen and dialog has to work in it.
@@ -138,6 +145,8 @@ type App struct {
 	page     page
 	pageFrom page
 	pageAt   time.Time
+	// lastOf is, for each tab of a phone, the page it showed last plus one.
+	lastOf [5]page
 
 	toasts     []*toast
 	toastSeq   uint64
@@ -318,6 +327,10 @@ func (a *App) fail(err error) {
 func (a *App) View(c *ui.Context) {
 	a.frame(c, &a.svc)
 	a.maybeWelcome()
+	if a.compact() {
+		a.phoneShell(c)
+		return
+	}
 	a.shell(c)
 }
 
@@ -418,5 +431,6 @@ func (a *App) goTo(p page) {
 	}
 	a.again()
 	a.pageFrom, a.page, a.pageAt = a.page, p, a.now
+	a.rememberTab()
 	a.watchPage()
 }

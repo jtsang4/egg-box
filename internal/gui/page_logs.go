@@ -92,12 +92,22 @@ func (a *App) visibleLogs() []app.LogLine {
 }
 
 func (a *App) logToolbar(c *ui.Context) {
-	ui.Row(c.Key("log-toolbar")).Gap(12).AlignItems(ui.Center).Children(func() {
+	var bar ui.Element
+	opts := segOpts{small: true}
+	if a.compact() {
+		// The search across the screen, the levels under it.
+		bar = ui.Column(c.Key("log-toolbar")).Gap(10)
+		w, _ := c.Size()
+		opts = segOpts{small: true, fill: true, width: w - 2*phonePad - 8}
+	} else {
+		bar = ui.Row(c.Key("log-toolbar")).Gap(12).AlignItems(ui.Center)
+	}
+	bar.Children(func() {
 		a.search(c, "log-q", &a.logs.query, a.t("logs.search"), 0)
 		sel := a.logs.level
 		if a.segmented(c, "log-level", &sel, []segItem{
 			{a.t("logs.level.all"), ""}, {a.t("logs.level.info"), ""}, {a.t("logs.level.warn"), ""}, {a.t("logs.level.error"), ""},
-		}, segOpts{small: true}) {
+		}, opts) {
 			a.logs.level = sel
 		}
 	})

@@ -432,6 +432,10 @@ func (a *App) mainStrip(c *ui.Context, nodes []nodeEntry) {
 	w, _ := c.Size()
 	const minRoute, gap = 176, 14
 	fit := max(int((w-sidebarWidth-2*pagePadding-1+gap)/(minRoute+gap)), 2)
+	if a.compact() {
+		// Two by two: half a phone's width is a card's.
+		fit = 4
+	}
 	room := fit - len(cards)
 	shown := regions
 	var rest []regionCount
@@ -467,6 +471,21 @@ func (a *App) mainStrip(c *ui.Context, nodes []nodeEntry) {
 				}
 			},
 		})
+	}
+	if a.compact() {
+		ui.Column(c.Key("routes")).Gap(10).Children(func() {
+			for i := 0; i < len(cards); i += 2 {
+				ui.Row(c).Gap(10).Children(func() {
+					a.routeCard(c, cards[i])
+					if i+1 < len(cards) {
+						a.routeCard(c, cards[i+1])
+					} else {
+						ui.Box(c).Grow(1).Basis(0)
+					}
+				})
+			}
+		})
+		return
 	}
 	ui.Row(c.Key("routes")).Gap(gap).Children(func() {
 		for _, s := range cards {
@@ -506,7 +525,11 @@ func (a *App) routeCard(c *ui.Context, s routeSpec) {
 	if s.tip != "" {
 		b.Tooltip(s.tip)
 	}
-	b.Grow(1).Basis(0).Height(64).Padding(0, 14).Gap(12).Radius(radiusCard - 4).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+	pad, gap := float32(14), float32(12)
+	if a.compact() {
+		pad, gap = 12, 10
+	}
+	b.Grow(1).Basis(0).Height(64).Padding(0, pad).Gap(gap).Radius(radiusCard - 4).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 	hov := b.AnimateTo("hov", boolf(b.Hovered()), ui.Animation{Duration: 150 * time.Millisecond})
 	sel := b.AnimateTo("sel", boolf(s.selected), ui.Animation{Duration: 260 * time.Millisecond, Ease: ui.EaseOut})
 	a.selectableFace(b, hov, sel)
@@ -527,7 +550,7 @@ func (a *App) routeCard(c *ui.Context, s routeSpec) {
 			a.txt(c, s.title, 13.5, 650, p.Text).SingleLine()
 			a.txt(c, s.sub, 11.5, 400, boolOr(s.warn, p.Warn, p.Text3)).SingleLine()
 		})
-		if s.menu != nil {
+		if s.menu != nil && !a.compact() {
 			ui.Icon(c, icon("chevron-down")).Size(15, 15).TextColor(p.Text3).Shrink(0)
 		}
 	})
@@ -647,12 +670,21 @@ func (a *App) inUseRow(c *ui.Context) {
 // --------------------------------------------------------------- toolbar
 
 func (a *App) nodeToolbar(c *ui.Context, nodes []nodeEntry) {
-	ui.Row(c.Key("node-toolbar")).Gap(12).AlignItems(ui.Center).Children(func() {
+	var bar ui.Element
+	opts := segOpts{small: true}
+	if a.compact() {
+		bar = ui.Column(c.Key("node-toolbar")).Gap(10)
+		w, _ := c.Size()
+		opts = segOpts{small: true, fill: true, width: w - 2*phonePad - 8}
+	} else {
+		bar = ui.Row(c.Key("node-toolbar")).Gap(12).AlignItems(ui.Center)
+	}
+	bar.Children(func() {
 		a.search(c, "node-q", &a.node.query, a.t("nodes.search"), 0)
 		sel := a.nodeSort()
 		if a.segmented(c, "node-sort", &sel, []segItem{
 			{a.t("nodes.sort.default"), ""}, {a.t("nodes.sort.latency"), ""}, {a.t("nodes.sort.name"), ""},
-		}, segOpts{small: true}) {
+		}, opts) {
 			a.updateSettings(func(s *settingsT) { s.SortNodes = sortNames[sel] })
 		}
 	})
@@ -746,6 +778,9 @@ func (a *App) filterPill(c *ui.Context, key, label string, n int, active bool, r
 func (a *App) nodeColumns(c *ui.Context) int {
 	w, _ := c.Size()
 	avail := w - sidebarWidth - 2*pagePadding - 1
+	if a.compact() {
+		avail = w - 2*phonePad
+	}
 	const minCard, gap = 290, 14
 	n := int((avail + gap) / (minCard + gap))
 	if n < 1 {
@@ -839,7 +874,7 @@ func (a *App) nodeCard(c *ui.Context, n nodeEntry, selected, inUse bool) {
 		// Quiet until the card is pointed at, so that a grid of cards does not
 		// read as a grid of buttons.
 		more := a.btn(c, btnSpec{kind: btnGhost, icon: "more", iconOnly: true, small: true, tip: a.t("subs.more")})
-		more.Opacity(0.5 + 0.5*hov).PopoverMenuButton(a.nodeMenu(c, n))
+		more.Opacity(boolOr(a.compact(), 1, 0.5+0.5*hov)).PopoverMenuButton(a.nodeMenu(c, n))
 	})
 }
 

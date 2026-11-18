@@ -381,6 +381,10 @@ func (a *App) pageHost(c *ui.Context) {
 
 // pageFrame lays out a page: a title bar zone, a header and a scrolling body.
 func (a *App) pageFrame(c *ui.Context, title, subtitle string, actions func(), body func()) {
+	if a.compact() {
+		a.phoneFrame(c, title, subtitle, actions, body, true)
+		return
+	}
 	top := a.bar.Height
 	if top < 28 {
 		top = 28
@@ -404,6 +408,10 @@ func (a *App) pageFrame(c *ui.Context, title, subtitle string, actions func(), b
 
 // fixedFrame is pageFrame for pages whose body manages its own scrolling.
 func (a *App) fixedFrame(c *ui.Context, title, subtitle string, actions func(), body func()) {
+	if a.compact() {
+		a.phoneFrame(c, title, subtitle, actions, body, false)
+		return
+	}
 	top := a.bar.Height
 	if top < 28 {
 		top = 28

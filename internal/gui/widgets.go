@@ -84,7 +84,11 @@ func (a *App) eyebrow(c *ui.Context, s string) ui.Element {
 // card is the standard panel.
 func (a *App) card(c *ui.Context) ui.Element {
 	p := a.pl
-	e := ui.Column(c).Padding(cardPadding).Radius(radiusCard).Background(p.Panel).Border(1, p.Line)
+	pad := float32(cardPadding)
+	if a.compact() {
+		pad = 16
+	}
+	e := ui.Column(c).Padding(pad).Radius(radiusCard).Background(p.Panel).Border(1, p.Line)
 	if p.Dark {
 		e.InsetShadow(0, 1, 0, 0, ui.RGBA(255, 255, 255, 0.055))
 	} else {
@@ -500,6 +504,18 @@ func (a *App) field(c *ui.Context, label, hint string, body func()) ui.Element {
 // settingRow is a labelled row of a settings card: text on the left, a
 // control on the right.
 func (a *App) settingRow(c *ui.Context, title, desc string, control func()) ui.Element {
+	if a.compact() {
+		// The words across the screen, the control under them.
+		return ui.Column(c).Gap(10).Padding(14, 0).AlignItems(ui.Start).Children(func() {
+			ui.Column(c).AlignSelf(ui.Stretch).Gap(3).Children(func() {
+				a.txt(c, title, 14, 600, a.pl.Text)
+				if desc != "" {
+					a.txt(c, desc, 12.5, 400, a.pl.Text3).LineHeight(1.4)
+				}
+			})
+			control()
+		})
+	}
 	return ui.Row(c).Gap(16).Padding(14, 0).AlignItems(ui.Center).Children(func() {
 		ui.Column(c).Grow(1).Gap(3).Children(func() {
 			a.txt(c, title, 13.5, 600, a.pl.Text)

@@ -52,6 +52,10 @@ func (a *App) routingPage(c *ui.Context) {
 // planBar names the plan in force, says where it comes from, and offers the
 // other plans and what can be done with this one.
 func (a *App) planBar(c *ui.Context) {
+	if a.compact() {
+		a.phonePlanBar(c)
+		return
+	}
 	p := a.pl
 	v := a.rv()
 	note, nt := a.planNote(v.Plan)
@@ -209,6 +213,9 @@ func (a *App) exceptionsCard(c *ui.Context) {
 			if head.Clicked() && n > 0 {
 				a.rte.exOpen = !a.rte.exOpen
 			}
+			if a.compact() {
+				return
+			}
 			if a.btn(c, btnSpec{kind: btnGhost, small: true, label: a.t("exceptions.edit_text"), icon: "file-text"}).Clicked() {
 				a.openExceptionsEditor()
 			}
@@ -217,6 +224,9 @@ func (a *App) exceptionsCard(c *ui.Context) {
 				a.rte.exOpen = true
 			}
 		})
+		if a.compact() {
+			a.phoneExceptionsActions(c)
+		}
 		if n == 0 {
 			a.hr(c)
 			ui.Row(c).Padding(12, 20).Gap(10).AlignItems(ui.Center).Children(func() {
@@ -233,19 +243,29 @@ func (a *App) exceptionsCard(c *ui.Context) {
 		for i, x := range st.Exceptions {
 			ids[i] = x.ID
 		}
+		rowH := exceptionRowH
+		if a.compact() {
+			rowH = phoneExceptionH
+		}
 		list := ui.List(c.Key("ex-list"), &a.rte.exList, n, func(i int) {
 			slot := ui.Column(c.Key("ex-slot-" + ids[i])).Gap(0)
 			slot.Children(func() {
 				if i > 0 {
 					a.hr(c)
 				}
+				if a.compact() {
+					a.phoneExceptionRow(c, i, st.Exceptions[i], n)
+					return
+				}
 				a.exceptionRow(c, i, st.Exceptions[i], n)
 			})
-			a.dropRow(slot, "exceptions", ids, i, func(id, before string) {
-				a.editRouting(func(s *routing.State) error { return s.MoveExceptionBefore(id, before) }, nil)
-			})
+			if !a.compact() {
+				a.dropRow(slot, "exceptions", ids, i, func(id, before string) {
+					a.editRouting(func(s *routing.State) error { return s.MoveExceptionBefore(id, before) }, nil)
+				})
+			}
 		})
-		list.Height(float32(min(n, 8)*exceptionRowH + min(n, 8) - 1)).Gap(0)
+		list.Height(float32(min(n, 8)*rowH + min(n, 8) - 1)).Gap(0)
 	})
 }
 
@@ -308,7 +328,7 @@ func (a *App) itemsCard(c *ui.Context) {
 	v := a.rv()
 	n := len(v.Rows)
 	a.card(c).Padding(0).Gap(0).Children(func() {
-		ui.Row(c).Padding(16, 20, 12, 20).Gap(10).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Padding(16, boolOr[float32](a.compact(), 14, 20), 12, boolOr[float32](a.compact(), 14, 20)).Gap(10).AlignItems(ui.Center).Children(func() {
 			a.heading(c, a.t("routing.items")).Grow(1)
 			if a.snap.Plan.Updating {
 				a.spinner(c, 14, p.BlueText)
@@ -337,9 +357,13 @@ func (a *App) itemsCard(c *ui.Context) {
 				slot := ui.Column(c.Key("it-slot-" + row.Item.ID)).Gap(0)
 				slot.Children(func() {
 					a.hr(c)
+					if a.compact() {
+						a.phoneItemRow(c, i, row, n)
+						return
+					}
 					a.itemRow(c, i, row, n, movable)
 				})
-				if movable {
+				if movable && !a.compact() {
 					a.dropRow(slot, "items", ids, i, func(id, before string) {
 						a.editRouting(func(s *routing.State) error { return s.MoveBefore(id, before) }, nil)
 					})
@@ -542,6 +566,10 @@ func (a *App) itemMenu(c *ui.Context, i int, row routing.Row, n int) func(m *ui.
 
 // fallbackRow is the last row: where everything that no item claimed goes.
 func (a *App) fallbackRow(c *ui.Context) {
+	if a.compact() {
+		a.phoneFallbackRow(c)
+		return
+	}
 	p := a.pl
 	v := a.rv()
 	// The gaps and the widths at the end are those of an item's row, so that

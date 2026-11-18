@@ -228,7 +228,7 @@ func known(lit string) bool {
 	if _, ok := catalogEN[lit]; ok {
 		return true
 	}
-	for _, suf := range []string{".one", ".other", ".darwin", ".windows"} {
+	for _, suf := range []string{".one", ".other", ".darwin", ".windows", ".phone"} {
 		if _, ok := catalogEN[lit+suf]; ok {
 			return true
 		}

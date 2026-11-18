@@ -156,11 +156,17 @@ func (a *App) noticeToast(n app.Notice) *toast {
 // toastLayer draws the stack of toasts in the bottom right corner.
 func (a *App) toastLayer(c *ui.Context) {
 	p := a.pl
-	ui.Column(c).Absolute().Right(22).Bottom(22).Gap(10).AlignItems(ui.End).Width(360).Children(func() {
+	width, right, bottom := float32(360), float32(22), float32(22)
+	if a.compact() {
+		// Across the screen, above the bar of tabs.
+		w, _ := c.Size()
+		width, right, bottom = w-2*12, 12, tabBarH+10
+	}
+	ui.Column(c).Absolute().Right(right).Bottom(bottom).Gap(10).AlignItems(ui.End).Width(width).Children(func() {
 		for _, t := range a.toasts {
 			t := t
 			col := a.toneColor(t.tone)
-			e := ui.Row(c.Key(t.id)).Gap(12).Padding(13, 14, 13, 14).Radius(16).AlignItems(ui.Start).Width(360)
+			e := ui.Row(c.Key(t.id)).Gap(12).Padding(13, 14, 13, 14).Radius(16).AlignItems(ui.Start).Width(width)
 			e.Background(p.Raised).Border(1, p.LineHi)
 			e.Shadow(0, 18, 40, -10, ui.RGBA(0, 0, 0, 0.5)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.2))
 			e.Transition(ui.ElementTransition{

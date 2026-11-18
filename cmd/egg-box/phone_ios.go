@@ -33,3 +33,7 @@ func agentDataDir() (string, error) {
 	}
 	return filepath.Join(dir, "agent"), nil
 }
+
+// allowVPN: iOS asks to add the VPN configuration when the tunnel is first
+// saved, which the extension's manager does as it connects.
+func allowVPN(context.Context) error { return nil }

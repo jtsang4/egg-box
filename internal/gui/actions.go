@@ -37,9 +37,22 @@ func (a *App) toggleConnection() {
 
 func (a *App) connect(ignoreConflicts bool) {
 	a.job("connect", func(ctx context.Context) error {
+		// A phone asks the person once whether EggBox may be the VPN; asked
+		// here, before the core starts, the question has all the time the
+		// person needs.
+		if a.opt.AllowVPN != nil {
+			if err := a.opt.AllowVPN(ctx); err != nil {
+				return errVPNNotAllowed{err}
+			}
+		}
 		return a.be.Connect(ctx, app.ConnectOptions{IgnoreRouteConflicts: ignoreConflicts})
 	}, func(err error) {
 		if err == nil {
+			return
+		}
+		var denied errVPNNotAllowed
+		if errors.As(err, &denied) {
+			a.pushToast(&toast{tone: toneWarn, icon: "lock", title: a.t("vpn.denied.title"), body: a.t("vpn.denied.body"), ttl: 8 * time.Second})
 			return
 		}
 		// The service already reported the failure as a notice; a route
@@ -51,6 +64,12 @@ func (a *App) connect(ignoreConflicts bool) {
 		}
 	})
 }
+
+// errVPNNotAllowed is the person declining, or the system refusing, the VPN.
+type errVPNNotAllowed struct{ err error }
+
+func (e errVPNNotAllowed) Error() string { return "the VPN was not allowed: " + e.err.Error() }
+func (e errVPNNotAllowed) Unwrap() error { return e.err }
 
 func (a *App) disconnect() {
 	a.job("connect", func(ctx context.Context) error { return a.be.Disconnect(ctx) }, nil)

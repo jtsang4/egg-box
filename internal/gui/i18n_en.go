@@ -24,6 +24,17 @@ var catalogEN = map[string]string{
 	"nav.section.main":    "PROXY",
 	"nav.section.monitor": "MONITOR",
 
+	// the bar of tabs on a phone
+	"tab.home":     "Home",
+	"tab.nodes":    "Nodes",
+	"tab.routing":  "Routing",
+	"tab.activity": "Activity",
+	"tab.settings": "Settings",
+
+	// the phone's permission to be the VPN
+	"vpn.denied.title": "EggBox may not connect yet",
+	"vpn.denied.body":  "It needs your permission to set up a VPN. Connect again and choose OK when the system asks.",
+
 	// phases
 	"phase.connected":         "Connected",
 	"phase.connecting":        "Connecting",
@@ -1025,4 +1036,32 @@ var catalogEN = map[string]string{
 	"icon.lock":                          "Lock",
 	"icon.heart":                         "Heart",
 	"icon.server":                        "Server",
+
+	// Phones (see App.t): the same texts for a phone, where EggBox runs the
+	// system's VPN itself and keeps its secrets encrypted on the device.
+	"phase.noagent.hint.phone":         "EggBox's VPN engine did not start.",
+	"dash.sub.noagent.phone":           "The VPN engine needs attention",
+	"err.agent_unreachable.phone":      "EggBox's VPN engine is not running. Close EggBox and open it again.",
+	"hero.noagent.title.phone":         "VPN engine unavailable",
+	"hero.noagent.body.phone":          "EggBox's VPN engine did not start. Logs say why; closing EggBox and opening it again usually helps.",
+	"subs.empty.body.phone":            "Paste the link your provider gave you. It is kept encrypted on this device and never leaves it, except to be downloaded from the provider.",
+	"subs.privacy.phone":               "Subscription links are kept encrypted on this device. Nothing is sent anywhere except to your provider.",
+	"subs.delete.body.phone":           "Its nodes leave the list and its link is deleted from this device. This cannot be undone.",
+	"subs.delete.body_plan.phone":      "Its nodes leave the list and its link is deleted from this device. The routing plan it brought stays, as one of your own. This cannot be undone.",
+	"settings.startup.desc.phone":      "What happens when EggBox opens.",
+	"settings.autoconnect.desc.phone":  "Connect as soon as EggBox opens.",
+	"settings.resume.desc.phone":       "If the system closes EggBox while you are connected, the connection comes back the next time it opens.",
+	"settings.network.desc.phone":      "DNS, speed tests and the VPN. Changes apply at once while connected.",
+	"settings.service.phone":           "VPN engine",
+	"settings.service.desc.phone":      "Runs inside EggBox. The system makes the VPN, and asks you once to allow it.",
+	"settings.service.version.phone":   "Engine version",
+	"settings.service.tun.phone":       "VPN interface",
+	"welcome.f3.body.phone":            "Links and keys stay on this device, encrypted by the system.",
+	"welcome.service.title.phone":      "One permission, when you connect",
+	"welcome.service.body.phone":       "Routing all traffic uses the system's VPN. The first time you connect, the system asks you to let EggBox set one up.",
+	"welcome.service.ready.phone":      "Nothing to set up now",
+	"welcome.service.ready.body.phone": "Allow it when the system asks, and EggBox connects.",
+	"welcome.service.note.phone":       "EggBox routes traffic only while connected, and the system's settings can turn the VPN off at any time.",
+	"exceptions.empty.phone":           "A site going the wrong way? Touch and hold it in the connections list, or paste its domain here.",
+	"adddlg.off.tip.phone":             "Already in your plan as “{name}”, but turned off. Tap to turn it on",
 }

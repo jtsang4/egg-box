@@ -36,7 +36,13 @@ func (a *App) destButton(c *ui.Context, o destOpts, cur routing.Dest, pick func(
 	if w == 0 {
 		w = destWidth
 	}
-	b.Width(w).Height(32).Padding(0, 10).Gap(7).Radius(10).AlignItems(ui.Center).Cursor(ui.CursorPointer).Shrink(0)
+	if a.compact() && o.width == 0 {
+		// Across the rest of the row, a finger's height.
+		b.Grow(1).Basis(0).MinWidth(0).Height(36)
+	} else {
+		b.Width(w).Height(32).Shrink(0)
+	}
+	b.Padding(0, 10).Gap(7).Radius(10).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 	hov := b.AnimateTo("hov", boolf(b.Hovered()), ui.Animation{Duration: 130 * time.Millisecond})
 	switch {
 	case missing:

@@ -15,6 +15,10 @@ import (
 // dashboardPage is the home of the application: the connection and what
 // flows through it.
 func (a *App) dashboardPage(c *ui.Context) {
+	if a.compact() {
+		a.phoneDashboard(c)
+		return
+	}
 	a.pageFrame(c, a.t("dash.title"), a.dashSubtitle(), func() { a.modeSwitch(c) }, func() {
 		a.proxyBanners(c)
 		a.hero(c)
@@ -58,10 +62,16 @@ func (a *App) modeSwitch(c *ui.Context) {
 		{a.t("mode.direct"), "arrow-right"},
 	}
 	sel := cur
+	opts := segOpts{}
+	if a.compact() {
+		// Across the screen, under the title.
+		w, _ := c.Size()
+		opts = segOpts{fill: true, width: w - 2*phonePad - 8}
+	}
 	wrap := ui.Row(c.Key("mode-wrap")).Gap(0)
 	wrap.Disabled(!online)
 	wrap.Children(func() {
-		if a.segmented(c, "mode", &sel, items, segOpts{}) && online {
+		if a.segmented(c, "mode", &sel, items, opts) && online {
 			mode := modeNames[sel]
 			a.job("mode", func(ctx context.Context) error { return a.be.SetMode(ctx, mode) }, nil)
 		}
@@ -209,9 +219,15 @@ func (a *App) heroSubline(c *ui.Context) {
 		if st := a.snap.Status; st != nil && st.GetLastError() != "" {
 			msg = st.GetLastError()
 		}
-		a.txt(c, truncate(msg, 160), 13.5, 400, p.Bad).LineHeight(1.45)
+		e := a.txt(c, truncate(msg, 160), 13.5, 400, p.Bad).LineHeight(1.45)
+		if a.compact() {
+			e.TextAlign(ui.Center)
+		}
 	default:
-		a.txt(c, a.phaseHint(ph), 14, 400, p.Text2).LineHeight(1.45)
+		e := a.txt(c, a.phaseHint(ph), 14, 400, p.Text2).LineHeight(1.45)
+		if a.compact() {
+			e.TextAlign(ui.Center)
+		}
 	}
 }
 
@@ -329,17 +345,40 @@ func (a *App) lastConnected() string {
 func (a *App) statRow(c *ui.Context) {
 	tr := a.snap.Traffic
 	online := a.snap.Phase.Online() && tr.Available
+	dn, du := splitBytes(float64(tr.DownTotal))
+	un, uu := splitBytes(float64(tr.UpTotal))
+	lat, lt := "—", toneNeutral
+	if ex, ok := a.mainExitNow(); ok && online && ex.DelayMS > 0 {
+		lat, lt = strconv.Itoa(ex.DelayMS), latencyTone(ex.DelayMS)
+	}
+	tiles := []func(){
+		func() {
+			a.statTile(c, "arrow-down", toneBlue, a.t("stat.downloaded"), valOr(online, dn), unitOr(online, du))
+		},
+		func() {
+			a.statTile(c, "arrow-up", toneBlue, a.t("stat.uploaded"), valOr(online, un), unitOr(online, uu))
+		},
+		func() {
+			a.statTile(c, "swap", toneNeutral, a.t("stat.connections"), valOr(online, fmtCount(int64(tr.Connections))), "")
+		},
+		func() { a.statTile(c, "zap", lt, a.t("stat.latency"), lat, boolOr(lat != "—", "ms", "")) },
+	}
+	if a.compact() {
+		// Two by two: four across leave a phone's tiles no room for a number.
+		ui.Column(c).Gap(12).Children(func() {
+			for i := 0; i < len(tiles); i += 2 {
+				ui.Row(c).Gap(12).AlignItems(ui.Stretch).Children(func() {
+					tiles[i]()
+					tiles[i+1]()
+				})
+			}
+		})
+		return
+	}
 	ui.Row(c).Gap(18).AlignItems(ui.Stretch).Children(func() {
-		dn, du := splitBytes(float64(tr.DownTotal))
-		un, uu := splitBytes(float64(tr.UpTotal))
-		a.statTile(c, "arrow-down", toneBlue, a.t("stat.downloaded"), valOr(online, dn), unitOr(online, du))
-		a.statTile(c, "arrow-up", toneBlue, a.t("stat.uploaded"), valOr(online, un), unitOr(online, uu))
-		a.statTile(c, "swap", toneNeutral, a.t("stat.connections"), valOr(online, fmtCount(int64(tr.Connections))), "")
-		lat, lt := "—", toneNeutral
-		if ex, ok := a.mainExitNow(); ok && online && ex.DelayMS > 0 {
-			lat, lt = strconv.Itoa(ex.DelayMS), latencyTone(ex.DelayMS)
+		for _, t := range tiles {
+			t()
 		}
-		a.statTile(c, "zap", lt, a.t("stat.latency"), lat, boolOr(lat != "—", "ms", ""))
 	})
 }
 
@@ -359,7 +398,11 @@ func unitOr(ok bool, u string) string {
 
 func (a *App) statTile(c *ui.Context, iconName string, t tone, label, value, unit string) {
 	p := a.pl
-	a.card(c).Grow(1).Basis(0).Padding(18, 18, 18, 18).Gap(14).Children(func() {
+	pad, gap := float32(18), float32(14)
+	if a.compact() {
+		pad, gap = 14, 10
+	}
+	a.card(c).Grow(1).Basis(0).Padding(pad, pad, pad, pad).Gap(gap).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			a.iconTile(c, iconName, t, 30)
 			a.txt(c, label, 12.5, 550, p.Text2).SingleLine()
@@ -381,7 +424,11 @@ func (a *App) statTile(c *ui.Context, iconName string, t tone, label, value, uni
 
 func (a *App) exitCard(c *ui.Context) {
 	p := a.pl
-	a.card(c).Grow(1.25).Basis(0).Gap(16).Children(func() {
+	card := a.card(c)
+	if !a.compact() {
+		card.Grow(1.25).Basis(0)
+	}
+	card.Gap(16).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 			a.heading(c, a.t("dash.exit")).Grow(1)
 			if a.btn(c, btnSpec{kind: btnGhost, label: a.t("dash.change"), icon: "chevron-right", small: true}).Clicked() {
@@ -489,7 +536,11 @@ func (a *App) exitRow(c *ui.Context, region, name, sub string, delay int, via st
 func (a *App) usageCard(c *ui.Context) {
 	p := a.pl
 	subs := a.usageSubscriptions()
-	a.card(c).Grow(1).Basis(0).Gap(14).Children(func() {
+	card := a.card(c)
+	if !a.compact() {
+		card.Grow(1).Basis(0)
+	}
+	card.Gap(14).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
 			a.heading(c, a.t("dash.usage")).Grow(1)
 			if len(a.subs) > 0 {

@@ -33,14 +33,25 @@ func translate(lang, key string, kv ...string) string {
 	return s
 }
 
-// t returns a translated string: t("x", "name", "Ada").
-func (a *App) t(key string, kv ...string) string { return translate(a.lang, key, kv...) }
+// t returns a translated string: t("x", "name", "Ada"). On a phone a key's
+// variant key.phone, where there is one, says it for a phone: a device, not a
+// computer, and the system's VPN, not a privileged service.
+func (a *App) t(key string, kv ...string) string {
+	if a.compact() && a.has(key+".phone") {
+		key += ".phone"
+	}
+	return translate(a.lang, key, kv...)
+}
 
 // pk is t for text that depends on the platform: it looks for key.darwin,
-// key.windows, and then key.other.
+// key.windows (key.android, key.ios), then key.phone on a phone, and then
+// key.other.
 func (a *App) pk(key string, kv ...string) string {
 	if a.has(key + "." + a.platform) {
 		return a.t(key+"."+a.platform, kv...)
+	}
+	if a.compact() && a.has(key+".phone") {
+		return a.t(key+".phone", kv...)
 	}
 	return a.t(key+".other", kv...)
 }

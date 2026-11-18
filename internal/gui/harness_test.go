@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"context"
 	"image"
 	"image/png"
 	"os"
@@ -32,11 +33,25 @@ type harnessOpt struct {
 	setup    func(*fixtureBackend, *Options)
 	// panel shows the tray panel instead of the window.
 	panel bool
+	// phone lays the interface out for a phone (Options.Phone) on a screen
+	// of a phone's size with its system's bars; platform defaults to android.
+	phone bool
 }
 
 // newHarness builds an interface of the given size on a fixture.
 func newHarness(t *testing.T, o harnessOpt) *harness {
 	t.Helper()
+	if o.phone {
+		if o.w == 0 {
+			o.w = 390
+		}
+		if o.h == 0 {
+			o.h = 844
+		}
+		if o.platform == "" {
+			o.platform = "android"
+		}
+	}
 	if o.w == 0 {
 		o.w = 1180
 	}
@@ -60,19 +75,24 @@ func newHarness(t *testing.T, o harnessOpt) *harness {
 	if o.dark {
 		be.set.Theme = "dark"
 	}
-	opt := Options{Backend: be, Sync: true, Platform: o.platform, Version: "0.1.0", Now: func() time.Time { return fixtureNow }}
+	opt := Options{Backend: be, Sync: true, Platform: o.platform, Version: "0.1.0", Now: func() time.Time { return fixtureNow }, Phone: o.phone}
 	opt.SaveFile = func(name string, data []byte) (string, error) {
 		be.record("save-file %s", name)
 		return "/tmp/" + name, nil
 	}
-	opt.SetLaunchAtLogin = func(on bool) error { be.record("launch-at-login %v", on); return nil }
-	opt.ShowWindow = func() { be.record("show-window") }
-	opt.ClosePanel = func() { be.record("close-panel") }
-	opt.Quit = func() { be.record("quit") }
-	boot := true
-	opt.ServiceStartup = &ServiceStartup{
-		Get: func() (bool, error) { return boot, nil },
-		Set: func(on bool) error { boot = on; be.record("service-boot %v", on); return nil },
+	if o.phone {
+		// What a phone's entry gives the interface (cmd/egg-box).
+		opt.AllowVPN = func(context.Context) error { be.record("allow-vpn"); return nil }
+	} else {
+		opt.SetLaunchAtLogin = func(on bool) error { be.record("launch-at-login %v", on); return nil }
+		opt.ShowWindow = func() { be.record("show-window") }
+		opt.ClosePanel = func() { be.record("close-panel") }
+		opt.Quit = func() { be.record("quit") }
+		boot := true
+		opt.ServiceStartup = &ServiceStartup{
+			Get: func() (bool, error) { return boot, nil },
+			Set: func(on bool) error { boot = on; be.record("service-boot %v", on); return nil },
+		}
 	}
 	if o.setup != nil {
 		o.setup(be, &opt)
@@ -99,7 +119,11 @@ func newHarness(t *testing.T, o harnessOpt) *harness {
 	if o.platform == "windows" {
 		bar = ui.TitleBar{Height: 32, Right: 138}
 	}
-	if !o.panel {
+	switch {
+	case o.phone:
+		// A phone's status bar and its gesture bar.
+		tt.SetInsets(28, 0, 20, 0)
+	case !o.panel:
 		tt.SetTitleBar(bar)
 	}
 	ready = true

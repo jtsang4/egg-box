@@ -62,8 +62,12 @@ func (a *App) settingsPage(c *ui.Context) {
 // section is a titled card of settings.
 func (a *App) section(c *ui.Context, iconName, title, desc string, rows func()) {
 	p := a.pl
+	side := float32(22)
+	if a.compact() {
+		side = 16
+	}
 	a.card(c).Padding(0).Gap(0).Children(func() {
-		ui.Row(c).Padding(18, 22, 8, 22).Gap(14).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Padding(18, side, 8, side).Gap(14).AlignItems(ui.Center).Children(func() {
 			a.iconTile(c, iconName, toneBlue, 38)
 			ui.Column(c).Grow(1).Basis(0).Gap(2).Children(func() {
 				a.heading(c, title)
@@ -72,7 +76,7 @@ func (a *App) section(c *ui.Context, iconName, title, desc string, rows func()) 
 				}
 			})
 		})
-		ui.Column(c).Padding(0, 22, 6, 22).Children(rows)
+		ui.Column(c).Padding(0, side, 6, side).Children(rows)
 	})
 }
 
@@ -156,10 +160,13 @@ func (a *App) startupSection(c *ui.Context) {
 		a.agentToggle(c, "autoconnect", "settings.autoconnect", "settings.autoconnect.desc",
 			func(s *agentapi.Settings) bool { return s.GetAutoConnect() },
 			func(r *agentapi.UpdateSettingsRequest, v bool) { r.AutoConnect = &v })
-		sep()
-		on := a.set.CloseToTray
-		if a.toggleRow(c, "set-tray", a.t("settings.tray"), a.t("settings.tray.desc"), &on, false) {
-			a.updateSettings(func(s *settingsT) { s.CloseToTray = on })
+		if !a.compact() {
+			// A phone has no tray, and its system ends the application.
+			sep()
+			on := a.set.CloseToTray
+			if a.toggleRow(c, "set-tray", a.t("settings.tray"), a.t("settings.tray.desc"), &on, false) {
+				a.updateSettings(func(s *settingsT) { s.CloseToTray = on })
+			}
 		}
 		sep()
 		notify := a.set.Notifications
@@ -250,10 +257,14 @@ func (a *App) clearPending(key string) { delete(a.sett.pending, key) }
 
 func (a *App) connectionSection(c *ui.Context) {
 	a.section(c, "shield-check", a.t("settings.connection"), a.t("settings.connection.desc"), func() {
-		a.agentToggle(c, "netchange", "settings.netchange", "settings.netchange.desc",
-			func(s *agentapi.Settings) bool { return s.GetReconnectOnNetworkChange() },
-			func(r *agentapi.UpdateSettingsRequest, v bool) { r.ReconnectOnNetworkChange = &v })
-		a.rowDivider(c)
+		if !a.compact() {
+			// On a phone the core follows the network itself: there is
+			// nothing to reconnect for.
+			a.agentToggle(c, "netchange", "settings.netchange", "settings.netchange.desc",
+				func(s *agentapi.Settings) bool { return s.GetReconnectOnNetworkChange() },
+				func(r *agentapi.UpdateSettingsRequest, v bool) { r.ReconnectOnNetworkChange = &v })
+			a.rowDivider(c)
+		}
 		a.agentToggle(c, "resume", "settings.resume", "settings.resume.desc",
 			func(s *agentapi.Settings) bool { return s.GetResumeAfterCrash() },
 			func(r *agentapi.UpdateSettingsRequest, v bool) { r.ResumeAfterCrash = &v })
@@ -330,16 +341,20 @@ func (a *App) prefsDirty() bool {
 func (a *App) networkSection(c *ui.Context) {
 	st := &a.sett
 	a.section(c, "sliders", a.t("settings.network"), a.t("settings.network.desc"), func() {
-		tun := !a.prefs.TunDisabled
-		if a.toggleRow(c, "set-tun", a.t("settings.tun"), a.t("settings.tun.desc", "port", strconv.Itoa(a.proxyPort())), &tun, false) {
-			p := a.prefs
-			p.TunDisabled = !tun
-			if p.TunDisabled && p.MixedPort == 0 {
-				p.MixedPort = configgen.DefaultMixedPort
+		if !a.compact() {
+			// A phone always runs the system's VPN: a local proxy alone would
+			// serve no application there.
+			tun := !a.prefs.TunDisabled
+			if a.toggleRow(c, "set-tun", a.t("settings.tun"), a.t("settings.tun.desc", "port", strconv.Itoa(a.proxyPort())), &tun, false) {
+				p := a.prefs
+				p.TunDisabled = !tun
+				if p.TunDisabled && p.MixedPort == 0 {
+					p.MixedPort = configgen.DefaultMixedPort
+				}
+				a.savePrefs(p)
 			}
-			a.savePrefs(p)
+			a.rowDivider(c)
 		}
-		a.rowDivider(c)
 		lan := a.prefs.LANDirect
 		if a.toggleRow(c, "set-lan", a.t("settings.lan"), a.t("settings.lan.desc"), &lan, false) {
 			p := a.prefs
@@ -389,6 +404,14 @@ func (a *App) networkSection(c *ui.Context) {
 		})
 		a.rowDivider(c)
 		ui.Column(c).Gap(14).Padding(14, 0, 14, 0).Children(func() {
+			if a.compact() {
+				a.field(c, a.t("settings.dns.domestic"), a.t("settings.dns.domestic.hint"), func() { a.input(c, "set-dns1", &st.dns1, "223.5.5.5") })
+				a.field(c, a.t("settings.dns.remote"), a.t("settings.dns.remote.hint"), func() { a.input(c, "set-dns2", &st.dns2, "https://1.1.1.1/dns-query") })
+				a.field(c, a.t("settings.testurl"), a.t("settings.testurl.hint"), func() { a.input(c, "set-testurl", &st.testURL, "https://www.gstatic.com/generate_204") })
+				a.field(c, a.t("settings.mtu"), a.t("settings.mtu.hint"), func() { a.input(c, "set-mtu", &st.mtu, "1500") })
+				a.networkApply(c)
+				return
+			}
 			ui.Row(c).Gap(14).Children(func() {
 				ui.Column(c).Grow(1).Basis(0).Children(func() {
 					a.field(c, a.t("settings.dns.domestic"), a.t("settings.dns.domestic.hint"), func() { a.input(c, "set-dns1", &st.dns1, "223.5.5.5") })
@@ -576,7 +599,7 @@ func (a *App) serviceSection(c *ui.Context) {
 			a.kvText(c, a.t("settings.service.version"), strOr(st.GetAgentVersion(), "—"))
 			a.rowDivider(c)
 			a.kvText(c, a.t("settings.service.core"), "sing-box "+strOr(st.GetCoreVersion(), "—"))
-			if st.GetAuthorizedUser() != "" {
+			if st.GetAuthorizedUser() != "" && !a.compact() {
 				a.rowDivider(c)
 				a.kvText(c, a.t("settings.service.user"), st.GetAuthorizedUser())
 			}
@@ -734,6 +757,10 @@ func (a *App) platformName() string {
 		return "Windows"
 	case "linux":
 		return "Linux"
+	case "android":
+		return "Android"
+	case "ios":
+		return "iOS"
 	}
 	return a.platform
 }

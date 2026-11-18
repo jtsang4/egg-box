@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"path/filepath"
+	"sync"
 
 	"github.com/egoist/mygo"
 
@@ -18,7 +20,7 @@ import (
 // phoneCore is the core on Android: in this process, its VPN interface made by
 // the application's VpnService.
 func phoneCore(reg singbox.RegistryOptions) (engine.Engine, platform.Driver, error) {
-	svc, err := droidvpn.NewService()
+	svc, err := vpnService()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -37,4 +39,32 @@ func agentDataDir() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "agent"), nil
+}
+
+var vpn struct {
+	once sync.Once
+	svc  droidvpn.Service
+	err  error
+}
+
+// vpnService is the application's one VpnService module.
+func vpnService() (droidvpn.Service, error) {
+	vpn.once.Do(func() { vpn.svc, vpn.err = droidvpn.NewService() })
+	return vpn.svc, vpn.err
+}
+
+// allowVPN asks the person, the first time, to let EggBox be the device's VPN.
+func allowVPN(ctx context.Context) error {
+	svc, err := vpnService()
+	if err != nil {
+		return err
+	}
+	ok, err := svc.Prepare(ctx)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return androidhost.ErrNotAllowed
+	}
+	return nil
 }

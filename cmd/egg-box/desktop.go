@@ -188,6 +188,7 @@ func (d *desktop) guiOptions(cfg boot.Config) gui.Options {
 		// a development build must leave nothing behind.
 		o.SetLaunchAtLogin = mygo.App.SetOpenAtLogin
 	}
+	d.phoneOptions(&o)
 	return o
 }
 
