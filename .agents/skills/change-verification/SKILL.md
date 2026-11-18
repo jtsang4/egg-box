@@ -70,6 +70,7 @@ For a task that spans hours or many commits:
 
 - zsh: `echo =====` fails (quote it); an unmatched glob aborts the command.
 - macOS: BSD `sed -i ''`, no `timeout`, no `grep -P`.
+- macOS cgo links print `ld: warning: ignoring duplicate libraries: '-lobjc'`: the go command adds `-lobjc` once per Objective-C cgo package (golang/go#67799), harmless. `scripts/ci/backend-tests.sh` silences it; a direct `go build`/`go test` still shows it.
 - Use the tool's background mode for long runs, not `( cmd ) &`; do not run timing-sensitive tests beside a heavy build.
 - `gofmt -l .` and the CI `shellcheck` step also cover files under `.agents/`.
 
