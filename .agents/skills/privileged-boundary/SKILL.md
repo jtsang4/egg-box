@@ -38,6 +38,12 @@ EggBox splits an unprivileged GUI from a root/SYSTEM agent. The design is alread
 - The service runs with cwd `/` or `System32` and root's environment: absolute paths only. launchd discards output and a Windows service has no stderr: log to files.
 - Real drivers are built only by the installed service entry, which refuses to run otherwise; no flag, env var or config may select one from a dev entry. `eggbox_dev` code must not reach release builds.
 
+**Phones**
+- There is no privileged split: the agent runs inside the application (`inproc`, production mode) and the system makes the VPN. The gate still checks and rewrites every configuration; nothing on a phone bypasses it.
+- `phoneplat` records nothing and releases nothing (the system removes the interface); its fingerprint is constant because the core follows network changes through the platform interface.
+- The system ending the VPN (settings, another VPN) is an exit marked `Revoked`, handled as a disconnect: never reconnect over the person's choice.
+- On iOS only the core crosses into the extension, over `engine/remote` on a socket in the App Group container; the agent's data lives there so the extension reads the same absolute paths.
+
 ## Checks that guard them
 
 Run the ones for the package you changed (plus the rows of `change-verification`):

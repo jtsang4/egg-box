@@ -2,9 +2,9 @@
 
 <img src="resources/icon.png" width="96" alt="EggBox logo">
 
-A desktop client for [sing-box](https://github.com/SagerNet/sing-box) on macOS and Windows, with the conveniences people
-know from Clash, Shadowrocket and Surge: subscriptions that refresh themselves, a node list with latency tests, rule and
-global modes, a live connection list, a menu bar / tray panel.
+A client for [sing-box](https://github.com/SagerNet/sing-box) on macOS and Windows, and on Android and iOS, with the
+conveniences people know from Clash, Shadowrocket and Surge: subscriptions that refresh themselves, a node list with
+latency tests, rule and global modes, a live connection list, a menu bar / tray panel on the desktop.
 
 The interface is written in Go alone, with [MyGo](https://github.com/egoist/mygo)'s native UI toolkit (`package ui`,
 drawn on the GPU). There is no JavaScript, no web front end and no webview; CI fails if one appears.
@@ -77,6 +77,12 @@ the GUI starting at login, and connecting automatically.
   reached over XPC whose listener checks the caller's code-signing requirement and user; DNS through a temporary
   `SCDynamicStore` resolver. The Swift bridge (`native/macos/ServiceBridge`) is loaded with purego, so there is no cgo.
 
+## Phones
+
+On Android and iOS the same interface, laid out for a phone, runs the same agent and core inside the application; the
+system makes the VPN and asks the person once to allow it (a `VpnService` on Android, a packet tunnel extension on iOS).
+Building, what is verified, and what a device still needs before the iOS tunnel ships: [docs/mobile.md](docs/mobile.md).
+
 ## Try it without installing anything
 
 The demonstration runs the whole interface against an invented world in the same process. Nothing leaves the computer,
@@ -123,7 +129,8 @@ go test -count=1 -timeout 10m -tags "eggbox_dev,$TAGS" ./internal/agent/engine/.
 ```
 
 CI runs on manual dispatch and as a release prerequisite. It runs the GUI suite once on Linux, plus backend and
-native-platform tests on Linux, macOS and Windows.
+native-platform tests on Linux, macOS and Windows, and builds the Android application, the iOS simulator application and
+the iOS packet tunnel extension.
 The five cross-build targets also vet development builds; `staticcheck` covers each operating system. Compiler and
 analysis caches are isolated by workload and target, with module downloads shared. `shellcheck`, `actionlint` and
 module/format checks run before expensive platform jobs. Tests execute afresh, including the race and real-core tiers.
@@ -137,7 +144,7 @@ Silicon executables.
 The interface is tested without a window (`ui.NewTester`). Interaction fixtures use reduced motion and half-resolution
 backing pixels at the full logical window size; normal-motion interactions have their own regression tests. The complete
 screenshot matrix uses native resolution and normal motion. To review it without opening a window:
-`EGGBOX_SHOTS=/some/dir go test ./internal/gui -run '^(TestShots|TestPanelShots)'`.
+`EGGBOX_SHOTS=/some/dir go test ./internal/gui -run '^(TestShots|TestPanelShots|TestPhoneShots)'`.
 
 The routing is checked against the real core as well: a test builds plans, asks the **Test a URL** logic where a set of
 names and addresses go, sends real requests through the sandbox's loopback proxy to loopback "exits" and compares which
@@ -200,7 +207,8 @@ listed in the release workflow; without them the installers are not fit to hand 
 | Path | Purpose |
 | --- | --- |
 | `cmd/agentd` | privileged agent: Windows Service / macOS LaunchDaemon, and `agentd dev` in development builds |
-| `cmd/egg-box` | the application: window, menu bar / tray, platform glue |
+| `cmd/egg-box` | the application: window, menu bar / tray, platform glue (on phones, the agent in process too) |
+| `cmd/eggbox-tunnel` | the core of the iOS packet tunnel extension, a C archive |
 | `internal/agent` | agent core: controller (state machine), policy, ledger, store, engine (sing-box adapter), platform drivers, server and transports |
 | `internal/agentapi` | the GUI ⇄ agent contract (protobuf + gRPC) and the protocol version |
 | `internal/agentclient` | the GUI's client of that contract |
@@ -216,8 +224,9 @@ listed in the release workflow; without them the installers are not fit to hand 
 | `internal/demodata` | the invented world of the demonstration |
 | `internal/redact`, `internal/brand`, `internal/version` | redaction of diagnostics, names and identifiers, version |
 | `internal/darwin`, `internal/macsys`, `internal/winsys` | platform services behind the GUI and the agent |
-| `native/macos` | the Swift bridge (SMAppService, XPC, SCDynamicStore) |
-| `packaging` | macOS `.pkg` and Windows installer, uninstaller, scripts |
+| `internal/phone` | phones: the core's platform interface, Android's VpnService and iOS's tunnel manager (native modules), the iOS extension's side and the agent's engine for it ([docs/mobile.md](docs/mobile.md)) |
+| `native/macos`, `native/ios` | the Swift bridge (SMAppService, XPC, SCDynamicStore); the iOS packet tunnel provider |
+| `packaging` | macOS `.pkg` and Windows installer, uninstaller, scripts; the iOS extension's build |
 | `scripts` | protobuf generation; `notices`, which collects the licenses of the modules a build contains |
 
 ## What is verified here and what needs a real machine
@@ -231,6 +240,7 @@ to be exercised on the real thing before a release is handed to people:
 | --- | --- |
 | macOS | the `SMAppService` approval flow with a Developer ID signed and notarized app; XPC code-signing requirement against the installed bundle; a real TUN, routes and the `SCDynamicStore` resolver; sleep / wake and network switching; coexistence with other VPNs; upgrade over an older version and uninstall residue; Intel Macs |
 | Windows | everything that needs Windows: service install and start, UAC, the named-pipe ACL and client verification, Wintun, route and DNS changes, sleep / wake, the session (WTS) logic, the Credential Manager, the NSIS installer run (it is compiled, not run), Windows 10 and 11, ARM64 |
+| Phones | the iOS tunnel on a device (a paid team, its profiles and MyGo's `ios.extensions`); Android on devices from several makers, its release signing; see [docs/mobile.md](docs/mobile.md) |
 | Release | code signing, notarization and the release workflow's signing path |
 
 Two limits of the routing follow from the core, not from the application. A connection that is being dialled to a node at

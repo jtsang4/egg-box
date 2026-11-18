@@ -88,7 +88,7 @@ jobs:
       - name: Interaction tests (race detector)
         run: go test -race -short -timeout 30m -count=1 ./internal/gui
       - name: Full-resolution screenshots (normal motion, both appearances)
-        run: go test -count=1 -timeout 10m -run '^(TestShots|TestPanelShots)' ./internal/gui
+        run: go test -count=1 -timeout 10m -run '^(TestShots|TestPanelShots|TestPhoneShots)' ./internal/gui
 
   # The schedule scans for new advisories, without rebuilding unchanged apps.
   vulnerabilities:
@@ -154,6 +154,53 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 3
+
+  # Phones: the application of each, built as their stores take it but
+  # signed with no one's key (Android's debug key, the iOS simulator's ad hoc
+  # signature), and the iOS packet tunnel extension for both targets. What
+  # runs on a device is verified by hand (docs/mobile.md).
+  android:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/go
+        with:
+          cache-name: android
+      - name: Vet for Android
+        env:
+          GOOS: android
+          GOARCH: arm64
+          CGO_ENABLED: '1'
+        run: |
+          export CC="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang"
+          go vet -tags "$EGGBOX_TAGS" ./...
+      - name: Application
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64" ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          GOFLAGS="-trimpath -tags=$EGGBOX_TAGS" go tool mygo build -platform android/arm64
+
+  ios:
+    needs: check
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/go
+        with:
+          cache-name: ios
+      - name: Vet for iOS
+        run: |
+          sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+          CC="$(xcrun --sdk iphoneos --find clang) -isysroot $sdk -arch arm64" \
+            GOOS=ios GOARCH=arm64 CGO_ENABLED=1 go vet -tags "$EGGBOX_TAGS" ./...
+      - name: Packet tunnel extension (simulator and device)
+        run: |
+          packaging/ios/build-extension.sh --simulator --out build/ios-extension-simulator
+          packaging/ios/build-extension.sh --out build/ios-extension
+      - name: Application (simulator)
+        run: GOFLAGS="-trimpath -tags=$EGGBOX_TAGS" go tool mygo build -platform ios/simulator
 
   cross:
     needs: check

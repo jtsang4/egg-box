@@ -20,6 +20,7 @@ A full visual review against `references/rubric.md` is for new screens or a rede
 
 - **Invented data only.** Screenshots and the demo use fixtures; never render real accounts or subscriptions, and keep images out of tracked paths (`/tmp`).
 - **Decoration must not take input.** An absolutely positioned element painted over controls swallows their clicks. Draw decoration in the owner's `Draw`/`DrawOver`. When a test click "does nothing", suspect something on top before the handler.
+- **Phones too.** `Options.Phone` lays the same pages out under a bar of tabs; `a.compact()` branches the layout, and `key.phone` variants of a text (which `App.t` prefers there) say device, not computer. A change to a page shows on a phone: run `TestPhone*` and look at its `TestPhoneShots/phone-<screen>-<lang>-<light|dark>`; keep the desktop's pixels unchanged where the change is for phones only.
 - **Both languages, always.** New text goes into `i18n_en.go` and `i18n_zh.go` with the same placeholders; `TestKeysExist`, `TestNoOrphanKeys`, `TestPluralsComplete` and the raw-key sweeps fail otherwise.
 - **Options hide features.** A nil option hides the row it powers; platform differences come in through options at the top, never through checks inside widgets. Test presence and absence.
 - **Motion is cheap or absent.** Slow ambient motion asks for 30 fps (`Painter.AnimationFrameRate(30)`), fast motion for the display rate, and nothing when nothing changes. Animate state changes, not every data tick. The window draws at the fastest rate anything in it asks, modals included.
