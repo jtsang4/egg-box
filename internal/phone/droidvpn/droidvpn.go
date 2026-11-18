@@ -36,6 +36,11 @@ type Service interface {
 	// OnRevoked calls f when the system ends the VPN: the person turned it off
 	// in the settings, or another application's VPN took its place.
 	OnRevoked(f func(reason string) error) io.Closer
+	// OnSystemStart calls f when the system starts the VPN by itself:
+	// Android's always-on VPN, at boot or after the VPN went away. The
+	// system may start the application's process for it, Go with it; a start
+	// that came before f was given is told as f is given.
+	OnSystemStart(f func() error) io.Closer
 	// Owner finds the application that opened a connection.
 	Owner(protocol int, source string, sourcePort int, destination string, destinationPort int) (ConnectionOwner, error)
 }

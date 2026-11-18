@@ -1,6 +1,7 @@
 <!-- The VPN service of the core, merged into the application's manifest. The
-     system alone binds it (BIND_VPN_SERVICE). Always-on VPN is not offered:
-     the core runs in the application, which the system would start without. -->
+     system alone binds it (BIND_VPN_SERVICE). It supports always-on VPN: when
+     the system starts it by itself, it starts the application's Go, without a
+     window, and the application connects. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <service
@@ -12,7 +13,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON"
-                android:value="false" />
+                android:value="true" />
         </service>
     </application>
 </manifest>

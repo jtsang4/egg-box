@@ -30,6 +30,12 @@ EggBox (one process)                            EggBox (application)          Pa
   connections and log back to the agent over a Unix socket in the container (`internal/agent/engine/remote`).
 - **Turning the VPN off in the system's settings** (or another VPN app taking over) is a disconnect, not a crash:
   EggBox does not reconnect behind the person's back.
+- **Android's always-on VPN** is supported: when the system starts the VPN service by itself (as always-on is switched
+  on, and at boot), the service starts the application's Go without a window (MyGo's `HostImpl.startHeadless`) and the
+  application connects with the choices made last. A Disconnect in EggBox stays disconnected until the system starts
+  the VPN again (at the next boot). Android 16 starts it again neither after the application stopped it nor after its
+  process died (killed, crashed or force-stopped): the next time EggBox opens, the agent resumes the connection
+  (Settings › Resume after an unexpected restart).
 - **The interface** lays itself out for a phone (`gui.Options.Phone`): a bar of tabs (Home, Nodes and Subscriptions,
   Routing, Connections and Logs, Settings), single-column pages, and texts that speak of a device and the system's VPN.
   Desktop-only settings (tray, login item, TUN off with a local proxy, reconnect on network change, the privileged
@@ -93,7 +99,8 @@ run a packet tunnel), and MyGo's `ios.extensions`, which embeds and signs the ex
 
 ## Known limits
 
-- Android's always-on VPN is not offered: the core lives in the application, which the system would start without.
+- iOS: switching the VPN on from Settings › VPN runs the configuration EggBox accepted last, but EggBox itself shows
+  it as disconnected until it is connected from EggBox; Connect On Demand is not offered.
 - Rules by application (Android packages) are not offered yet; the connection list names the application when Android
   says which one it is.
 - iOS does not tell which application opened a connection.

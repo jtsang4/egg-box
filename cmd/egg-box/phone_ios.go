@@ -91,3 +91,9 @@ func allowVPN(ctx context.Context) error {
 	}
 	return err
 }
+
+// followSystemStarts has nothing to follow yet on iOS: Connect On Demand is
+// not offered. The VPN switched on from the system's settings runs, in the
+// extension, the configuration the agent accepted last, without the agent
+// knowing (docs/mobile.md, known limits).
+func (d *desktop) followSystemStarts() {}

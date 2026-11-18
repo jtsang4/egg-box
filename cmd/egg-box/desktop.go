@@ -117,6 +117,7 @@ func (d *desktop) ready() {
 	d.buildMenu()
 	d.syncTray()
 	d.devReady()
+	d.phoneReady()
 
 	if d.o.page != "" {
 		d.app.Navigate(d.o.page)

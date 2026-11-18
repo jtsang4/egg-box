@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"log"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/egoist/mygo"
 
@@ -12,6 +15,7 @@ import (
 	"eggbox/internal/agent/engine/singbox"
 	"eggbox/internal/agent/platform"
 	"eggbox/internal/agent/platform/phoneplat"
+	"eggbox/internal/app"
 	"eggbox/internal/brand"
 	"eggbox/internal/gui"
 	"eggbox/internal/phone/androidhost"
@@ -69,4 +73,39 @@ func allowVPN(ctx context.Context) error {
 		return fmt.Errorf("%w: %w", gui.ErrVPNDeclined, androidhost.ErrNotAllowed)
 	}
 	return nil
+}
+
+// systemStarts is the subscription to the system starting the VPN by itself,
+// kept for the life of the process.
+var systemStarts io.Closer
+
+// followSystemStarts connects whenever the system starts the VPN by itself:
+// Android's always-on VPN, at boot or after the VPN went away, which may be
+// what started this process, without a window.
+func (d *desktop) followSystemStarts() {
+	svc, err := vpnService()
+	if err != nil {
+		return
+	}
+	systemStarts = svc.OnSystemStart(func() error {
+		go d.connectForSystem()
+		return nil
+	})
+}
+
+// connectForSystem connects as the system asked, with what the person chose
+// last, once the agent answers.
+func (d *desktop) connectForSystem() {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := d.rt.Agent.WaitReady(ctx); err != nil {
+		log.Printf("always-on VPN: the agent did not answer: %v", err)
+		return
+	}
+	if snap := d.rt.Service.Snapshot(); snap != nil && (snap.Phase.Online() || snap.Phase.Transitional()) {
+		return // already up, or on its way
+	}
+	if err := d.rt.Service.Connect(ctx, app.ConnectOptions{}); err != nil {
+		log.Printf("always-on VPN: %v", err)
+	}
 }

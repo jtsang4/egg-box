@@ -40,6 +40,11 @@ internal object AndroidVpn : Service {
     private val context: Context get() = Native.context
     private val connectivity: ConnectivityManager get() = context.getSystemService(ConnectivityManager::class.java)
     private val revoked = CopyOnWriteArrayList<(String) -> Unit>()
+    private val systemStarts = CopyOnWriteArrayList<() -> Unit>()
+
+    /** The system started the VPN before Go listened for it. */
+    @Volatile
+    private var pendingSystemStart = false
 
     /** Whether the application wants the VPN up: a start by anyone else is refused. */
     @Volatile
@@ -179,6 +184,39 @@ internal object AndroidVpn : Service {
         return AutoCloseable { revoked.remove(f) }
     }
 
+    override fun onSystemStart(f: () -> kotlin.Unit): AutoCloseable {
+        systemStarts.add(f)
+        if (pendingSystemStart) {
+            pendingSystemStart = false
+            try {
+                f()
+            } catch (_: Exception) {
+            }
+        }
+        return AutoCloseable { systemStarts.remove(f) }
+    }
+
+    /**
+     * The system started the VPN by itself (always-on VPN). Go may not run:
+     * the system can start the process for the service alone, and Go starts
+     * with the application's window otherwise. Main thread.
+     */
+    fun systemStarted(c: Context) {
+        wanted = true
+        if (systemStarts.isEmpty()) {
+            // Told once Go listens; started here if nothing started it yet.
+            pendingSystemStart = true
+            HostImpl.startHeadless(c.applicationContext)
+            return
+        }
+        for (f in systemStarts) {
+            try {
+                f()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     /** The system ended the VPN. */
     fun revoke(reason: String) {
         wanted = false
@@ -244,9 +282,13 @@ class EggBoxVpnService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Started by the system (always-on VPN) with the application not
-        // asking: the core is in the application, which is not running it.
-        if (!AndroidVpn.wanted && tun == null) stopSelf()
+        if (intent?.action == SERVICE_INTERFACE) {
+            // The system starts the VPN by itself: always-on VPN, as it is
+            // switched on and at boot. The application connects.
+            AndroidVpn.systemStarted(this)
+        } else if (!AndroidVpn.wanted && tun == null) {
+            stopSelf()
+        }
         return START_NOT_STICKY
     }
 
