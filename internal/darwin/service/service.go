@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin && !ios
 
 // Package service is how the application gets the privileged service allowed
 // on macOS. The system does not let a program install a launch daemon by

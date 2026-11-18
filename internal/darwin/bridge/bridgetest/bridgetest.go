@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin && !ios
 
 // Package bridgetest builds the Swift service bridge for the machine's own
 // architecture, once per test run, so tests of anything that uses it can load

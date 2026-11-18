@@ -1,4 +1,4 @@
-//go:build eggbox_dev && linux
+//go:build eggbox_dev && linux && !android
 
 package transport
 

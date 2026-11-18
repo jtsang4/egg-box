@@ -1,4 +1,4 @@
-//go:build eggbox_dev && (darwin || linux)
+//go:build eggbox_dev && ((darwin && !ios) || (linux && !android))
 
 // Package e2e runs the whole agent stack the way the development agent does:
 // the real controller, policy and sing-box core, a simulated operating system,

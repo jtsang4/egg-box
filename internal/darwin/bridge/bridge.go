@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin && !ios
 
 // Package bridge is the Go side of ServiceBridge.dylib, the small Swift
 // library that does what macOS only lets Swift or Objective-C do: register the

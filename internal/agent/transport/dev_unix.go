@@ -1,4 +1,4 @@
-//go:build eggbox_dev && (darwin || linux)
+//go:build eggbox_dev && ((darwin && !ios) || (linux && !android))
 
 package transport
 
