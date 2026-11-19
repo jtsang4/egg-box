@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"eggbox/internal/agent/engine"
 	"eggbox/internal/agentapi"
 )
@@ -186,10 +188,19 @@ func (e *Engine) SetGroups(g *agentapi.Groups) {
 	e.groups = g
 	for ch := range e.groupSubs {
 		select {
-		case ch <- g:
+		case ch <- cloneGroups(g):
 		default:
 		}
 	}
+}
+
+// cloneGroups is what a watcher gets: a copy of its own, as from a real core,
+// which a later change (SelectOutbound) never touches while it is sent.
+func cloneGroups(g *agentapi.Groups) *agentapi.Groups {
+	if g == nil {
+		return nil
+	}
+	return proto.Clone(g).(*agentapi.Groups)
 }
 
 // AddConnection registers a live connection: new watchers see it in their
@@ -315,7 +326,7 @@ func (e *Engine) WatchGroups(ctx context.Context) (<-chan *agentapi.Groups, erro
 		return nil, err
 	}
 	ch := make(chan *agentapi.Groups, 4)
-	ch <- e.groups
+	ch <- cloneGroups(e.groups)
 	e.groupSubs[ch] = struct{}{}
 	done := e.runDone
 	go func() {
