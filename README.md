@@ -197,6 +197,9 @@ The Windows installer is per machine: it installs under Program Files (the progr
 registers the service, authorizes the installing user, and its uninstaller removes the service, the adapter and the data
 (`agentd.exe uninstall --purge`).
 
+Android APKs for a release come from `packaging/android/build.sh`, signed with the release key the release workflow
+holds as secrets ([docs/mobile.md](docs/mobile.md#releases)).
+
 CI (`.github/workflows/ci.yml`) verifies Linux, macOS, Windows and every cross-build target. A `v*` tag matching the
 version in `mygo.json` first runs that complete workflow, then builds the installers and publishes the release
 (`.github/workflows/release.yml`). Failed verification blocks both packaging and publication. Signing uses the secrets

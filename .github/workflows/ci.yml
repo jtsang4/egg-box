@@ -163,6 +163,13 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Here, because a step cannot ask whether a secret exists, only whether an
+    # environment variable is not empty. They reach a run started here, not
+    # the release's verification (which builds its own, in release.yml).
+    env:
+      EGGBOX_ANDROID_KEYSTORE: ${{ secrets.EGGBOX_ANDROID_KEYSTORE }}
+      MYGO_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.EGGBOX_ANDROID_KEYSTORE_PASSWORD }}
+      EGGBOX_ANDROID_CERT_SHA256: '3A:D4:2A:4F:4E:A4:F5:FD:F2:B8:51:A4:B3:73:7F:6A:34:E7:AB:8E:28:44:B2:3B:79:AA:04:CF:DB:B5:3C:37'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/go
@@ -180,6 +187,15 @@ jobs:
         run: |
           export JAVA_HOME="$JAVA_HOME_17_X64" ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
           GOFLAGS="-trimpath -tags=$EGGBOX_TAGS" go tool mygo build -platform android/arm64
+      # What the release builds, signed with the release key: the 32-bit one,
+      # which the build above leaves out.
+      - name: Release build (signed)
+        if: env.EGGBOX_ANDROID_KEYSTORE != ''
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64" ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          echo "$EGGBOX_ANDROID_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/eggbox-release.jks"
+          packaging/android/build.sh --keystore "$RUNNER_TEMP/eggbox-release.jks" --abi arm
+          rm -f "$RUNNER_TEMP/eggbox-release.jks"
 
   ios:
     needs: check

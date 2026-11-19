@@ -91,10 +91,28 @@ run a packet tunnel), and MyGo's `ios.extensions`, which embeds and signs the ex
    leaves EggBox disconnected; Wi-Fi to cellular keeps working; the extension stays under its memory limit with a large
    subscription (Console › the extension's process).
 
+## Releases
+
+Every `v*` release carries an Android APK per ABI, `EggBox-<version>-android-arm64.apk` for practically every phone in
+use and `EggBox-<version>-android-arm.apk` for 32-bit ones, built by `packaging/android/build.sh` in the release
+workflow and signed with the **release key**:
+
+- Android installs an update only over a copy signed with the same key, so every release must be signed with this one.
+  The release job refuses to run without it, and checks the certificate it signed with against its fingerprint,
+  `3A:D4:2A:4F:4E:A4:F5:FD:F2:B8:51:A4:B3:73:7F:6A:34:E7:AB:8E:28:44:B2:3B:79:AA:04:CF:DB:B5:3C:37` (public).
+- The key lives in the repository's Actions secrets `EGGBOX_ANDROID_KEYSTORE` (the keystore, base64) and
+  `EGGBOX_ANDROID_KEYSTORE_PASSWORD`, which can be written but never read back, and in the owner's backup (keystore
+  file and a note with the alias and password), which is the only copy that can restore them. Losing it means
+  installed copies can never be updated; whoever has it can sign an "update".
+- By hand: `MYGO_ANDROID_KEYSTORE_PASSWORD=… packaging/android/build.sh --keystore …/eggbox-release.jks [--abi arm64]`.
+  The script names the key in `mygo.json` for that build only; `go tool mygo build -platform android` alone signs with
+  the machine's debug key, for development.
+- Google Play takes the `.aab` the script leaves beside the APK, uploaded with `go tool mygo publish -platform android`.
+
+iOS releases need what the section above lists; there is no iOS file in a release until then.
+
 ## Before publishing
 
-- **Android signing**: release builds are signed with the debug key unless `mygo.json` names `android.keystore` (with
-  `MYGO_ANDROID_KEYSTORE_PASSWORD` and `MYGO_ANDROID_KEY_PASSWORD`); Google Play refuses the debug key.
 - **App Store**: Apple accepts VPN applications from organization accounts only, and the China storefront removes them.
 
 ## Known limits

@@ -115,8 +115,48 @@ jobs:
           compression-level: 0
           retention-days: 1
 
+  # Android, an APK per ABI (64-bit phones, and the 32-bit ones still about),
+  # signed with the release key. There is no release
+  # without it: Android updates an installed app only with the same key, and a
+  # debug key differs on every machine. The key's certificate is checked
+  # against its fingerprint, which is public (docs/mobile.md).
+  android:
+    needs: verify
+    runs-on: ubuntu-latest
+    env:
+      EGGBOX_ANDROID_KEYSTORE: ${{ secrets.EGGBOX_ANDROID_KEYSTORE }}
+      MYGO_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.EGGBOX_ANDROID_KEYSTORE_PASSWORD }}
+      EGGBOX_ANDROID_CERT_SHA256: '3A:D4:2A:4F:4E:A4:F5:FD:F2:B8:51:A4:B3:73:7F:6A:34:E7:AB:8E:28:44:B2:3B:79:AA:04:CF:DB:B5:3C:37'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/go
+        with:
+          cache-name: android-release
+      - name: Release key
+        run: |
+          if [ -z "$EGGBOX_ANDROID_KEYSTORE" ] || [ -z "$MYGO_ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "::error::The Android release key is missing (EGGBOX_ANDROID_KEYSTORE, EGGBOX_ANDROID_KEYSTORE_PASSWORD)"
+            exit 1
+          fi
+          echo "$EGGBOX_ANDROID_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/eggbox-release.jks"
+      - name: Build
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64" ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          export EGGBOX_VERSION="${GITHUB_REF_NAME#v}"
+          for abi in arm64 arm; do
+            packaging/android/build.sh --keystore "$RUNNER_TEMP/eggbox-release.jks" --abi "$abi"
+          done
+          rm -f "$RUNNER_TEMP/eggbox-release.jks"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: build/android/*.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
   publish:
-    needs: [verify, macos, windows]
+    needs: [verify, macos, windows, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
