@@ -78,7 +78,7 @@ func outbound(provider, domain string, i int, s spec) map[string]any {
 		o["type"], o["uuid"], o["flow"] = "vless", uuidFor(provider, i), "xtls-rprx-vision"
 		tls["server_name"] = "www.example.com"
 		tls["utls"] = map[string]any{"enabled": true, "fingerprint": "chrome"}
-		tls["reality"] = map[string]any{"enabled": true, "public_key": zeroKey, "short_id": fmt.Sprintf("%08x", 0xa11ce000+i)}
+		tls["reality"] = map[string]any{"enabled": true, "public_key": zeroKey, "short_id": fmt.Sprintf("%08x", uint32(0xa11ce000)+uint32(i))}
 		o["tls"] = tls
 	case "vless-ws":
 		o["type"], o["uuid"] = "vless", uuidFor(provider, i)
