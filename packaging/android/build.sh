@@ -84,7 +84,13 @@ echo "==> signature"
 sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
 apksigner="$(find "$sdk/build-tools" -name apksigner -type f | sort -V | tail -1)"
 certs="$("$apksigner" verify --print-certs "$apk")"
-sha256="$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr 'a-f' 'A-F' | sed 's/../&:/g; s/:$//')"
+# "Signer #1 certificate SHA-256 digest: …" up to build-tools 36,
+# "V2 Signer: certificate SHA-256 digest: …" from 37.
+sha256="$(printf '%s\n' "$certs" | sed -n '/Source Stamp/d; s/^.*Signer.* certificate SHA-256 digest: //p' | head -1 | tr 'a-f' 'A-F' | sed 's/../&:/g; s/:$//')"
+if [ -z "$sha256" ]; then
+  printf 'no signing certificate in what apksigner printed:\n%s\n' "$certs" >&2
+  exit 1
+fi
 if [ -n "${EGGBOX_ANDROID_CERT_SHA256:-}" ] && [ "$sha256" != "$EGGBOX_ANDROID_CERT_SHA256" ]; then
   echo "the APK is signed by $sha256, not by the release key $EGGBOX_ANDROID_CERT_SHA256" >&2
   exit 1
