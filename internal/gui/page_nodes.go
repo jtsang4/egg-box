@@ -17,11 +17,14 @@ import (
 // nodesState is what the node page remembers: the search, the order, the
 // region and the subscription being looked at, and the banners put away.
 type nodesState struct {
-	query  string
-	region string
-	sub    string
-	list   ui.ListState
-	sig    string
+	query        string
+	region       string
+	sub          string
+	list         ui.ListState
+	regionScroll ui.ScrollState
+	subScroll    ui.ScrollState
+	revealRegion bool
+	sig          string
 	// dismissed are the banners the person closed, until the application is
 	// started again.
 	dismissed map[string]bool
@@ -62,18 +65,15 @@ func (a *App) nodesPage(c *ui.Context) {
 			sub += "  ·  " + a.t("nodes.sub.best", "ms", strconv.Itoa(best))
 		}
 	}
+	if a.compact() {
+		a.phoneNodesPage(c, nodes, online, sub)
+		return
+	}
 	a.fixedFrame(c, a.t("nav.nodes"), sub, func() {
 		if len(nodes) == 0 {
 			return
 		}
-		busy := a.snap.Busy.Testing[configgen.TagProxy] || a.busy("test-all")
-		btn := a.btn(c, btnSpec{kind: btnSoft, label: a.t("nodes.test_all"), icon: "zap", busy: busy, disabled: !online})
-		if !online {
-			btn.Tooltip(a.t("nodes.test_offline"))
-		}
-		if btn.Clicked() {
-			a.testAll()
-		}
+		a.testAllButton(c, online, false)
 	}, func() {
 		if len(nodes) == 0 {
 			ui.Column(c).Grow(1).Justify(ui.Center).Children(func() {
@@ -88,16 +88,139 @@ func (a *App) nodesPage(c *ui.Context) {
 		vis := a.visibleNodes(nodes)
 		if len(vis) == 0 {
 			ui.Column(c).Grow(1).Justify(ui.Center).Children(func() {
-				a.emptyState(c, "search", a.t("nodes.none.title"), a.t("nodes.none.body"), func() {
-					if a.btn(c, btnSpec{kind: btnSecondary, label: a.t("nodes.clear_filters")}).Clicked() {
-						a.node.query, a.node.region, a.node.sub = "", "", ""
-					}
-				})
+				a.emptyFilteredNodes(c)
 			})
 			return
 		}
 		a.nodeGrid(c, vis)
 	})
+}
+
+func (a *App) testAllButton(c *ui.Context, online, small bool) ui.Element {
+	busy := a.snap.Busy.Testing[configgen.TagProxy] || a.busy("test-all")
+	btn := a.btn(c, btnSpec{kind: btnSoft, small: small, label: a.t("nodes.test_all"), icon: "zap", busy: busy, disabled: !online})
+	if !online {
+		btn.Tooltip(a.t("nodes.test_offline"))
+	}
+	if btn.Clicked() {
+		a.testAll()
+	}
+	return btn
+}
+
+func (a *App) emptyFilteredNodes(c *ui.Context) {
+	a.emptyState(c, "search", a.t("nodes.none.title"), a.t("nodes.none.body"), func() {
+		if a.btn(c, btnSpec{kind: btnSecondary, label: a.t("nodes.clear_filters")}).Clicked() {
+			a.node.query, a.node.region, a.node.sub = "", "", ""
+			a.node.regionScroll.X, a.node.subScroll.X = 0, 0
+		}
+	})
+}
+
+type phoneNodeRowKind uint8
+
+const (
+	phoneRowBanner phoneNodeRowKind = iota
+	phoneRowMainStrip
+	phoneRowInUse
+	phoneRowToolbar
+	phoneRowEmpty
+	phoneRowNodes
+)
+
+type phoneNodeRow struct {
+	kind   phoneNodeRowKind
+	key    string
+	banner nodeBanner
+	idx    int
+}
+
+// phoneNodesPage lays out the nodes screen on a phone: a compact fixed header
+// (title, speed test, sibling switch) above a single virtualized list holding
+// the banners, main exit strip, search/sort and horizontal filter strips, and
+// every matching node card so the whole page scrolls smoothly together.
+func (a *App) phoneNodesPage(c *ui.Context, nodes []nodeEntry, online bool, sub string) {
+	p := a.pl
+	ui.Column(c).Padding(12, phonePad, 8, phonePad).Gap(10).Children(func() {
+		ui.Row(c).Gap(10).AlignItems(ui.Center).MinHeight(40).Children(func() {
+			ui.Column(c).Grow(1).Basis(0).Gap(2).Children(func() {
+				a.txt(c, a.t("nav.nodes"), 24, 700, p.Text).LetterSpacing(-0.5).SingleLine()
+				if sub != "" {
+					a.txt(c, sub, 12.5, 400, p.Text2).SingleLine()
+				}
+			})
+			if len(nodes) > 0 {
+				a.testAllButton(c, online, true).Shrink(0)
+			}
+		})
+		a.siblingSwitch(c)
+	})
+	if len(nodes) == 0 {
+		ui.Column(c).Grow(1).Basis(0).MinHeight(0).Padding(4, phonePad, phonePad, phonePad).Justify(ui.Center).Children(func() {
+			a.emptyNodes(c)
+		})
+		return
+	}
+	vis := a.visibleNodes(nodes)
+	cols := a.nodeColumns(c)
+	uses, extraUses := a.nodeUses()
+
+	rows := make([]phoneNodeRow, 0, len(vis)+4)
+	for _, b := range a.banners() {
+		if a.node.dismissed[b.key] {
+			continue
+		}
+		rows = append(rows, phoneNodeRow{kind: phoneRowBanner, key: "banner:" + b.key, banner: b})
+	}
+	rows = append(rows, phoneNodeRow{kind: phoneRowMainStrip, key: "main-strip"})
+	if len(uses) > 0 {
+		rows = append(rows, phoneNodeRow{kind: phoneRowInUse, key: "in-use"})
+	}
+	rows = append(rows, phoneNodeRow{kind: phoneRowToolbar, key: "toolbar"})
+	if len(vis) == 0 {
+		rows = append(rows, phoneNodeRow{kind: phoneRowEmpty, key: "empty"})
+	} else {
+		for i := 0; i < len(vis); i += cols {
+			rows = append(rows, phoneNodeRow{kind: phoneRowNodes, key: "node:" + vis[i].Key, idx: i})
+		}
+	}
+
+	mainKey, exitKey := a.nodeHighlightKeys()
+	a.node.list.Key = func(i int) any { return rows[i].key }
+	list := ui.List(c.Key("node-list"), &a.node.list, len(rows), func(i int) {
+		r := rows[i]
+		switch r.kind {
+		case phoneRowBanner:
+			ui.Column(c).Padding(0, phonePad).Children(func() {
+				a.nodeBannerRow(c, r.banner)
+			})
+		case phoneRowMainStrip:
+			ui.Column(c).Padding(0, phonePad).Children(func() {
+				a.mainStrip(c, nodes)
+			})
+		case phoneRowInUse:
+			a.phoneInUseRow(c, uses, extraUses)
+		case phoneRowToolbar:
+			a.phoneNodeToolbar(c, nodes)
+		case phoneRowEmpty:
+			ui.Column(c).Padding(24, phonePad, 24, phonePad).AlignItems(ui.Center).Children(func() {
+				a.emptyFilteredNodes(c)
+			})
+		case phoneRowNodes:
+			ui.Row(c).Padding(0, phonePad).Gap(14).Children(func() {
+				for k := 0; k < cols; k++ {
+					idx := r.idx + k
+					if idx >= len(vis) {
+						ui.Box(c).Grow(1).Basis(0)
+						continue
+					}
+					n := vis[idx]
+					a.nodeCard(c, n, mainKey == n.Key, exitKey == n.Key)
+				}
+			})
+		}
+	})
+	list.Grow(1).Basis(0).MinHeight(0).Gap(12).Padding(4, 0, phonePad, 0)
 }
 
 func (a *App) emptyNodes(c *ui.Context) {
@@ -386,16 +509,19 @@ func (a *App) nodeBanners(c *ui.Context) {
 		if a.node.dismissed[b.key] {
 			continue
 		}
-		b := b
-		a.alertBanner(c, "banner-"+b.key, toneWarn, b.text, false, func() {
-			if a.btn(c, btnSpec{kind: btnSecondary, small: true, label: a.t("banner.repick")}).Clicked() {
-				b.repick()
-			}
-			if a.btn(c, btnSpec{kind: btnGhost, small: true, label: a.t("banner.dismiss")}).Clicked() {
-				a.node.dismissed[b.key] = true
-			}
-		})
+		a.nodeBannerRow(c, b)
 	}
+}
+
+func (a *App) nodeBannerRow(c *ui.Context, b nodeBanner) {
+	a.alertBanner(c, "banner-"+b.key, toneWarn, b.text, a.compact(), func() {
+		if a.btn(c, btnSpec{kind: btnSecondary, small: true, label: a.t("banner.repick")}).Clicked() {
+			b.repick()
+		}
+		if a.btn(c, btnSpec{kind: btnGhost, small: true, label: a.t("banner.dismiss")}).Clicked() {
+			a.node.dismissed[b.key] = true
+		}
+	})
 }
 
 // alertBanner is a tinted strip with an icon, a sentence and the actions it
@@ -661,15 +787,13 @@ func (a *App) checkBadge(c *ui.Context, size float32) ui.Element {
 
 // ----------------------------------------------------------- items in use
 
-// inUseRow lists the items that do not follow the main exit and go through a
-// node, with the node each one uses now.
-func (a *App) inUseRow(c *ui.Context) {
-	p := a.pl
-	type use struct {
-		id, name, where string
-		warn            bool
-	}
-	var uses []use
+type nodeUse struct {
+	id, name, where string
+	warn            bool
+}
+
+func (a *App) nodeUses() ([]nodeUse, int) {
+	var uses []nodeUse
 	online := a.snap.Phase.Online()
 	for _, row := range a.rv().Rows {
 		it := row.Item
@@ -681,7 +805,7 @@ func (a *App) inUseRow(c *ui.Context) {
 		default:
 			continue
 		}
-		u := use{id: it.ID, name: a.itemName(it), where: a.destLabel(it.Dest)}
+		u := nodeUse{id: it.ID, name: a.itemName(it), where: a.destLabel(it.Dest)}
 		if ex, ok := a.snap.Exits[it.ID]; ok && online && ex.Node != nil {
 			u.where = ex.Node.Label()
 			if ex.DelayMS > 0 {
@@ -693,101 +817,159 @@ func (a *App) inUseRow(c *ui.Context) {
 		}
 		uses = append(uses, u)
 	}
-	if len(uses) == 0 {
-		return
-	}
 	const most = 8
 	extra := 0
 	if len(uses) > most {
 		extra = len(uses) - most
 		uses = uses[:most]
 	}
+	return uses, extra
+}
+
+// inUseRow lists the items that do not follow the main exit and go through a
+// node, with the node each one uses now.
+func (a *App) inUseRow(c *ui.Context) {
+	p := a.pl
+	uses, extra := a.nodeUses()
+	if len(uses) == 0 {
+		return
+	}
 	ui.Row(c.Key("usage")).Gap(12).Padding(2, 2).AlignItems(ui.Center).Children(func() {
 		a.txt(c, a.t("nodes.usage"), 12.5, 600, p.Text2).SingleLine().Shrink(0)
 		ui.Row(c).Gap(8).Wrap().Grow(1).Basis(0).AlignItems(ui.Center).Children(func() {
-			for _, u := range uses {
-				b := ui.ButtonBase(c.Key("use-" + u.id))
-				b.Label(u.name)
-				b.Height(28).Padding(0, 10).Gap(6).Radius(radiusPill).AlignItems(ui.Center).Cursor(ui.CursorPointer)
-				hov := b.AnimateTo("hov", boolf(b.Hovered()), ui.Animation{Duration: 120 * time.Millisecond})
-				b.Background(p.Field.Mix(p.PanelHi, hov))
-				b.Border(1, p.Line.Mix(p.LineHi, hov))
-				b.Children(func() {
-					a.txt(c, u.name, 12, 650, p.Text).SingleLine()
-					ui.Icon(c, icon("arrow-right")).Size(12, 12).TextColor(p.Text3)
-					a.txt(c, u.where, 12, 500, boolOr(u.warn, p.Warn, p.Text2)).SingleLine()
-				})
-				if b.Clicked() {
-					a.openItem(u.id)
-				}
-			}
-			if extra > 0 {
-				a.txt(c, a.tn("nodes.usage.more", extra), 12, 500, p.Text3).SingleLine()
-			}
+			a.inUsePills(c, uses, extra)
 		})
 	})
+}
+
+func (a *App) phoneInUseRow(c *ui.Context, uses []nodeUse, extra int) {
+	p := a.pl
+	ui.Column(c.Key("usage")).Padding(0, phonePad).Gap(6).Children(func() {
+		a.txt(c, a.t("nodes.usage"), 12, 600, p.Text2).SingleLine()
+		ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
+			a.inUsePills(c, uses, extra)
+		})
+	})
+}
+
+func (a *App) inUsePills(c *ui.Context, uses []nodeUse, extra int) {
+	p := a.pl
+	for _, u := range uses {
+		b := ui.ButtonBase(c.Key("use-" + u.id))
+		b.Label(u.name)
+		b.Height(28).Padding(0, 10).Gap(6).Radius(radiusPill).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+		hov := b.AnimateTo("hov", boolf(b.Hovered()), ui.Animation{Duration: 120 * time.Millisecond})
+		b.Background(p.Field.Mix(p.PanelHi, hov))
+		b.Border(1, p.Line.Mix(p.LineHi, hov))
+		b.Children(func() {
+			a.txt(c, u.name, 12, 650, p.Text).SingleLine()
+			ui.Icon(c, icon("arrow-right")).Size(12, 12).TextColor(p.Text3)
+			a.txt(c, u.where, 12, 500, boolOr(u.warn, p.Warn, p.Text2)).SingleLine()
+		})
+		if b.Clicked() {
+			a.openItem(u.id)
+		}
+	}
+	if extra > 0 {
+		a.txt(c, a.tn("nodes.usage.more", extra), 12, 500, p.Text3).SingleLine()
+	}
 }
 
 // --------------------------------------------------------------- toolbar
 
 func (a *App) nodeToolbar(c *ui.Context, nodes []nodeEntry) {
-	var bar ui.Element
-	opts := segOpts{small: true}
-	if a.compact() {
-		bar = ui.Column(c.Key("node-toolbar")).Gap(10)
-		w, _ := c.Size()
-		opts = segOpts{small: true, fill: true, width: w - 2*phonePad - 8}
-	} else {
-		bar = ui.Row(c.Key("node-toolbar")).Gap(12).AlignItems(ui.Center)
-	}
-	bar.Children(func() {
+	ui.Row(c.Key("node-toolbar")).Gap(12).AlignItems(ui.Center).Children(func() {
 		a.search(c, "node-q", &a.node.query, a.t("nodes.search"), 0)
 		sel := a.nodeSort()
 		if a.segmented(c, "node-sort", &sel, []segItem{
 			{a.t("nodes.sort.default"), ""}, {a.t("nodes.sort.latency"), ""}, {a.t("nodes.sort.name"), ""},
-		}, opts) {
+		}, segOpts{small: true}) {
 			a.updateSettings(func(s *settingsT) { s.SortNodes = sortNames[sel] })
 		}
 	})
 	regions := regionsOf(nodes)
 	if len(regions) >= 2 {
 		ui.Row(c.Key("node-regions")).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
-			if a.filterPill(c, "rg-all", a.t("nodes.all"), len(nodes), a.node.region == "", "") {
-				a.node.region = ""
-			}
-			for _, rc := range regions {
-				code := rc.Code
-				value, label, badge := code, a.regionName(code), code
-				if code == "" {
-					value, label, badge = regionOther, a.t("nodes.region_other"), ""
-				}
-				if a.filterPill(c, "rg-"+value, label, rc.N, a.node.region == value, badge) {
-					if a.node.region == value {
-						a.node.region = ""
-					} else {
-						a.node.region = value
-					}
-				}
-			}
+			a.regionFilterPills(c, nodes, regions)
 		})
 	}
 	subs := a.subsWithNodes(nodes)
 	if len(subs) >= 2 {
 		ui.Row(c.Key("node-subs")).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
-			if a.filterPill(c, "sb-all", a.t("nodes.all_subs"), len(nodes), a.node.sub == "", "") {
-				a.node.sub = ""
-			}
-			for _, sc := range subs {
-				id := sc.id
-				if a.filterPill(c, "sb-"+id, sc.name, sc.n, a.node.sub == id, "") {
-					if a.node.sub == id {
-						a.node.sub = ""
-					} else {
-						a.node.sub = id
-					}
-				}
+			a.subFilterPills(c, nodes, subs)
+		})
+	}
+}
+
+// phoneNodeToolbar lays out search, sort, and single-row horizontal filter
+// strips for regions and subscriptions so many groups never push the node list
+// off screen on a narrow viewport.
+func (a *App) phoneNodeToolbar(c *ui.Context, nodes []nodeEntry) {
+	w, _ := c.Size()
+	ui.Column(c).Gap(10).Children(func() {
+		ui.Column(c.Key("node-toolbar")).Padding(0, phonePad).Gap(10).Children(func() {
+			a.search(c, "node-q", &a.node.query, a.t("nodes.search"), 0)
+			sel := a.nodeSort()
+			if a.segmented(c, "node-sort", &sel, []segItem{
+				{a.t("nodes.sort.default"), ""}, {a.t("nodes.sort.latency"), ""}, {a.t("nodes.sort.name"), ""},
+			}, segOpts{small: true, fill: true, width: w - 2*phonePad - 8}) {
+				a.updateSettings(func(s *settingsT) { s.SortNodes = sortNames[sel] })
 			}
 		})
+		regions := regionsOf(nodes)
+		if len(regions) >= 2 {
+			ui.ScrollHorizontal(c.Key("node-regions")).Scrollbars(false).TrackScroll(&a.node.regionScroll).Padding(0, phonePad).Gap(8).AlignItems(ui.Center).Children(func() {
+				a.regionFilterPills(c, nodes, regions)
+			})
+		}
+		subs := a.subsWithNodes(nodes)
+		if len(subs) >= 2 {
+			ui.ScrollHorizontal(c.Key("node-subs")).Scrollbars(false).TrackScroll(&a.node.subScroll).Padding(0, phonePad).Gap(8).AlignItems(ui.Center).Children(func() {
+				a.subFilterPills(c, nodes, subs)
+			})
+		}
+	})
+}
+
+func (a *App) regionFilterPills(c *ui.Context, nodes []nodeEntry, regions []regionCount) {
+	if clicked, _ := a.filterPillButton(c, "rg-all", a.t("nodes.all"), len(nodes), a.node.region == ""); clicked {
+		a.node.region = ""
+	}
+	for _, rc := range regions {
+		code := rc.Code
+		value, label := code, a.regionName(code)
+		if code == "" {
+			value, label = regionOther, a.t("nodes.region_other")
+		}
+		active := a.node.region == value
+		clicked, el := a.filterPillButton(c, "rg-"+value, label, rc.N, active)
+		if active && a.node.revealRegion {
+			a.node.revealRegion = false
+			el.ScrollIntoView(ui.ScrollIntoViewOptions{Inline: ui.ScrollCenter})
+		}
+		if clicked {
+			if active {
+				a.node.region = ""
+			} else {
+				a.node.region = value
+			}
+		}
+	}
+}
+
+func (a *App) subFilterPills(c *ui.Context, nodes []nodeEntry, subs []subCount) {
+	if clicked, _ := a.filterPillButton(c, "sb-all", a.t("nodes.all_subs"), len(nodes), a.node.sub == ""); clicked {
+		a.node.sub = ""
+	}
+	for _, sc := range subs {
+		id := sc.id
+		if clicked, _ := a.filterPillButton(c, "sb-"+id, sc.name, sc.n, a.node.sub == id); clicked {
+			if a.node.sub == id {
+				a.node.sub = ""
+			} else {
+				a.node.sub = id
+			}
+		}
 	}
 }
 
@@ -816,12 +998,13 @@ func (a *App) subsWithNodes(nodes []nodeEntry) []subCount {
 	return out
 }
 
-// filterPill is a toggleable pill with a count; it reports a click.
-func (a *App) filterPill(c *ui.Context, key, label string, n int, active bool, region string) bool {
+// filterPillButton is a toggleable pill with a count; it reports a click and
+// returns its element.
+func (a *App) filterPillButton(c *ui.Context, key, label string, n int, active bool) (bool, ui.Element) {
 	p := a.pl
 	b := ui.ButtonBase(c.Key(key))
 	b.Label(label)
-	b.Height(30).Padding(0, 11).Gap(7).Radius(radiusPill).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+	b.Height(30).Padding(0, 11).Gap(7).Radius(radiusPill).AlignItems(ui.Center).Cursor(ui.CursorPointer).Shrink(0)
 	hov := b.AnimateTo("hov", boolf(b.Hovered()), ui.Animation{Duration: 130 * time.Millisecond})
 	on := b.AnimateTo("on", boolf(active), ui.Animation{Duration: 200 * time.Millisecond})
 	b.Background(p.Field.Mix(p.PanelHi, hov).Mix(p.Blue.Alpha(boolOr[float32](p.Dark, 0.22, 0.14)), on))
@@ -830,7 +1013,7 @@ func (a *App) filterPill(c *ui.Context, key, label string, n int, active bool, r
 		a.txt(c, label, 12.5, 600, p.Text2.Mix(p.Text, hov).Mix(p.BlueText, on)).SingleLine()
 		a.txt(c, strconv.Itoa(n), 11.5, 600, p.Text3.Mix(p.BlueText, on)).FontFeatures("tnum").SingleLine()
 	})
-	return b.Clicked()
+	return b.Clicked(), b
 }
 
 // ------------------------------------------------------------------ grid
@@ -853,20 +1036,23 @@ func (a *App) nodeColumns(c *ui.Context) int {
 	return n
 }
 
-func (a *App) nodeGrid(c *ui.Context, vis []nodeEntry) {
-	cols := a.nodeColumns(c)
-	rows := (len(vis) + cols - 1) / cols
-	jumpOnChange(&a.node.list, &a.node.sig, a.node.query+"|"+a.node.region+"|"+a.node.sub+"|"+a.set.SortNodes+"|"+strconv.Itoa(cols))
-	mainKey := ""
+func (a *App) nodeHighlightKeys() (mainKey, exitKey string) {
 	if m := a.rt().Main; m.Kind == routing.DestNode && m.Node != nil {
 		if n, ok := a.nodeFor(*m.Node); ok != routing.MatchNone {
 			mainKey = n.Key
 		}
 	}
-	exitKey := ""
 	if ex, ok := a.mainExitNow(); ok && a.snap.Phase.Online() && ex.Node != nil {
 		exitKey = ex.Node.Key
 	}
+	return mainKey, exitKey
+}
+
+func (a *App) nodeGrid(c *ui.Context, vis []nodeEntry) {
+	cols := a.nodeColumns(c)
+	rows := (len(vis) + cols - 1) / cols
+	jumpOnChange(&a.node.list, &a.node.sig, a.node.query+"|"+a.node.region+"|"+a.node.sub+"|"+a.set.SortNodes+"|"+strconv.Itoa(cols))
+	mainKey, exitKey := a.nodeHighlightKeys()
 	list := ui.List(c.Key("node-list"), &a.node.list, rows, func(i int) {
 		ui.Row(c).Gap(14).Children(func() {
 			for k := 0; k < cols; k++ {
@@ -972,7 +1158,9 @@ func (a *App) showUnplacedNodes() {
 	// once they get one, with nothing on screen saying why.
 	if len(regionsOf(a.liveNodes())) >= 2 {
 		a.node.region = regionOther
+		a.node.revealRegion = true
 	}
+	a.node.list.ScrollTo(0, ui.Start)
 	a.goTo(pageNodes)
 	a.toastInfo(a.t("dest.region.tip"))
 }

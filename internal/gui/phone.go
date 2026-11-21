@@ -122,12 +122,27 @@ func (a *App) tabButton(c *ui.Context, i int, t phoneTab, active bool) {
 		if active {
 			// A second tap on the tab goes back to its first page, at its top.
 			if a.page == target {
-				a.scrollFor(a.page).ScrollTo(0, 0, ui.Animation{Duration: 300 * time.Millisecond, Ease: ui.EaseOut})
+				a.scrollPageToTop(a.page)
 			}
 		} else if a.lastOf[i] != 0 {
 			target = a.lastOf[i] - 1
 		}
 		a.goTo(target)
+	}
+}
+
+// scrollPageToTop scrolls a phone page back to its top, whether it scrolls
+// through pageFrame or a virtualized List of its own.
+func (a *App) scrollPageToTop(pg page) {
+	switch pg {
+	case pageNodes:
+		a.node.list.ScrollTo(0, ui.Start)
+	case pageConnections:
+		a.conn.list.ScrollTo(0, ui.Start)
+	case pageLogs:
+		a.logs.list.ScrollTo(0, ui.Start)
+	default:
+		a.scrollFor(pg).ScrollTo(0, 0, ui.Animation{Duration: 300 * time.Millisecond, Ease: ui.EaseOut})
 	}
 }
 
