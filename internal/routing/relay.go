@@ -77,7 +77,7 @@ func (r Relay) Valid(allowInherit bool) error {
 
 // Equal compares relays by meaning.
 func (r Relay) Equal(o Relay) bool {
-	if r.Kind != o.Kind || strings.ToUpper(r.Region) != strings.ToUpper(o.Region) || r.NoFallback != o.NoFallback {
+	if r.Kind != o.Kind || !strings.EqualFold(r.Region, o.Region) || r.NoFallback != o.NoFallback {
 		return false
 	}
 	if r.Kind != RelayNode {
