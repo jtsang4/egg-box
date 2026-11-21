@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -32,25 +33,61 @@ import (
 // ---------------------------------------------------------------- fixtures
 
 // freePort returns a port that is free for both TCP and UDP: the proxy inbounds
-// listen on both, and a TCP-only probe occasionally hands out a port whose UDP
-// side is taken.
+// listen on both, and Windows can exclude contiguous ranges for one protocol
+// while the other hands out sequential ephemeral ports inside that range.
 func freePort(t *testing.T) int {
 	t.Helper()
-	for i := 0; i < 50; i++ {
-		l, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
+	var lastErr error
+	for i := 0; i < 200; i++ {
+		switch {
+		case i < 20 && i%2 == 0:
+			pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			port := pc.LocalAddr().(*net.UDPAddr).Port
+			l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+			_ = pc.Close()
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			_ = l.Close()
+			return port
+		case i < 20:
+			l, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			port := l.Addr().(*net.TCPAddr).Port
+			pc, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", port))
+			_ = l.Close()
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			_ = pc.Close()
+			return port
+		default:
+			port := 20000 + rand.IntN(40000)
+			l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			pc, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", port))
+			_ = l.Close()
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			_ = pc.Close()
+			return port
 		}
-		port := l.Addr().(*net.TCPAddr).Port
-		pc, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", port))
-		_ = l.Close()
-		if err != nil {
-			continue
-		}
-		_ = pc.Close()
-		return port
 	}
-	t.Fatal("no port that is free for both TCP and UDP")
+	t.Fatalf("no port that is free for both TCP and UDP (last error: %v)", lastErr)
 	return 0
 }
 

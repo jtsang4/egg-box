@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -146,21 +147,57 @@ func (ns *nameServer) serve() {
 // free finds a port that is free for both TCP and UDP.
 func free(t *testing.T) int {
 	t.Helper()
-	for i := 0; i < 50; i++ {
-		l, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
+	var lastErr error
+	for i := 0; i < 200; i++ {
+		switch {
+		case i < 20 && i%2 == 0:
+			pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			port := pc.LocalAddr().(*net.UDPAddr).Port
+			l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+			_ = pc.Close()
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			_ = l.Close()
+			return port
+		case i < 20:
+			l, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			port := l.Addr().(*net.TCPAddr).Port
+			pc, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", port))
+			_ = l.Close()
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			_ = pc.Close()
+			return port
+		default:
+			port := 20000 + rand.IntN(40000)
+			l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			pc, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", port))
+			_ = l.Close()
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			_ = pc.Close()
+			return port
 		}
-		port := l.Addr().(*net.TCPAddr).Port
-		pc, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", port))
-		_ = l.Close()
-		if err != nil {
-			continue
-		}
-		_ = pc.Close()
-		return port
 	}
-	t.Fatal("no free port")
+	t.Fatalf("no free port (last error: %v)", lastErr)
 	return 0
 }
 
