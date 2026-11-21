@@ -371,7 +371,8 @@ func TestConnectionsComeAndGo(t *testing.T) {
 			switch ev.Type {
 			case agentapi.ConnectionEvent_TYPE_NEW:
 				c := ev.Connection
-				if c.Id == "" || c.Destination == "" || c.Domain == "" || len(c.Chain) == 0 || c.Process == nil || c.Inbound != "tun-in" {
+				// Bare-address targets (LAN, IP-only) legitimately leave Domain empty.
+				if c.Id == "" || c.Destination == "" || c.Network == "" || len(c.Chain) == 0 || c.Process == nil || c.Inbound != "tun-in" {
 					t.Fatalf("incomplete connection %+v", c)
 				}
 				if strings.Contains(c.Source, "example.net") {
