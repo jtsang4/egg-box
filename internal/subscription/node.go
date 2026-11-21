@@ -43,6 +43,9 @@ type Node struct {
 	// connections go through, for protocols that ride on another: Shadowsocks
 	// over ShadowTLS. It is nil for every other node.
 	Detour map[string]any `json:"detour,omitempty"`
+	// Relay is the provider-declared two-hop proxy chain (Clash dialer-proxy
+	// or sing-box detour), nil for plain direct nodes.
+	Relay *RelaySpec `json:"relay,omitempty"`
 	// Link is the share link the node was read from, as written, when it came
 	// from one. Only an import keeps it, to show and edit the node as its
 	// link; a subscription's nodes are the provider's and drop it (see
@@ -60,6 +63,9 @@ func (n Node) Key() string {
 		// Only when present, so the keys of all other nodes stay what they were.
 		id["detour"] = n.Detour
 	}
+	if n.Relay != nil {
+		id["relay"] = n.Relay
+	}
 	raw, _ := json.Marshal(id)
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:8])
@@ -69,6 +75,7 @@ func (n Node) Key() string {
 func (n Node) Clone() Node {
 	n.Config = cloneMap(n.Config)
 	n.Detour = cloneMap(n.Detour)
+	n.Relay = n.Relay.Clone()
 	return n
 }
 
@@ -153,6 +160,11 @@ func (n Node) Validate() error {
 	}
 	if n.Detour != nil {
 		if err := validateDetour(n); err != nil {
+			return err
+		}
+	}
+	if n.Relay != nil {
+		if err := n.Relay.Validate(); err != nil {
 			return err
 		}
 	}

@@ -41,6 +41,29 @@ type Node struct {
 	Node subscription.Node
 	// Auto is false when the subscription is kept out of the automatic choice.
 	Auto bool
+	// SubRelay is the default relay configured on the node's subscription.
+	SubRelay *routing.Relay
+}
+
+// ProviderRelay turns a subscription-declared relay spec into a routing.Relay.
+func ProviderRelay(subID string, spec *subscription.RelaySpec) *routing.Relay {
+	if spec == nil {
+		return nil
+	}
+	switch spec.Kind {
+	case subscription.RelayAuto:
+		r := routing.RelayAutoVal()
+		return &r
+	case subscription.RelayRegion:
+		r := routing.RelayRegionVal(spec.Region)
+		return &r
+	case subscription.RelayNode:
+		r := routing.RelayNodeVal(routing.NodeID{
+			Sub: subID, Name: spec.Node, Region: subscription.Region(spec.Node),
+		})
+		return &r
+	}
+	return nil
 }
 
 // Options are the inputs of a compilation.
@@ -99,6 +122,14 @@ const (
 	// NoticePinGone: a node the person pinned is no longer offered by any
 	// subscription. Traffic goes to the fastest node of its region meanwhile.
 	NoticePinGone NoticeCode = "pin_gone"
+	// NoticeRelayGone: a node pinned as another node's relay is no longer
+	// available as a plain direct node, and a same-region plain direct stand-in
+	// took its place.
+	NoticeRelayGone NoticeCode = "relay_gone"
+	// NoticeRelayUnavailable: a node's relay has no usable plain direct node
+	// (nor a stand-in), so the node is paused (detour blocked) instead of
+	// falling back to direct.
+	NoticeRelayUnavailable NoticeCode = "relay_unavailable"
 )
 
 // OwnerKind says whose exit a notice is about.
@@ -109,16 +140,26 @@ const (
 	OwnerFallback  OwnerKind = "fallback"
 	OwnerItem      OwnerKind = "item"
 	OwnerException OwnerKind = "exception"
+	OwnerRelay     OwnerKind = "relay"
 )
 
 // Notice is something the person should be told about a compilation.
 type Notice struct {
 	Code  NoticeCode
 	Owner OwnerKind
-	// ID is the item or exception, empty for the main exit and the fallback.
+	// ID is the item or exception, empty for the main exit and the fallback;
+	// for OwnerRelay it is the landing node's key.
 	ID string
-	// Node is the identity the person pinned.
+	// Node is the identity the person pinned (exit node, or relay node for OwnerRelay).
 	Node routing.NodeID
+	// Target is the landing node affected by a relay notice.
+	Target routing.NodeID
+	// Region is the relay region of a relay notice, when applicable.
+	Region string
+	// RelayKind is the configured relay kind of a relay notice.
+	RelayKind routing.RelayKind
+	// Blocked is true when no stand-in is available and the relayed node is paused.
+	Blocked bool
 }
 
 // Result is a compiled plan.
@@ -163,7 +204,7 @@ func (c *Compiler) Compile(o Options) (*Result, error) {
 	view := o.State.View()
 	res := &Result{Items: map[string]ItemInfo{}, Rules: map[string]ItemRules{}}
 
-	nodes := c.nodes(o)
+	nodes := c.nodes(o, res)
 	in := configgen.Input{Prefs: o.Prefs, Nodes: nodes.configNodes}
 	regions := nodes.regions()
 
@@ -225,27 +266,125 @@ type nodeSet struct {
 }
 
 // nodes prepares the nodes: regions as the person corrected them, the ones
-// they keep out of the automatic choice, one entry per server.
-func (c *Compiler) nodes(o Options) *nodeSet {
+// they keep out of the automatic choice, one entry per server, and each
+// relayed node's resolved first-hop relay.
+func (c *Compiler) nodes(o Options, res *Result) *nodeSet {
 	ns := &nodeSet{}
 	seen := map[string]bool{}
+	effs := make([]routing.EffectiveRelay, 0, len(o.Nodes))
+	var plainLive []routing.LiveNode
+	var plainKeys []string
+	var plainAutoFlags []bool
+
 	for _, n := range o.Nodes {
 		key := n.Node.Key()
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
-		id := routing.NodeID{Sub: n.Sub, Name: n.Node.Name}
+		id := routing.NodeID{Sub: n.Sub, Name: n.Node.Name, Hash: key}
 		pref := o.State.NodePref(id)
 		region := subscription.Region(n.Node.Name)
 		if pref.Region != "" {
 			region = pref.Region
 		}
+		region = strings.ToUpper(region)
+		id.Region = region
+		noAuto := pref.NoAuto || !n.Auto
+		eff := routing.ResolveRelay(id, o.State, n.SubRelay, ProviderRelay(n.Sub, n.Node.Relay))
+
 		ns.configNodes = append(ns.configNodes, configgen.Node{
-			Node: n.Node, Region: strings.ToUpper(region), NoAuto: pref.NoAuto || !n.Auto,
+			Node: n.Node, Region: region, NoAuto: noAuto,
 		})
-		ns.live = append(ns.live, routing.LiveNode{Sub: n.Sub, Name: n.Node.Name, Hash: key, Region: strings.ToUpper(region)})
+		live := routing.LiveNode{Sub: n.Sub, Name: n.Node.Name, Hash: key, Region: region}
+		ns.live = append(ns.live, live)
 		ns.keys = append(ns.keys, key)
+		effs = append(effs, eff)
+
+		if !eff.Active() {
+			plainLive = append(plainLive, live)
+			plainKeys = append(plainKeys, key)
+			plainAutoFlags = append(plainAutoFlags, !noAuto)
+		}
+	}
+
+	// Plain eligible regions mirror configgen's plainEligible fallback when all
+	// plain nodes are excluded from automatic selection.
+	anyPlainAuto := false
+	for _, auto := range plainAutoFlags {
+		if auto {
+			anyPlainAuto = true
+			break
+		}
+	}
+	plainRegions := map[string]bool{}
+	for i, pl := range plainLive {
+		if (plainAutoFlags[i] || !anyPlainAuto) && len(pl.Region) == 2 {
+			plainRegions[pl.Region] = true
+		}
+	}
+
+	for i, eff := range effs {
+		if !eff.Active() {
+			continue
+		}
+		target := ns.live[i].ID()
+		switch eff.Relay.Kind {
+		case routing.RelayAuto:
+			if len(plainLive) > 0 {
+				ns.configNodes[i].Relay = configgen.Relay{Kind: configgen.RelayAuto}
+			} else {
+				ns.configNodes[i].Relay = configgen.Relay{Kind: configgen.RelayBlocked}
+				res.Notices = append(res.Notices, Notice{
+					Code: NoticeRelayUnavailable, Owner: OwnerRelay, ID: ns.keys[i],
+					Target: target, RelayKind: routing.RelayAuto, Blocked: true,
+				})
+			}
+		case routing.RelayRegion:
+			code := strings.ToUpper(eff.Relay.Region)
+			if plainRegions[code] {
+				ns.configNodes[i].Relay = configgen.Relay{Kind: configgen.RelayRegion, Region: code}
+			} else {
+				ns.configNodes[i].Relay = configgen.Relay{Kind: configgen.RelayBlocked}
+				res.Notices = append(res.Notices, Notice{
+					Code: NoticeRelayUnavailable, Owner: OwnerRelay, ID: ns.keys[i],
+					Target: target, Region: code, RelayKind: routing.RelayRegion, Blocked: true,
+				})
+			}
+		case routing.RelayNode:
+			if eff.Relay.Node != nil {
+				if j, match := routing.Resolve(*eff.Relay.Node, plainLive); match != routing.MatchNone {
+					ns.configNodes[i].Relay = configgen.Relay{
+						Kind: configgen.RelayNode, Node: plainKeys[j], NoStandIn: eff.Relay.NoFallback,
+					}
+					continue
+				}
+				// Pinned relay node is gone or no longer a plain direct node:
+				// stand in with the same region's plain direct nodes when
+				// allowed, otherwise block rather than falling back to direct.
+				if !eff.Relay.NoFallback {
+					if r := strings.ToUpper(eff.Relay.Node.Region); r != "" && plainRegions[r] {
+						ns.configNodes[i].Relay = configgen.Relay{Kind: configgen.RelayRegion, Region: r}
+						res.Notices = append(res.Notices, Notice{
+							Code: NoticeRelayGone, Owner: OwnerRelay, ID: ns.keys[i],
+							Target: target, Node: *eff.Relay.Node, Region: r, RelayKind: routing.RelayNode, Blocked: false,
+						})
+						continue
+					}
+				}
+				ns.configNodes[i].Relay = configgen.Relay{Kind: configgen.RelayBlocked}
+				res.Notices = append(res.Notices, Notice{
+					Code: NoticeRelayUnavailable, Owner: OwnerRelay, ID: ns.keys[i],
+					Target: target, Node: *eff.Relay.Node, RelayKind: routing.RelayNode, Blocked: true,
+				})
+			} else {
+				ns.configNodes[i].Relay = configgen.Relay{Kind: configgen.RelayBlocked}
+				res.Notices = append(res.Notices, Notice{
+					Code: NoticeRelayUnavailable, Owner: OwnerRelay, ID: ns.keys[i],
+					Target: target, RelayKind: routing.RelayNode, Blocked: true,
+				})
+			}
+		}
 	}
 	return ns
 }

@@ -679,6 +679,9 @@ type NodePref struct {
 	Region string `json:"region,omitempty"`
 	// NoAuto keeps the node out of the automatic groups.
 	NoAuto bool `json:"noAuto,omitempty"`
+	// Relay overrides how this node connects to its server; nil inherits the
+	// subscription's default relay, then any provider-declared relay, then direct.
+	Relay *Relay `json:"relay,omitempty"`
 }
 
 // State is everything the user chose about routing.
@@ -727,6 +730,7 @@ func (s State) Clone() State {
 	c.Main = s.Main.Clone()
 	c.Nodes = make(map[string]NodePref, len(s.Nodes))
 	for k, v := range s.Nodes {
+		v.Relay = CloneRelayPtr(v.Relay)
 		c.Nodes[k] = v
 	}
 	c.Recent = append([]NodeID(nil), s.Recent...)

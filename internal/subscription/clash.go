@@ -104,13 +104,32 @@ func (m cm) obj(keys ...string) cm {
 // parseClash reads the "proxies" of a Clash/Mihomo profile.
 func parseClash(data []byte) ([]Node, []Skipped, error) {
 	var doc struct {
-		Proxies []any `yaml:"proxies"`
+		Proxies     []any `yaml:"proxies"`
+		ProxyGroups []any `yaml:"proxy-groups"`
 	}
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil, nil, fmt.Errorf("the profile is not valid YAML")
 	}
+	groups := map[string]parsedGroup{}
+	for _, raw := range doc.ProxyGroups {
+		gm := toCM(raw)
+		if gm == nil {
+			continue
+		}
+		gname := gm.str("name")
+		if gname == "" {
+			continue
+		}
+		typ := strings.ToLower(gm.str("type"))
+		groups[gname] = parsedGroup{
+			name:    gname,
+			auto:    typ == "url-test" || typ == "fallback" || typ == "load-balance",
+			members: gm.list("proxies"),
+		}
+	}
 	var nodes []Node
 	var skipped []Skipped
+	rawRelays := map[int]string{}
 	for _, p := range doc.Proxies {
 		m := toCM(p)
 		if m == nil {
@@ -131,7 +150,15 @@ func parseClash(data []byte) ([]Node, []Skipped, error) {
 			skipped = append(skipped, s)
 			continue
 		}
+		if dp := strings.TrimSpace(m.str("dialer-proxy")); dp != "" {
+			rawRelays[len(nodes)] = dp
+		}
 		nodes = append(nodes, n)
+	}
+	if len(rawRelays) > 0 {
+		var rskip []Skipped
+		nodes, rskip = resolveProviderRelays(nodes, rawRelays, groups, nil)
+		skipped = append(skipped, rskip...)
 	}
 	return nodes, skipped, nil
 }
@@ -153,9 +180,6 @@ func clashStream(m cm, tlsDefault bool) (tlsSpec, map[string]any, error) {
 	}
 	if m.str("fingerprint") != "" && !t.Insecure {
 		return t, nil, skip(SkipUnsupportedFeature, "certificate pinning is not supported")
-	}
-	if m.str("dialer-proxy") != "" {
-		return t, nil, skip(SkipUnsupportedFeature, "proxy chaining (dialer-proxy) is not supported")
 	}
 	network := strings.ToLower(m.str("network"))
 	spec := transportSpec{Kind: network}

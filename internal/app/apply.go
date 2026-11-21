@@ -131,7 +131,7 @@ func (s *Service) finishPrepare(st routing.State, res *plancompile.Result, out *
 	for _, d := range out.Dropped {
 		dropped = append(dropped, Dropped{Name: d.Name, Reason: d.Reason})
 	}
-	v := &planView{state: st, res: res, out: out, active: active, owners: out.Owners}
+	v := &planView{state: st, res: res, out: out, active: active, owners: out.Owners, relays: activeRelays(st, active)}
 	v.names, v.wanted = namesAndPins(st)
 	return &prepared{view: v, out: out, active: active, dropped: dropped}
 }
@@ -329,6 +329,7 @@ func (s *Service) setGenerated(p *prepared, report *ApplyReport, revision uint64
 		sn.Applied = applied
 		sn.Groups = s.mapGroupsLocked(s.rawGroups)
 		sn.Exits = s.exitsLocked(sn.Groups)
+		sn.Relays = s.relaysLocked(sn.Groups)
 	})
 	s.kickPlan()
 }
@@ -394,22 +395,28 @@ func (s *Service) connectNotices(v *planView) {
 		s.tellOnce("waiting:"+strconv.Itoa(waiting), LevelWarning, "items_waiting", "", map[string]string{"count": strconv.Itoa(waiting)})
 	}
 	for _, n := range v.res.Notices {
-		if n.Code != plancompile.NoticePinGone {
-			continue
-		}
-		key, args := "gone:"+string(n.Owner)+n.ID+n.Node.Key(), map[string]string{"node": n.Node.Name, "for": v.names[n.ID]}
-		// The main exit and the rest of the traffic have no name of their own.
-		switch n.Owner {
-		case plancompile.OwnerMain:
-			s.tellOnce(key, LevelWarning, "pin_gone_main", "", args)
-		case plancompile.OwnerFallback:
-			s.tellOnce(key, LevelWarning, "pin_gone_fallback", "", args)
-		default:
-			if n.Owner == plancompile.OwnerItem {
-				// The interface names a shipped item in its own language.
-				args["item"] = n.ID
+		switch n.Code {
+		case plancompile.NoticePinGone:
+			key, args := "gone:"+string(n.Owner)+n.ID+n.Node.Key(), map[string]string{"node": n.Node.Name, "for": v.names[n.ID]}
+			// The main exit and the rest of the traffic have no name of their own.
+			switch n.Owner {
+			case plancompile.OwnerMain:
+				s.tellOnce(key, LevelWarning, "pin_gone_main", "", args)
+			case plancompile.OwnerFallback:
+				s.tellOnce(key, LevelWarning, "pin_gone_fallback", "", args)
+			default:
+				if n.Owner == plancompile.OwnerItem {
+					// The interface names a shipped item in its own language.
+					args["item"] = n.ID
+				}
+				s.tellOnce(key, LevelWarning, "pin_gone", "", args)
 			}
-			s.tellOnce(key, LevelWarning, "pin_gone", "", args)
+		case plancompile.NoticeRelayGone:
+			key := "relay_gone:" + n.Target.Key() + ":" + n.Node.Key()
+			s.tellOnce(key, LevelWarning, "relay_gone", "", map[string]string{"target": n.Target.Name, "node": n.Node.Name})
+		case plancompile.NoticeRelayUnavailable:
+			key := "relay_unavail:" + n.Target.Key() + ":" + string(n.RelayKind) + ":" + n.Region + ":" + n.Node.Key()
+			s.tellOnce(key, LevelWarning, "relay_unavailable", "", map[string]string{"target": n.Target.Name})
 		}
 	}
 }

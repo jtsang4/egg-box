@@ -31,15 +31,28 @@ type planView struct {
 	// wanted are the nodes somebody chose, by owner: "main", "fallback" or the
 	// id of an item.
 	wanted map[string]routing.NodeID
+	// relays are the effective active relays of the active nodes, by node Key.
+	relays map[string]routing.EffectiveRelay
 }
 
 // compile turns the plan into the generator's input.
 func (s *Service) compile(st routing.State, prefs configgen.Prefs, active []library.ActiveNode) (*plancompile.Result, error) {
 	nodes := make([]plancompile.Node, len(active))
 	for i, a := range active {
-		nodes[i] = plancompile.Node{Sub: a.SubID, Node: a.Node, Auto: a.Auto}
+		nodes[i] = plancompile.Node{Sub: a.SubID, Node: a.Node, Auto: a.Auto, SubRelay: a.SubRelay}
 	}
 	return s.compiler.Compile(plancompile.Options{State: st, Nodes: nodes, Data: s.rules, Prefs: prefs})
+}
+
+func activeRelays(st routing.State, active []library.ActiveNode) map[string]routing.EffectiveRelay {
+	out := map[string]routing.EffectiveRelay{}
+	for _, a := range active {
+		eff := routing.ResolveRelay(a.ID(), st, a.SubRelay, plancompile.ProviderRelay(a.SubID, a.Node.Relay))
+		if eff.Active() {
+			out[a.Key()] = eff
+		}
+	}
+	return out
 }
 
 // buildView compiles the plan in force and writes the configuration it leads
@@ -54,7 +67,7 @@ func (s *Service) buildView() (*planView, error) {
 	if err != nil {
 		return nil, err
 	}
-	v := &planView{state: st, res: res, active: active, owners: map[string]configgen.Owner{}}
+	v := &planView{state: st, res: res, active: active, owners: map[string]configgen.Owner{}, relays: activeRelays(st, active)}
 	if len(active) > 0 {
 		if out, err := configgen.Generate(res.Input); err == nil {
 			v.out = out
@@ -125,6 +138,7 @@ func (s *Service) planLoop(ctx context.Context) {
 			sn.Plan = info
 			sn.Plan.Updating = s.fetching.Load()
 			sn.Exits = s.exitsLocked(sn.Groups)
+			sn.Relays = s.relaysLocked(sn.Groups)
 		})
 		s.fetchMissing(ctx, v.res.Missing)
 		s.refreshIdentities(v)
@@ -144,6 +158,7 @@ func (s *Service) refreshIdentities(v *planView) {
 		}
 		return nil
 	})
+	s.lib.RefreshSubRelays(live)
 }
 
 // errNothingChanged lets an edit that found nothing to do keep the library
@@ -220,10 +235,14 @@ func (s *Service) planInfo(v *planView, seq uint64) PlanInfo {
 		info.Items[row.Item.ID] = is
 	}
 	for _, n := range v.res.Notices {
-		if n.Code != plancompile.NoticePinGone {
-			continue
+		switch n.Code {
+		case plancompile.NoticePinGone:
+			info.Gone = append(info.Gone, Pin{Owner: n.Owner, ID: n.ID, Name: v.names[n.ID], Node: n.Node})
+		case plancompile.NoticeRelayGone, plancompile.NoticeRelayUnavailable:
+			info.RelayIssues = append(info.RelayIssues, RelayIssue{
+				Target: n.Target, Relay: n.Node, Region: n.Region, Kind: n.RelayKind, Blocked: n.Blocked,
+			})
 		}
-		info.Gone = append(info.Gone, Pin{Owner: n.Owner, ID: n.ID, Name: v.names[n.ID], Node: n.Node})
 	}
 	return info
 }
@@ -297,6 +316,76 @@ func (s *Service) exitOfLocked(groups []Group, tag string, wanted routing.NodeID
 		info.StandIn = info.Node != nil && !wanted.Same(info.Node.ID)
 	}
 	return info
+}
+
+// relaysLocked resolves the live first-hop node for every active relayed node.
+func (s *Service) relaysLocked(groups []Group) map[string]RelayInfo {
+	v := s.view.Load()
+	if v == nil || len(v.relays) == 0 {
+		return nil
+	}
+	out := make(map[string]RelayInfo, len(v.relays))
+	// Index live measured delays by tag so direct-node detours can report delay too.
+	delays := map[string]int{}
+	for _, g := range groups {
+		for _, it := range g.Items {
+			if it.DelayMS != 0 && delays[it.Tag] == 0 {
+				delays[it.Tag] = it.DelayMS
+			}
+		}
+	}
+	for key, eff := range v.relays {
+		tag := ""
+		if v.out != nil {
+			tag = v.out.Relays[key]
+		}
+		ri := RelayInfo{Config: eff, Tag: tag}
+		if eff.Relay.Kind == routing.RelayNode && eff.Relay.Node != nil {
+			w := *eff.Relay.Node
+			ri.Wanted = &w
+		}
+		if tag == configgen.TagRelayBlocked {
+			ri.Unavailable = true
+			out[key] = ri
+			continue
+		}
+		if tag != "" {
+			cur := tag
+			for hop := 0; hop < 6; hop++ {
+				var g *Group
+				for i := range groups {
+					if groups[i].Tag == cur {
+						g = &groups[i]
+						break
+					}
+				}
+				if g == nil {
+					if ref, ok := s.tagIndex[cur]; ok {
+						r := ref
+						ri.Node = &r
+						if ri.DelayMS == 0 {
+							ri.DelayMS = delays[cur]
+						}
+					}
+					break
+				}
+				if g.Selected == "" {
+					break
+				}
+				for _, it := range g.Items {
+					if it.Tag == g.Selected && it.DelayMS != 0 {
+						ri.DelayMS = it.DelayMS
+					}
+				}
+				cur = g.Selected
+			}
+			if ri.Wanted != nil && ri.Node != nil {
+				ri.StandIn = !ri.Wanted.Same(ri.Node.ID)
+			}
+		}
+		out[key] = ri
+	}
+	return out
 }
 
 // ExitOf says where an item's traffic ("fallback" for the fallback, "main"

@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"eggbox/internal/library"
+	"eggbox/internal/routing"
 	"eggbox/internal/subscription"
 )
 
@@ -21,7 +22,8 @@ type subDialog struct {
 	edit     *library.Subscription // nil when adding
 	name     string
 	alias    string
-	auto     bool // the nodes take part in the automatic choice
+	auto     bool           // the nodes take part in the automatic choice
+	relay    *routing.Relay // nil means direct (no subscription-wide relay)
 	link     string
 	ua       string
 	include  string
@@ -46,7 +48,7 @@ func (a *App) openAddSubscriptionWith(link string) {
 }
 
 func (a *App) openEditSubscription(s library.Subscription) {
-	d := &subDialog{edit: &s, name: s.Name, alias: s.Alias, auto: !s.NoAuto, ua: s.UserAgent, include: s.Include, exclude: s.Exclude,
+	d := &subDialog{edit: &s, name: s.Name, alias: s.Alias, auto: !s.NoAuto, relay: routing.CloneRelayPtr(s.Relay), ua: s.UserAgent, include: s.Include, exclude: s.Exclude,
 		interval: indexOfInterval(s.IntervalHours), advanced: s.UserAgent != "" || s.Include != "" || s.Exclude != ""}
 	if s.Kind == library.KindRemote {
 		if link, err := a.be.Link(s.ID); err == nil {
@@ -111,6 +113,31 @@ func (d *subDialog) frame(a *App, c *ui.Context) dlgFrame {
 				}
 			})
 			a.toggleRow(c, "sd-auto", a.t("subdlg.auto"), a.t("subdlg.auto.desc"), &d.auto, false)
+			a.settingRow(c, a.t("subdlg.relay"), a.t("subdlg.relay.desc"), func() {
+				label := a.t("relay.direct")
+				kind := btnSecondary
+				if d.relay != nil && d.relay.Active() {
+					label = a.t("relay.via", "relay", truncate(a.relayShortLabel(*d.relay), 24))
+					kind = btnSoft
+				}
+				if a.btn(c, btnSpec{kind: kind, small: true, label: label, icon: "relay"}).Clicked() {
+					subID, subName := "", strings.TrimSpace(d.name)
+					if d.edit != nil {
+						subID = d.edit.ID
+						if subName == "" {
+							subName = d.edit.Name
+						}
+					}
+					a.openSubRelay(subID, subName, d.relay, func(next *routing.Relay) {
+						wasActive := d.relay != nil && d.relay.Active()
+						nextActive := next != nil && next.Active()
+						d.relay = routing.CloneRelayPtr(next)
+						if !wasActive && nextActive {
+							d.auto = false
+						}
+					})
+				}
+			})
 			if d.remote() {
 				a.field(c, a.t("subdlg.interval"), a.t("subdlg.interval.hint"), func() {
 					items := make([]segItem, len(subIntervals))
@@ -192,7 +219,7 @@ func (d *subDialog) submit(a *App) {
 	d.busy, d.err = true, ""
 	hours := subIntervals[d.interval]
 	name, ua, inc, exc := strings.TrimSpace(d.name), strings.TrimSpace(d.ua), d.include, d.exclude
-	alias, auto := strings.TrimSpace(d.alias), d.auto
+	alias, auto, relay := strings.TrimSpace(d.alias), d.auto, routing.CloneRelayPtr(d.relay)
 	var run func(ctx context.Context) error
 	if d.edit == nil {
 		run = func(ctx context.Context) error {
@@ -200,9 +227,9 @@ func (d *subDialog) submit(a *App) {
 			if err != nil {
 				return err
 			}
-			if hours != library.DefaultIntervalHours || alias != "" || !auto {
+			if hours != library.DefaultIntervalHours || alias != "" || !auto || (relay != nil && relay.Active()) {
 				return a.be.EditSubscription(ctx, sub.ID, func(s *library.Subscription) {
-					s.IntervalHours, s.Alias, s.NoAuto = hours, alias, !auto
+					s.IntervalHours, s.Alias, s.NoAuto, s.Relay = hours, alias, !auto, routing.CloneRelayPtr(relay)
 				})
 			}
 			return nil
@@ -218,7 +245,7 @@ func (d *subDialog) submit(a *App) {
 			}
 			err := a.be.EditSubscription(ctx, id, func(s *library.Subscription) {
 				s.Name, s.Include, s.Exclude = name, inc, exc
-				s.Alias, s.NoAuto = alias, !auto
+				s.Alias, s.NoAuto, s.Relay = alias, !auto, routing.CloneRelayPtr(relay)
 				if remote {
 					s.UserAgent, s.IntervalHours = ua, hours
 				}

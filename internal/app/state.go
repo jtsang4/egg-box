@@ -279,6 +279,9 @@ type Snapshot struct {
 	// Exits tells where traffic of the main exit ("main"), the fallback
 	// ("fallback") and each item (by id) ends up right now.
 	Exits map[string]ExitInfo
+	// Relays tells what first-hop node currently carries each relayed node,
+	// keyed by the landing node's Key.
+	Relays map[string]RelayInfo
 	// ProxyIssues are the system proxy settings that point at a local port
 	// that is not this application's, found while connected: the ones that
 	// lead nowhere cut off every program that uses the system proxy. The
@@ -360,8 +363,41 @@ type PlanInfo struct {
 	Missing int
 	// Gone are chosen nodes no subscription offers any more.
 	Gone []Pin
+	// RelayIssues are relayed nodes whose chosen relay is gone or unavailable.
+	RelayIssues []RelayIssue
 	// Updating is set while rule data is being downloaded.
 	Updating bool
+}
+
+// RelayIssue says a node's configured relay could not be honoured as chosen.
+type RelayIssue struct {
+	Target  routing.NodeID
+	Relay   routing.NodeID
+	Region  string
+	Kind    routing.RelayKind
+	Blocked bool
+}
+
+// RelayInfo says what first-hop node carries connections to a relayed node
+// right now.
+type RelayInfo struct {
+	// Config is the effective relay configured for the landing node.
+	Config routing.EffectiveRelay
+	// Tag is the detour outbound tag in the configuration.
+	Tag string
+	// Node is the plain direct node currently carrying the first hop, when
+	// connected and known.
+	Node *NodeRef
+	// DelayMS is that first-hop node's last measured delay; 0 when unknown.
+	DelayMS int
+	// Wanted is the pinned relay node, when Config.Relay.Kind == RelayNode.
+	Wanted *routing.NodeID
+	// StandIn is set when a pinned relay node is unhealthy or gone and a
+	// same-region plain node is standing in for it.
+	StandIn bool
+	// Unavailable is set when no usable plain node can carry the relay (the
+	// detour is blocked rather than falling back to direct).
+	Unavailable bool
 }
 
 // ExitInfo says where traffic leaves right now.

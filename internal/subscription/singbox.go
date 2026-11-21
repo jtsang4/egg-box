@@ -47,11 +47,34 @@ func parseSingBox(data []byte) ([]Node, []Skipped, error) {
 	// Shadowsocks outbounds that name it as their detour.
 	shadowTLS := map[string]map[string]any{}
 	carried := map[string]bool{}
+	groups := map[string]parsedGroup{}
+	directTags := map[string]bool{}
 	for _, o := range outbounds {
-		if obj, ok := o.(map[string]any); ok && obj["type"] == "shadowtls" {
-			if tag, _ := obj["tag"].(string); tag != "" {
-				shadowTLS[tag] = obj
+		obj, ok := o.(map[string]any)
+		if !ok {
+			continue
+		}
+		typ, _ := obj["type"].(string)
+		tag, _ := obj["tag"].(string)
+		if tag == "" {
+			continue
+		}
+		switch typ {
+		case "shadowtls":
+			shadowTLS[tag] = obj
+		case "direct":
+			directTags[tag] = true
+		case "selector", "urltest", "preferred":
+			var members []string
+			if list, ok := obj["outbounds"].([]any); ok {
+				for _, m := range list {
+					if s, ok := m.(string); ok && s != "" {
+						members = append(members, s)
+					}
+				}
 			}
+			def, _ := obj["default"].(string)
+			groups[tag] = parsedGroup{name: tag, auto: typ == "urltest", def: def, members: members}
 		}
 	}
 	for _, o := range outbounds {
@@ -64,6 +87,7 @@ func parseSingBox(data []byte) ([]Node, []Skipped, error) {
 
 	var nodes []Node
 	var skipped []Skipped
+	rawRelays := map[int]string{}
 	handle := func(raw any, endpoint bool) {
 		obj, ok := raw.(map[string]any)
 		if !ok {
@@ -77,7 +101,7 @@ func parseSingBox(data []byte) ([]Node, []Skipped, error) {
 		if !endpoint && typ == "shadowtls" && carried[name] {
 			return
 		}
-		n, err := singBoxNode(obj, endpoint, shadowTLS)
+		n, relayTarget, err := singBoxNode(obj, endpoint, shadowTLS)
 		if err == nil {
 			err = n.Validate()
 			if err != nil {
@@ -93,6 +117,9 @@ func parseSingBox(data []byte) ([]Node, []Skipped, error) {
 			skipped = append(skipped, s)
 			return
 		}
+		if relayTarget != "" {
+			rawRelays[len(nodes)] = relayTarget
+		}
 		nodes = append(nodes, n)
 	}
 	for _, o := range outbounds {
@@ -101,21 +128,27 @@ func parseSingBox(data []byte) ([]Node, []Skipped, error) {
 	for _, o := range endpoints {
 		handle(o, true)
 	}
+	if len(rawRelays) > 0 {
+		var rskip []Skipped
+		nodes, rskip = resolveProviderRelays(nodes, rawRelays, groups, directTags)
+		skipped = append(skipped, rskip...)
+	}
 	return nodes, skipped, nil
 }
 
-func singBoxNode(obj map[string]any, endpoint bool, shadowTLS map[string]map[string]any) (Node, error) {
+func singBoxNode(obj map[string]any, endpoint bool, shadowTLS map[string]map[string]any) (Node, string, error) {
 	typ, _ := obj["type"].(string)
 	name, _ := obj["tag"].(string)
 	if !supportedTypes[typ] {
-		return Node{}, skip(SkipUnsupportedProtocol, "%s is not supported", typ)
+		return Node{}, "", skip(SkipUnsupportedProtocol, "%s is not supported", typ)
 	}
 	if endpoint != (typ == "wireguard") {
-		return Node{}, skip(SkipInvalid, "%s is in the wrong section", typ)
+		return Node{}, "", skip(SkipInvalid, "%s is in the wrong section", typ)
 	}
 	cfg, _ := normalizeNumbers(obj).(map[string]any)
 	delete(cfg, "tag")
 	var detour map[string]any
+	var relayTarget string
 	if d, ok := cfg["detour"].(string); ok && typ == "shadowsocks" && shadowTLS[d] != nil {
 		detour, _ = normalizeNumbers(shadowTLS[d]).(map[string]any)
 		delete(detour, "tag")
@@ -125,7 +158,7 @@ func singBoxNode(obj map[string]any, endpoint bool, shadowTLS map[string]map[str
 		delete(cfg, "detour")
 	} else if ok {
 		if d != "" && d != "direct" {
-			return Node{}, skip(SkipUnsupportedFeature, "proxy chaining (detour) is not supported")
+			relayTarget = d
 		}
 		delete(cfg, "detour")
 	}
@@ -133,10 +166,10 @@ func singBoxNode(obj map[string]any, endpoint bool, shadowTLS map[string]map[str
 		delete(cfg, k)
 	}
 	if p, _ := cfg["private_key_path"].(string); p != "" {
-		return Node{}, skip(SkipUnsupportedFeature, "SSH keys read from a file are not supported")
+		return Node{}, "", skip(SkipUnsupportedFeature, "SSH keys read from a file are not supported")
 	}
 	if sys, _ := cfg["system"].(bool); sys {
-		return Node{}, skip(SkipUnsupportedFeature, "system WireGuard interfaces are not supported")
+		return Node{}, "", skip(SkipUnsupportedFeature, "system WireGuard interfaces are not supported")
 	}
 
 	n := Node{Name: name, Type: typ, Endpoint: endpoint, Config: cfg}
@@ -144,7 +177,7 @@ func singBoxNode(obj map[string]any, endpoint bool, shadowTLS map[string]map[str
 	case typ == "wireguard":
 		peers, _ := cfg["peers"].([]any)
 		if len(peers) == 0 {
-			return Node{}, skip(SkipInvalid, "peers are missing")
+			return Node{}, "", skip(SkipInvalid, "peers are missing")
 		}
 		if p, ok := peers[0].(map[string]any); ok {
 			n.Server, _ = p["address"].(string)
@@ -162,16 +195,17 @@ func singBoxNode(obj map[string]any, endpoint bool, shadowTLS map[string]map[str
 		}
 	}
 	if detour != nil {
-		if d, _ := detour["detour"].(string); d == "" || d == "direct" {
-			delete(detour, "detour")
+		if d, _ := detour["detour"].(string); d != "" && d != "direct" {
+			relayTarget = d
 		}
+		delete(detour, "detour")
 		// The server is the one ShadowTLS reaches; Shadowsocks only rides on it.
 		n.Detour = detour
 		n.Server, _ = detour["server"].(string)
 		n.Port = intOf(detour["server_port"])
 		cfg["server"], cfg["server_port"] = n.Server, n.Port
 	}
-	return n, nil
+	return n, relayTarget, nil
 }
 
 // normalizeNumbers turns json.Number into int or float64 so a node looks the

@@ -179,3 +179,28 @@ func TestReferencesAreCheckedBeforeTheTunIsRewritten(t *testing.T) {
 		t.Fatalf("sandbox mode must validate references too:\n%s", dump(res))
 	}
 }
+
+func TestRelayDetoursAndBlockedOutboundAreValidated(t *testing.T) {
+	cfg := `{
+	  "inbounds": [{"type": "mixed", "tag": "m", "listen_port": 7890}],
+	  "endpoints": [
+	    {"type": "wireguard", "tag": "wg-landing", "detour": "relay-pin-1", "address": ["10.0.0.2/32"], "private_key": "k", "peers": [{"address": "203.0.113.9", "port": 51820, "public_key": "p", "allowed_ips": ["0.0.0.0/0"]}]}
+	  ],
+	  "outbounds": [
+	    {"type": "shadowsocks", "tag": "plain-1", "server": "203.0.113.5", "server_port": 8388, "method": "aes-128-gcm", "password": "x"},
+	    {"type": "block", "tag": "relay-blocked"},
+	    {"type": "urltest", "tag": "relay-region-HK", "outbounds": ["plain-1"], "url": "https://www.gstatic.com/generate_204"},
+	    {"type": "preferred", "tag": "relay-pin-1", "outbounds": ["plain-1"], "default": "plain-1", "stand_ins": ["relay-region-HK"], "url": "https://www.gstatic.com/generate_204"},
+	    {"type": "shadowsocks", "tag": "landing-1", "server": "203.0.113.6", "server_port": 8388, "method": "aes-128-gcm", "password": "y", "detour": "relay-pin-1"},
+	    {"type": "shadowsocks", "tag": "landing-blocked", "server": "203.0.113.7", "server_port": 8388, "method": "aes-128-gcm", "password": "z", "detour": "relay-blocked"},
+	    {"type": "direct", "tag": "direct"},
+	    {"type": "selector", "tag": "proxy", "outbounds": ["plain-1", "landing-1", "landing-blocked", "wg-landing", "direct"], "default": "landing-1"}
+	  ],
+	  "route": {"final": "proxy"}
+	}`
+	mustPass(t, prod(), cfg)
+	// Dangling outbound detour must fail with reference_missing.
+	mustFail(t, prod(), strings.Replace(cfg, `"detour": "relay-blocked"`, `"detour": "no-such-relay"`, 1), "reference_missing")
+	// Dangling endpoint detour must fail with reference_missing.
+	mustFail(t, prod(), strings.Replace(cfg, `"tag": "wg-landing", "detour": "relay-pin-1"`, `"tag": "wg-landing", "detour": "ghost-relay"`, 1), "reference_missing")
+}

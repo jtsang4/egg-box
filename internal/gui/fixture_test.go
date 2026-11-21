@@ -543,7 +543,183 @@ func (f *fixtureBackend) planInfo(st routing.State) app.PlanInfo {
 			pin(plancompile.OwnerException, x.ID, x.Value, x.Dest)
 		}
 	}
+	info.RelayIssues = f.relayIssues(st)
 	return info
+}
+
+// relayIssues mirrors plancompile's relay resolution so offline/online GUI
+// tests see the same blocked and gone-relay banners as the real service.
+func (f *fixtureBackend) relayIssues(st routing.State) []app.RelayIssue {
+	eff := make([]routing.EffectiveRelay, len(f.nodes))
+	plain := make([]bool, len(f.nodes))
+	for i, n := range f.nodes {
+		eff[i] = routing.ResolveRelay(n.ID(), st, n.SubRelay, plancompile.ProviderRelay(n.SubID, n.Node.Relay))
+		plain[i] = !eff[i].Active()
+	}
+	livePlain := make([]routing.LiveNode, 0, len(f.nodes))
+	plainByRegion := map[string]int{}
+	for i, n := range f.nodes {
+		if !plain[i] {
+			continue
+		}
+		reg := app.RegionOf(st, n)
+		livePlain = append(livePlain, routing.LiveNode{Sub: n.SubID, Name: n.Node.Name, Hash: n.Node.Key(), Region: reg})
+		if reg != "" {
+			plainByRegion[strings.ToUpper(reg)]++
+		}
+	}
+	var out []app.RelayIssue
+	for i, n := range f.nodes {
+		if !eff[i].Active() {
+			continue
+		}
+		r := eff[i].Relay
+		switch r.Kind {
+		case routing.RelayAuto:
+			if len(livePlain) == 0 {
+				out = append(out, app.RelayIssue{Target: n.ID(), Kind: r.Kind, Blocked: true})
+			}
+		case routing.RelayRegion:
+			if plainByRegion[strings.ToUpper(r.Region)] == 0 {
+				out = append(out, app.RelayIssue{Target: n.ID(), Region: strings.ToUpper(r.Region), Kind: r.Kind, Blocked: true})
+			}
+		case routing.RelayNode:
+			if r.Node == nil {
+				out = append(out, app.RelayIssue{Target: n.ID(), Kind: r.Kind, Blocked: true})
+				continue
+			}
+			_, m := routing.Resolve(*r.Node, livePlain)
+			if m != routing.MatchNone {
+				continue
+			}
+			reg := strings.ToUpper(r.Node.Region)
+			if !r.NoFallback && reg != "" && plainByRegion[reg] > 0 {
+				out = append(out, app.RelayIssue{Target: n.ID(), Relay: *r.Node, Region: reg, Kind: r.Kind, Blocked: false})
+			} else {
+				out = append(out, app.RelayIssue{Target: n.ID(), Relay: *r.Node, Region: reg, Kind: r.Kind, Blocked: true})
+			}
+		}
+	}
+	return out
+}
+
+// fastestPlain picks the fastest answering plain direct node (all or in a
+// region), matching configgen's relay-auto / relay-region pools.
+func (f *fixtureBackend) fastestPlain(st routing.State, region string, plain []bool) (*app.NodeRef, int) {
+	var best *library.ActiveNode
+	bestDelay := 0
+	for i := range f.nodes {
+		if !plain[i] {
+			continue
+		}
+		n := f.nodes[i]
+		d := f.delayOf(n)
+		if d <= 0 {
+			continue
+		}
+		if region != "" && !strings.EqualFold(app.RegionOf(st, n), region) {
+			continue
+		}
+		if best == nil || d < bestDelay {
+			best, bestDelay = &f.nodes[i], d
+		}
+	}
+	if best == nil {
+		return nil, 0
+	}
+	ref := f.nodeRef(st, *best)
+	return &ref, bestDelay
+}
+
+// relays computes Snapshot.Relays for the fixture while connected.
+func (f *fixtureBackend) relays(st routing.State) map[string]app.RelayInfo {
+	eff := make([]routing.EffectiveRelay, len(f.nodes))
+	plain := make([]bool, len(f.nodes))
+	for i, n := range f.nodes {
+		eff[i] = routing.ResolveRelay(n.ID(), st, n.SubRelay, plancompile.ProviderRelay(n.SubID, n.Node.Relay))
+		plain[i] = !eff[i].Active()
+	}
+	livePlain := make([]routing.LiveNode, 0, len(f.nodes))
+	plainIdx := make([]int, 0, len(f.nodes))
+	for i, n := range f.nodes {
+		if !plain[i] {
+			continue
+		}
+		livePlain = append(livePlain, routing.LiveNode{Sub: n.SubID, Name: n.Node.Name, Hash: n.Node.Key(), Region: app.RegionOf(st, n)})
+		plainIdx = append(plainIdx, i)
+	}
+	out := map[string]app.RelayInfo{}
+	for i, n := range f.nodes {
+		if !eff[i].Active() {
+			continue
+		}
+		r := eff[i].Relay
+		ri := app.RelayInfo{Config: eff[i]}
+		switch r.Kind {
+		case routing.RelayAuto:
+			if len(livePlain) == 0 {
+				ri.Unavailable = true
+			} else {
+				ri.Tag = configgen.TagRelayAuto
+				ri.Node, ri.DelayMS = f.fastestPlain(st, "", plain)
+			}
+		case routing.RelayRegion:
+			reg := strings.ToUpper(r.Region)
+			hasAny := false
+			for _, ln := range livePlain {
+				if strings.EqualFold(ln.Region, reg) {
+					hasAny = true
+					break
+				}
+			}
+			if !hasAny {
+				ri.Unavailable = true
+			} else {
+				ri.Tag = configgen.RelayRegionPrefix + reg
+				ri.Node, ri.DelayMS = f.fastestPlain(st, reg, plain)
+			}
+		case routing.RelayNode:
+			if r.Node == nil {
+				ri.Unavailable = true
+				break
+			}
+			wanted := *r.Node
+			ri.Wanted = &wanted
+			idx, m := routing.Resolve(wanted, livePlain)
+			if m != routing.MatchNone {
+				pn := f.nodes[plainIdx[idx]]
+				if !f.down[pn.Node.Name] && f.delayOf(pn) >= 0 {
+					ref := f.nodeRef(st, pn)
+					ri.Node, ri.DelayMS = &ref, f.delayOf(pn)
+					break
+				}
+				// Pinned relay is down: stand in with same-region plain node if allowed.
+				if !r.NoFallback {
+					reg := app.RegionOf(st, pn)
+					if stand, d := f.fastestPlain(st, reg, plain); stand != nil && !wanted.Same(stand.ID) {
+						ri.Node, ri.DelayMS, ri.StandIn = stand, d, true
+						break
+					}
+				}
+				ref := f.nodeRef(st, pn)
+				ri.Node, ri.DelayMS = &ref, f.delayOf(pn)
+			} else {
+				reg := strings.ToUpper(wanted.Region)
+				if !r.NoFallback && reg != "" {
+					if stand, d := f.fastestPlain(st, reg, plain); stand != nil {
+						ri.Node, ri.DelayMS, ri.StandIn = stand, d, true
+						break
+					}
+				}
+				ri.Unavailable = true
+			}
+		}
+		out[n.Key()] = ri
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // groups builds the group tree of a running configuration.
@@ -605,8 +781,9 @@ func (f *fixtureBackend) derive(s *app.Snapshot) {
 	if s.Phase.Online() {
 		s.Exits = f.exits(st)
 		s.Groups = f.groups(st, s.Exits)
+		s.Relays = f.relays(st)
 	} else {
-		s.Exits, s.Groups = nil, nil
+		s.Exits, s.Groups, s.Relays = nil, nil, nil
 	}
 }
 
@@ -1060,13 +1237,29 @@ func (f *fixtureBackend) RefreshAll(ctx context.Context) (int, error) {
 func (f *fixtureBackend) EditSubscription(ctx context.Context, id string, fn func(*library.Subscription)) error {
 	f.record("edit %s", id)
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	for i := range f.subs {
 		if f.subs[i].ID == id {
 			fn(&f.subs[i])
+			sub := f.subs[i]
+			for j := range f.nodes {
+				if f.nodes[j].SubID == id {
+					f.nodes[j].SubName = sub.Name
+					f.nodes[j].SubAlias = sub.Alias
+					f.nodes[j].Auto = !sub.NoAuto
+					f.nodes[j].SubRelay = routing.CloneRelayPtr(sub.Relay)
+				}
+			}
 		}
 	}
 	f.ver++
+	cp := *f.snap
+	f.derive(&cp)
+	f.snap = &cp
+	n := f.notify
+	f.mu.Unlock()
+	if n != nil {
+		n()
+	}
 	return nil
 }
 func (f *fixtureBackend) RemoveSubscription(ctx context.Context, id string) error {

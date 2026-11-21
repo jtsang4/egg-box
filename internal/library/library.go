@@ -74,6 +74,9 @@ type Subscription struct {
 	// NoAuto keeps all of the subscription's nodes out of the automatic choice
 	// (the fastest-node groups); they can still be chosen by hand.
 	NoAuto bool `json:"noAuto,omitempty"`
+	// Relay is the default relay inherited by all nodes of this subscription
+	// unless a node overrides it individually. Nil means connect directly.
+	Relay *routing.Relay `json:"relay,omitempty"`
 	// Alias is a short name shown after a node's name when two nodes would
 	// otherwise look alike ("HK 01 · Aurora").
 	Alias string `json:"alias,omitempty"`
@@ -301,6 +304,7 @@ func (l *Library) find(id string) *Subscription {
 func clone(s *Subscription) Subscription {
 	c := *s
 	c.Notices = append([]string(nil), s.Notices...)
+	c.Relay = routing.CloneRelayPtr(s.Relay)
 	if s.Usage != nil {
 		u := *s.Usage
 		c.Usage = &u
@@ -476,8 +480,21 @@ func (l *Library) EditNode(id, key, link string) (subscription.Node, error) {
 			// A node is known by its import and its name (routing.NodeID): what
 			// was chosen for a node of the new name that is gone now applies
 			// to this one, as after a refresh that brings that name back.
-			l.data.Routing.RenameNode(id, was.Name, routing.NodeID{
-				Sub: id, Name: next.Name, Hash: next.Key(), Region: subscription.Region(next.Name)})
+			renamed := routing.NodeID{
+				Sub: id, Name: next.Name, Hash: next.Key(), Region: subscription.Region(next.Name)}
+			l.data.Routing.RenameNode(id, was.Name, renamed)
+			wasKey := (routing.NodeID{Sub: id, Name: was.Name}).Key()
+			for _, sub := range l.data.Subscriptions {
+				if sub.Relay != nil && sub.Relay.Kind == routing.RelayNode && sub.Relay.Node != nil && sub.Relay.Node.Key() == wasKey {
+					n := renamed
+					if pref := l.data.Routing.NodePref(renamed); pref.Region != "" {
+						n.Region = pref.Region
+					}
+					r := sub.Relay.Clone()
+					r.Node = &n
+					sub.Relay = &r
+				}
+			}
 		}
 		return nil
 	})
@@ -505,6 +522,18 @@ func (l *Library) Edit(id string, fn func(*Subscription)) error {
 		if edited.IntervalHours < 0 || edited.IntervalHours > 24*90 {
 			return errors.New("the refresh interval is out of range")
 		}
+		relay := routing.NormalizeRelayPtr(edited.Relay)
+		if relay != nil && !relay.Active() {
+			relay = nil
+		}
+		if relay != nil {
+			if err := relay.Valid(false); err != nil {
+				return err
+			}
+			if relay.Kind == routing.RelayNode && relay.Node != nil && relay.Node.Sub == id {
+				return errors.New("a subscription cannot relay through one of its own nodes")
+			}
+		}
 		s.Name = strings.TrimSpace(edited.Name)
 		if s.Name == "" {
 			s.Name = s.Host
@@ -514,6 +543,7 @@ func (l *Library) Edit(id string, fn func(*Subscription)) error {
 		}
 		s.Enabled, s.IntervalHours = edited.Enabled, edited.IntervalHours
 		s.NoAuto = edited.NoAuto
+		s.Relay = relay
 		s.Alias = cleanAlias(edited.Alias)
 		s.UserAgent = strings.TrimSpace(edited.UserAgent)
 		s.Include, s.Exclude = edited.Include, edited.Exclude
@@ -666,6 +696,8 @@ type ActiveNode struct {
 	SubAlias string
 	// Auto is false when the subscription is kept out of the automatic choice.
 	Auto bool
+	// SubRelay is the default relay configured on the node's subscription.
+	SubRelay *routing.Relay
 	// Imported is set for a node of an import, which can be edited.
 	Imported bool
 }
@@ -702,7 +734,7 @@ func (l *Library) ActiveNodes() ([]ActiveNode, error) {
 				continue
 			}
 			seen[n.Key()] = true
-			out = append(out, ActiveNode{Node: n, SubID: s.ID, SubName: s.Name, SubAlias: s.Alias, Auto: !s.NoAuto, Imported: s.Kind == KindLocal})
+			out = append(out, ActiveNode{Node: n, SubID: s.ID, SubName: s.Name, SubAlias: s.Alias, Auto: !s.NoAuto, SubRelay: routing.CloneRelayPtr(s.Relay), Imported: s.Kind == KindLocal})
 		}
 	}
 	return out, nil
@@ -772,6 +804,61 @@ func (l *Library) UpdateRouting(fn func(*routing.State) error) error {
 		return nil
 	})
 }
+
+// RefreshSubRelays updates pinned node identities stored in subscription
+// default relays when a provider renames a node or its region changes.
+func (l *Library) RefreshSubRelays(live []routing.LiveNode) bool {
+	l.mu.RLock()
+	need := false
+	for _, s := range l.data.Subscriptions {
+		if s.Relay == nil || s.Relay.Kind != routing.RelayNode || s.Relay.Node == nil {
+			continue
+		}
+		if i, how := routing.Resolve(*s.Relay.Node, live); how != routing.MatchNone {
+			n := live[i].ID()
+			if how == routing.MatchSettings {
+				n.Sub, n.Name = s.Relay.Node.Sub, s.Relay.Node.Name
+			}
+			if *s.Relay.Node != n {
+				need = true
+				break
+			}
+		}
+	}
+	l.mu.RUnlock()
+	if !need {
+		return false
+	}
+	changed := false
+	_ = l.mutate(func() error {
+		for _, s := range l.data.Subscriptions {
+			if s.Relay == nil || s.Relay.Kind != routing.RelayNode || s.Relay.Node == nil {
+				continue
+			}
+			i, how := routing.Resolve(*s.Relay.Node, live)
+			if how == routing.MatchNone {
+				continue
+			}
+			n := live[i].ID()
+			if how == routing.MatchSettings {
+				n.Sub, n.Name = s.Relay.Node.Sub, s.Relay.Node.Name
+			}
+			if *s.Relay.Node != n {
+				r := s.Relay.Clone()
+				r.Node = &n
+				s.Relay = &r
+				changed = true
+			}
+		}
+		if !changed {
+			return errSkipSave
+		}
+		return nil
+	})
+	return changed
+}
+
+var errSkipSave = errors.New("no change")
 
 // Settings returns the application settings.
 func (l *Library) Settings() Settings {

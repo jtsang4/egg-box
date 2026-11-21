@@ -79,8 +79,11 @@ func TestShadowTLS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Nodes) != 1 || res.Nodes[0].Name != "sb-st" || res.Nodes[0].Server != "s.example.com" || res.Nodes[0].Port != 443 {
+	if len(res.Nodes) != 2 || res.Nodes[0].Name != "sb-st" || res.Nodes[0].Server != "s.example.com" || res.Nodes[0].Port != 443 {
 		t.Fatalf("nodes %+v", res.Nodes)
+	}
+	if res.Nodes[1].Name != "chained" || res.Nodes[1].Relay == nil || res.Nodes[1].Relay.Kind != RelayNode || res.Nodes[1].Relay.Node != "sb-st" {
+		t.Fatalf("chained = %+v", res.Nodes[1])
 	}
 	eq(t, res.Nodes[0], "server", "s.example.com")
 	if _, ok := res.Nodes[0].Config["detour"]; ok {
@@ -93,7 +96,7 @@ func TestShadowTLS(t *testing.T) {
 	for _, s := range res.Skipped {
 		skipped[s.Name] = s.Code
 	}
-	if len(skipped) != 2 || skipped["lonely"] != SkipUnsupportedProtocol || skipped["chained"] != SkipUnsupportedFeature {
+	if len(skipped) != 1 || skipped["lonely"] != SkipUnsupportedProtocol {
 		t.Fatalf("skipped %+v", res.Skipped)
 	}
 

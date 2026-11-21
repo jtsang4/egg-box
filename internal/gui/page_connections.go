@@ -124,10 +124,15 @@ func (a *App) visibleConns() []app.Conn {
 }
 
 // matchConn says whether a search finds a connection: in where it goes, the
-// program, what decided its route and the node it leaves through.
+// program, what decided its route, the node it leaves through, or that node's
+// relay.
 func (a *App) matchConn(cn app.Conn, q string) bool {
-	for _, s := range []string{cn.Host, cn.Destination, cn.Process, a.whyLabel(cn.Why), a.exitLabel(cn), cn.Protocol, cn.Network, cn.Source} {
-		if strings.Contains(strings.ToLower(s), q) {
+	fields := []string{cn.Host, cn.Destination, cn.Process, a.whyLabel(cn.Why), a.exitLabel(cn), cn.Protocol, cn.Network, cn.Source}
+	if rl, tip, _ := a.connRelay(cn); rl != "" {
+		fields = append(fields, rl, tip)
+	}
+	for _, s := range fields {
+		if s != "" && strings.Contains(strings.ToLower(s), q) {
 			return true
 		}
 	}
@@ -206,8 +211,25 @@ func (a *App) connRow(c *ui.Context, cn app.Conn) {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					a.outboundChip(c, cn)
 				})
-				if why := a.whyLabel(cn.Why); why != "" {
-					a.txt(c, why, 11.5, 400, p.Text3).SingleLine().Tooltip(a.whyText(cn.Why))
+				why := a.whyLabel(cn.Why)
+				rl, tip, warn := a.connRelay(cn)
+				if rl != "" || why != "" {
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+						if why != "" {
+							a.txt(c, why, 11.5, 400, p.Text3).SingleLine().Tooltip(a.whyText(cn.Why)).Shrink(0)
+						}
+						if rl != "" {
+							col := boolOr(warn, p.Warn, p.Text3)
+							r := ui.Row(c).Gap(3).AlignItems(ui.Center).Shrink(1)
+							if tip != "" {
+								r.Tooltip(tip)
+							}
+							r.Children(func() {
+								ui.Icon(c, icon(boolOr(warn, "alert", "relay"))).Size(11, 11).TextColor(col).Shrink(0)
+								a.txt(c, rl, 11.5, boolOr(warn, 600, 450), col).SingleLine()
+							})
+						}
+					})
 				}
 			})
 			connCell(c, 2).Justify(ui.Center).Children(func() {
@@ -283,6 +305,17 @@ func (a *App) phoneConnRow(c *ui.Context, cn app.Conn) {
 						a.txt(c, why, 11.5, 400, p.Text3).SingleLine().Shrink(1)
 					}
 				})
+				if rl, tip, warn := a.connRelay(cn); rl != "" {
+					col := boolOr(warn, p.Warn, p.Text3)
+					r := ui.Row(c).Gap(3).AlignItems(ui.Center)
+					if tip != "" {
+						r.Tooltip(tip)
+					}
+					r.Children(func() {
+						ui.Icon(c, icon(boolOr(warn, "alert", "relay"))).Size(11, 11).TextColor(col).Shrink(0)
+						a.txt(c, rl, 11.5, boolOr(warn, 600, 450), col).SingleLine()
+					})
+				}
 				end := a.now
 				if !open {
 					end = cn.Closed
@@ -382,6 +415,41 @@ func (a *App) nodeByTag(tag string) (nodeEntry, bool) {
 		return nodes[i], true
 	}
 	return nodeEntry{}, false
+}
+
+// connRelay describes the first-hop relay of a connection's exit node, or ""
+// when the connection leaves directly or through a plain node.
+func (a *App) connRelay(cn app.Conn) (label, tip string, warn bool) {
+	out := exitName(cn)
+	switch strings.ToLower(out) {
+	case "", "direct", "block", "reject":
+		return "", "", false
+	}
+	n, ok := a.nodeByTag(out)
+	if !ok || !n.Relay.Active() {
+		return "", "", false
+	}
+	if ri, ok := a.snap.Relays[n.Key]; ok {
+		if ri.Unavailable {
+			return a.t("relay.unavailable"), a.t("relay.unavailable.tip"), true
+		}
+		if ri.Node != nil {
+			tip = a.t("relay.chain", "relay", ri.Node.Label(), "node", n.Label())
+			if ri.StandIn && ri.Wanted != nil {
+				want := ri.Wanted.Name
+				if wn, m := a.nodeFor(*ri.Wanted); m != routing.MatchNone {
+					want = wn.Label()
+				}
+				tip = a.t("relay.chain.stand_in", "relay", ri.Node.Label(), "node", n.Label(), "want", want)
+			}
+			return a.t("relay.via", "relay", truncate(ri.Node.Label(), 18)), tip, ri.StandIn
+		}
+	}
+	if a.isRelayUnavailable(n) {
+		return a.t("relay.unavailable"), a.t("relay.unavailable.tip"), true
+	}
+	short := a.relayShortLabel(n.Relay.Relay)
+	return a.t("relay.via", "relay", truncate(short, 18)), a.t("relay.chain", "relay", short, "node", n.Label()), false
 }
 
 // outboundChip names where a connection leaves.

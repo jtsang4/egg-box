@@ -199,7 +199,11 @@ func (a *App) heroSubline(c *ui.Context) {
 	switch ph {
 	case app.PhaseConnected, app.PhaseReconnecting:
 		ex, ok := a.mainExitNow()
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
+		row := ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap()
+		if a.compact() {
+			row.Justify(ui.Center)
+		}
+		row.Children(func() {
 			if ok {
 				a.regionBadge(c, ex.Node.Region, 22)
 				a.txt(c, ex.Node.Label(), 15, 600, p.Text).SingleLine()
@@ -210,6 +214,7 @@ func (a *App) heroSubline(c *ui.Context) {
 				if ex.StandIn {
 					a.chip(c, a.t("hero.stand_in"), toneWarn, "alert").Tooltip(a.t("hero.stand_in.tip"))
 				}
+				a.relayChip(c, ex.Node.Key, ex.Node.Label())
 			} else {
 				a.txt(c, a.t("hero.sub.noexit"), 14, 400, p.Text2)
 			}
@@ -438,7 +443,7 @@ func (a *App) exitCard(c *ui.Context) {
 		ex, ok := a.mainExitNow()
 		switch {
 		case ok && a.snap.Phase.Online():
-			a.exitRow(c, ex.Node.Region, ex.Node.Label(), ex.Node.Protocol+"  ·  "+ex.Node.Transport, ex.DelayMS, ex.Via)
+			a.exitRow(c, ex.Node.Key, ex.Node.Region, ex.Node.Label(), ex.Node.Protocol+"  ·  "+ex.Node.Transport, ex.DelayMS, ex.Via)
 			if ex.StandIn && ex.Wanted != nil {
 				want := ex.Wanted.Name
 				if n, m := a.nodeFor(*ex.Wanted); m != routing.MatchNone {
@@ -474,7 +479,7 @@ func (a *App) offlineExit(c *ui.Context) {
 	case routing.DestNode:
 		if main.Node != nil {
 			if n, m := a.nodeFor(*main.Node); m != routing.MatchNone {
-				a.exitRow(c, n.Region, n.Label(), n.Protocol+"  ·  "+n.Transport, n.Delay, "")
+				a.exitRow(c, n.Key, n.Region, n.Label(), n.Protocol+"  ·  "+n.Transport, n.Delay, "")
 				return
 			}
 			ui.Row(c).Gap(14).AlignItems(ui.Center).Children(func() {
@@ -505,16 +510,19 @@ func (a *App) offlineExit(c *ui.Context) {
 	})
 }
 
-func (a *App) exitRow(c *ui.Context, region, name, sub string, delay int, via string) {
+func (a *App) exitRow(c *ui.Context, nodeKey, region, name, sub string, delay int, via string) {
 	p := a.pl
 	ui.Row(c).Gap(14).AlignItems(ui.Center).Children(func() {
 		a.regionBadge(c, region, 46)
 		ui.Column(c).Grow(1).Gap(4).Children(func() {
 			a.txt(c, name, 15.5, 650, p.Text).SingleLine()
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
 				a.caption(c, sub)
 				if via != "" {
 					a.chip(c, a.viaLabel(via), toneNeutral, "zap")
+				}
+				if nodeKey != "" {
+					a.relayChip(c, nodeKey, name)
 				}
 			})
 		})

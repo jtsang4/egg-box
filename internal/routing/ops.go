@@ -288,6 +288,15 @@ func (s *State) RenameNode(sub, oldName string, next NodeID) bool {
 		pref.Hash = next.Hash
 		s.Nodes[next.Key()], changed = pref, true
 	}
+	for k, p := range s.Nodes {
+		if p.Relay != nil && p.Relay.Kind == RelayNode && p.Relay.Node != nil && p.Relay.Node.Key() == was.Key() {
+			n := next
+			r := p.Relay.Clone()
+			r.Node = &n
+			p.Relay = &r
+			s.Nodes[k], changed = p, true
+		}
+	}
 	return changed
 }
 
@@ -340,6 +349,20 @@ func (s *State) RefreshIdentities(live []LiveNode) bool {
 					changed = true
 				}
 			}
+			if pref.Relay != nil && pref.Relay.Kind == RelayNode && pref.Relay.Node != nil {
+				if j, rhow := Resolve(*pref.Relay.Node, live); rhow != MatchNone {
+					rn := live[j].ID()
+					if rhow == MatchSettings {
+						rn.Sub, rn.Name = pref.Relay.Node.Sub, pref.Relay.Node.Name
+					}
+					if *pref.Relay.Node != rn {
+						r := pref.Relay.Clone()
+						r.Node = &rn
+						pref.Relay = &r
+						changed = true
+					}
+				}
+			}
 			next[key] = pref
 		}
 		s.Nodes = next
@@ -348,7 +371,11 @@ func (s *State) RefreshIdentities(live []LiveNode) bool {
 }
 
 // NodePref returns the choices made about a node.
-func (s State) NodePref(id NodeID) NodePref { return s.Nodes[id.Key()] }
+func (s State) NodePref(id NodeID) NodePref {
+	p := s.Nodes[id.Key()]
+	p.Relay = CloneRelayPtr(p.Relay)
+	return p
+}
 
 func (s *State) editNode(id NodeID, fn func(*NodePref)) {
 	if s.Nodes == nil {
@@ -359,7 +386,7 @@ func (s *State) editNode(id NodeID, fn func(*NodePref)) {
 		p.Hash = id.Hash
 	}
 	fn(&p)
-	if p.Region == "" && !p.NoAuto {
+	if p.Region == "" && !p.NoAuto && p.Relay == nil {
 		delete(s.Nodes, id.Key())
 		return
 	}
@@ -374,4 +401,21 @@ func (s *State) SetNodeRegion(id NodeID, region string) {
 // SetNodeAuto includes a node in the automatic groups or leaves it out.
 func (s *State) SetNodeAuto(id NodeID, auto bool) {
 	s.editNode(id, func(p *NodePref) { p.NoAuto = !auto })
+}
+
+// SetNodeRelay sets how a node connects to its server. Passing nil or an
+// inherit relay removes the override so the node follows its subscription
+// default or provider-declared relay.
+func (s *State) SetNodeRelay(id NodeID, r *Relay) error {
+	norm := NormalizeRelayPtr(r)
+	if norm != nil {
+		if err := norm.Valid(false); err != nil {
+			return err
+		}
+		if norm.Kind == RelayNode && norm.Node != nil && norm.Node.Same(id) {
+			return errors.New("a node cannot relay through itself")
+		}
+	}
+	s.editNode(id, func(p *NodePref) { p.Relay = norm })
+	return nil
 }

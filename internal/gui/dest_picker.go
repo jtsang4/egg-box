@@ -225,6 +225,13 @@ func (d *nodeDialog) nodeButton(a *App, c *ui.Context, n nodeEntry, current bool
 			if n.Region != "" {
 				sub = a.regionName(n.Region) + " · " + sub
 			}
+			if n.Relay.Active() {
+				if a.isRelayUnavailable(n) {
+					sub += " · " + a.t("relay.unavailable")
+				} else {
+					sub += " · " + a.t("relay.via", "relay", a.relayShortLabel(n.Relay.Relay))
+				}
+			}
 			a.txt(c, sub, 11.5, 400, p.Text3).SingleLine()
 		})
 		switch {

@@ -31,7 +31,10 @@ agentd (Windows Service / macOS LaunchDaemon)  ──▶  embedded sing-box core
   region, or one node. Latency is the round trip of a request on a connection already open through the node (what mihomo
   calls "unified delay"), so it compares with other clients; the handshakes of a new connection are not counted. A node
   is known by its subscription and its name, so a provider rotating a password does not lose the choice; when a node
-  chosen by hand is down or gone, the fastest node of its region stands in and the screen says so.
+  chosen by hand is down or gone, the fastest node of its region stands in and the screen says so. Any node or
+  subscription can also dial through a two-hop relay (a specific direct node, the fastest direct node in a region, or
+  the fastest direct node overall, as well as provider-declared two-hop chains); an unavailable relay fails closed
+  rather than falling back to direct.
 - **Routing.** Rule, Global and Direct modes. In Rule mode a *plan* decides: an ordered list of items ("AI services",
   "Streaming", "China sites", ...), each with a destination (the main exit, the fastest node of a region, one node, direct
   or blocked), a switch and one or more rule sources. EggBox ships a recommended plan; a subscription that comes with its

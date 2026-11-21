@@ -108,6 +108,8 @@ func parse(data []byte, depth int) (*Result, error) {
 	for i := 0; i < dropped; i++ {
 		res.Skipped = append(res.Skipped, Skipped{Code: SkipDuplicate})
 	}
+	kept, relayDropped := reconcileRelays(kept)
+	res.Skipped = append(res.Skipped, relayDropped...)
 	res.Nodes = kept
 	if len(kept) == 0 {
 		return res, ErrNoNodes

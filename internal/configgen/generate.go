@@ -64,13 +64,21 @@ const (
 //     up; resolving on this side leaves those names alone.
 func Generate(in Input) (*Output, error) {
 	g := &generator{
-		in:        in,
-		tagByKey:  map[string]string{},
-		regionTag: map[string]string{},
-		nodeGroup: map[string]string{},
-		resources: map[string]bool{},
+		in:               in,
+		tagByKey:         map[string]string{},
+		regionTag:        map[string]string{},
+		nodeGroup:        map[string]string{},
+		plainTagByKey:    map[string]string{},
+		plainByRegion:    map[string][]string{},
+		plainRegionTag:   map[string]string{},
+		plainNodeGroup:   map[string]string{},
+		needRelayRegions: map[string]bool{},
+		relayPinTag:      map[string]string{},
+		nodeRelayTag:     map[string]string{},
+		resources:        map[string]bool{},
 		out: &Output{
 			Tags:       map[string]string{},
+			Relays:     map[string]string{},
 			Selectors:  map[string]string{},
 			Selections: map[string]string{},
 			Owners:     map[string]Owner{},
@@ -95,6 +103,21 @@ type generator struct {
 	regionTag  map[string]string // region code -> group tag
 	regionTags []string          // the region groups, sorted by code
 	nodeGroup  map[string]string // node tag -> region group that contains it
+
+	// Plain direct nodes and the relay groups built over them (level 0 & 1 of
+	// the outbound DAG, never containing relayed nodes).
+	plainNodes       []placedNode
+	plainEligible    []placedNode
+	plainTagByKey    map[string]string
+	plainByRegion    map[string][]string
+	plainRegionTag   map[string]string
+	plainNodeGroup   map[string]string
+	needRelayAuto    bool
+	needRelayBlocked bool
+	needRelayRegions map[string]bool
+	relayPins        []any
+	relayPinTag      map[string]string
+	nodeRelayTag     map[string]string
 
 	resources   map[string]bool
 	resBytes    int
@@ -141,12 +164,23 @@ func (g *generator) generate() (*Output, error) {
 		if !p.node.NoAuto {
 			g.eligible = append(g.eligible, p)
 		}
+		if p.node.Relay.Kind == RelayNone {
+			g.plainNodes = append(g.plainNodes, p)
+			g.plainTagByKey[p.node.Key()] = p.tag
+			if !p.node.NoAuto {
+				g.plainEligible = append(g.plainEligible, p)
+			}
+		}
 	}
 	if len(g.eligible) == 0 {
 		g.eligible = g.nodes
 		g.warn(WarnAutoEmpty, "")
 	}
+	if len(g.plainEligible) == 0 && len(g.plainNodes) > 0 {
+		g.plainEligible = g.plainNodes
+	}
 	g.groupByRegion()
+	g.prepareRelays()
 
 	items := g.admit()
 
@@ -157,6 +191,29 @@ func (g *generator) generate() (*Output, error) {
 	add := func(o any) {
 		outbounds = append(outbounds, o)
 		layout.Outbounds = append(layout.Outbounds, "")
+	}
+	if g.needRelayBlocked {
+		add(map[string]any{"type": "block", "tag": TagRelayBlocked})
+	}
+	if g.needRelayAuto {
+		plainTags := make([]string, len(g.plainEligible))
+		for i, p := range g.plainEligible {
+			plainTags[i] = p.tag
+		}
+		add(g.urltest(TagRelayAuto, plainTags))
+	}
+	if len(g.needRelayRegions) > 0 {
+		codes := make([]string, 0, len(g.needRelayRegions))
+		for code := range g.needRelayRegions {
+			codes = append(codes, code)
+		}
+		sort.Strings(codes)
+		for _, code := range codes {
+			add(g.urltest(g.plainRegionTag[code], g.plainByRegion[code]))
+		}
+	}
+	for _, rp := range g.relayPins {
+		add(rp)
 	}
 
 	nodeTags := make([]string, len(g.nodes))
@@ -362,7 +419,13 @@ func (g *generator) generate() (*Output, error) {
 	for _, p := range g.nodes {
 		cfg := cloneConfig(p.node.Config)
 		cfg["tag"] = p.tag
+		relayDetour := g.nodeRelayTag[p.node.Key()]
 		if p.node.Endpoint {
+			if relayDetour != "" {
+				cfg["detour"] = relayDetour
+				// sing-box forbids listen_port together with detour on WireGuard endpoints.
+				delete(cfg, "listen_port")
+			}
 			endpoints = append(endpoints, cfg)
 			layout.Endpoints = append(layout.Endpoints, p.node.Key())
 			continue
@@ -370,10 +433,15 @@ func (g *generator) generate() (*Output, error) {
 		if p.node.Detour != nil {
 			via := cloneConfig(p.node.Detour)
 			via["tag"] = DetourPrefix + p.tag
+			if relayDetour != "" {
+				via["detour"] = relayDetour
+			}
 			cfg["detour"] = via["tag"]
 			// Both outbounds belong to the node: an issue with either drops it.
 			outbounds = append(outbounds, via)
 			layout.Outbounds = append(layout.Outbounds, p.node.Key())
+		} else if relayDetour != "" {
+			cfg["detour"] = relayDetour
 		}
 		outbounds = append(outbounds, cfg)
 		layout.Outbounds = append(layout.Outbounds, p.node.Key())
@@ -494,6 +562,97 @@ func (g *generator) groupByRegion() {
 			g.nodeGroup[nodeTag] = tag
 		}
 	}
+}
+
+// prepareRelays builds the plain-direct region index and resolves the detour
+// outbound tag of every relayed node. Relay groups are only marked to be
+// emitted when at least one relayed node actually uses them.
+func (g *generator) prepareRelays() {
+	for _, p := range g.plainEligible {
+		if code := regionCode(p.node.Region); code != "" {
+			g.plainByRegion[code] = append(g.plainByRegion[code], p.tag)
+		}
+	}
+	for code, tags := range g.plainByRegion {
+		grpTag := RelayRegionPrefix + code
+		g.plainRegionTag[code] = grpTag
+		for _, nodeTag := range tags {
+			g.plainNodeGroup[nodeTag] = grpTag
+		}
+	}
+	for _, p := range g.nodes {
+		r := p.node.Relay
+		if r.Kind == RelayNone {
+			continue
+		}
+		var detour string
+		switch r.Kind {
+		case RelayAuto:
+			if len(g.plainEligible) > 0 {
+				g.needRelayAuto = true
+				detour = TagRelayAuto
+			} else {
+				g.needRelayBlocked = true
+				detour = TagRelayBlocked
+				g.warn(WarnRelayUnavailable, p.node.Name)
+			}
+		case RelayRegion:
+			code := regionCode(r.Region)
+			if grp, ok := g.plainRegionTag[code]; ok {
+				g.needRelayRegions[code] = true
+				detour = grp
+			} else {
+				g.needRelayBlocked = true
+				detour = TagRelayBlocked
+				g.warn(WarnRelayUnavailable, p.node.Name)
+			}
+		case RelayNode:
+			if targetTag, ok := g.plainTagByKey[r.Node]; ok {
+				detour = g.relayNodeTarget(targetTag, r.NoStandIn)
+			} else {
+				g.needRelayBlocked = true
+				detour = TagRelayBlocked
+				g.warn(WarnRelayUnavailable, p.node.Name)
+			}
+		case RelayBlocked:
+			g.needRelayBlocked = true
+			detour = TagRelayBlocked
+		default:
+			g.needRelayBlocked = true
+			detour = TagRelayBlocked
+			g.warn(WarnRelayUnavailable, p.node.Name)
+		}
+		g.nodeRelayTag[p.node.Key()] = detour
+		g.out.Relays[p.node.Key()] = detour
+	}
+}
+
+// relayNodeTarget returns the detour tag for a pinned plain relay node: either
+// the node itself, or a shared preferred group backed by its plain region
+// group when stand-in is enabled and another plain node exists in that region.
+func (g *generator) relayNodeTarget(targetTag string, noStandIn bool) string {
+	if noStandIn {
+		return targetTag
+	}
+	grp, has := g.plainNodeGroup[targetTag]
+	if !has {
+		return targetTag
+	}
+	code := strings.TrimPrefix(grp, RelayRegionPrefix)
+	if len(g.plainByRegion[code]) < 2 {
+		return targetTag
+	}
+	if pin, done := g.relayPinTag[targetTag]; done {
+		return pin
+	}
+	g.needRelayRegions[code] = true
+	pin := RelayPinPrefix + strconv.Itoa(len(g.relayPins)+1)
+	g.relayPinTag[targetTag] = pin
+	g.relayPins = append(g.relayPins, map[string]any{
+		"type": "preferred", "tag": pin, "outbounds": []any{targetTag}, "default": targetTag,
+		"stand_ins": []any{grp}, "url": g.prefs.TestURL, "interval": standInInterval,
+	})
+	return pin
 }
 
 func (g *generator) regionCodes() []string {
@@ -905,8 +1064,9 @@ func safeID(id string) string {
 func placeNodes(in []Node, out *Output) []placedNode {
 	reserved := map[string]bool{
 		TagProxy: true, TagAuto: true, TagDirect: true, TagTun: true, tagReject: true, tagMixed: true,
+		TagRelayAuto: true, TagRelayBlocked: true,
 	}
-	prefixes := []string{RegionPrefix, SelectorPrefix, PinPrefix, DetourPrefix, "dns-"}
+	prefixes := []string{RegionPrefix, SelectorPrefix, PinPrefix, DetourPrefix, RelayRegionPrefix, RelayPinPrefix, "dns-"}
 	used := map[string]bool{}
 	var nodes []placedNode
 	for _, n := range in {

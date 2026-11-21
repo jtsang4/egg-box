@@ -9,6 +9,7 @@ import (
 	"eggbox/internal/app"
 	"eggbox/internal/configgen"
 	"eggbox/internal/library"
+	"eggbox/internal/plancompile"
 	"eggbox/internal/routing"
 )
 
@@ -46,11 +47,20 @@ type nodeEntry struct {
 	NoAuto bool
 	// Corrected is set when the person set the region by hand.
 	Corrected bool
+	// Relay is the effective first-hop relay for this node and where it came
+	// from; SubRelay and ProviderRelay are the inherited choices behind it.
+	Relay         routing.EffectiveRelay
+	SubRelay      *routing.Relay
+	ProviderRelay *routing.Relay
+	// NeedsUDP is set for protocols whose transport is UDP (Hysteria, TUIC,
+	// WireGuard), so the relay picker can note UDP forwarding requirements.
+	NeedsUDP bool
 
 	// Live data; zero while disconnected.
-	Tag    string
-	Delay  int // ms; 0 unknown, -1 failed
-	Tested time.Time
+	Tag       string
+	Delay     int // ms; 0 unknown, -1 failed
+	Tested    time.Time
+	RelayLive *app.RelayInfo
 }
 
 // Label is the node's name, with its subscription when the name alone would
@@ -127,14 +137,20 @@ func (a *App) refreshNodes() {
 		id := n.ID()
 		pref := st.NodePref(id)
 		region := app.RegionOf(*st, n)
+		prov := plancompile.ProviderRelay(n.SubID, n.Node.Relay)
+		eff := routing.ResolveRelay(id, *st, n.SubRelay, prov)
 		out = append(out, nodeEntry{
 			Key: n.Key(), ID: id, Name: n.Node.Name, Protocol: n.Node.Protocol(), Transport: n.Node.Transport(),
 			Region: region, Server: n.Node.Server, Port: n.Node.Port,
 			SubID: n.SubID, SubName: n.SubName, SubAlias: n.SubAlias,
-			Ambiguous: len(names[n.Node.Name]) > 1,
-			NoAuto:    pref.NoAuto || !n.Auto,
-			Corrected: pref.Region != "",
-			Imported:  n.Imported,
+			Ambiguous:     len(names[n.Node.Name]) > 1,
+			NoAuto:        pref.NoAuto || !n.Auto,
+			Corrected:     pref.Region != "",
+			Imported:      n.Imported,
+			Relay:         eff,
+			SubRelay:      routing.CloneRelayPtr(n.SubRelay),
+			ProviderRelay: prov,
+			NeedsUDP:      n.Node.NeedsUDP(),
 		})
 		live = append(live, routing.LiveNode{Sub: n.SubID, Name: n.Node.Name, Hash: n.Node.Key(), Region: region})
 	}
@@ -164,6 +180,10 @@ func (a *App) liveNodes() []nodeEntry {
 	for i := range out {
 		if it, ok := delays[out[i].Key]; ok {
 			out[i].Tag, out[i].Delay, out[i].Tested = it.Tag, it.DelayMS, it.Tested
+		}
+		if ri, ok := a.snap.Relays[out[i].Key]; ok {
+			cp := ri
+			out[i].RelayLive = &cp
 		}
 	}
 	a.withLive, a.withLiveSnap, a.withLiveVer = out, a.snap, a.nodesVer

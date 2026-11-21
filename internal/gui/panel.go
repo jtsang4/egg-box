@@ -123,7 +123,7 @@ func (a *App) panelHero(c *ui.Context) {
 			a.eyebrowDot(c, eyebrow, t, ph == app.PhaseConnected)
 			if ex, ok := a.mainExitNow(); ok {
 				a.panelTitle(c, ex.Node.Label())
-				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).Gap(6).Wrap().Justify(ui.Center).AlignItems(ui.Center).Children(func() {
 					a.chip(c, ex.Node.Protocol, toneBlue, "")
 					if ex.Via != "" {
 						a.chip(c, a.viaLabel(ex.Via), toneNeutral, "zap")
@@ -131,6 +131,7 @@ func (a *App) panelHero(c *ui.Context) {
 					if ex.StandIn {
 						a.chip(c, a.t("hero.stand_in"), toneWarn, "alert").Tooltip(a.t("hero.stand_in.tip"))
 					}
+					a.relayChip(c, ex.Node.Key, ex.Node.Label())
 				})
 			} else {
 				a.panelTitle(c, label)

@@ -42,6 +42,18 @@ const (
 	// DetourPrefix starts the tag of the outbound a node goes through (the
 	// ShadowTLS under a Shadowsocks node); the rest is the node's tag.
 	DetourPrefix = "via-"
+	// TagRelayAuto is the fastest-node group of plain direct nodes, used as
+	// the first hop when a relayed node chooses "automatic".
+	TagRelayAuto = "relay-auto"
+	// TagRelayBlocked is a block outbound used as the detour of a relayed node
+	// whose relay is unavailable, so traffic never falls back to direct.
+	TagRelayBlocked = "relay-blocked"
+	// RelayRegionPrefix starts the tag of a per-region fastest-node group over
+	// plain direct nodes only.
+	RelayRegionPrefix = "relay-region-"
+	// RelayPinPrefix starts the tag of the preferred group that gives a pinned
+	// plain relay node its same-region plain stand-in.
+	RelayPinPrefix = "relay-pin-"
 	// FallbackID is the item identifier of the fallback.
 	FallbackID = "fallback"
 )

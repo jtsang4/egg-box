@@ -316,6 +316,7 @@ func (s *Service) onGroups(g *agentapi.Groups) {
 		s.rawGroups = g
 		sn.Groups = s.mapGroupsLocked(g)
 		sn.Exits = s.exitsLocked(sn.Groups)
+		sn.Relays = s.relaysLocked(sn.Groups)
 	})
 }
 

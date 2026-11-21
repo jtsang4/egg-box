@@ -221,6 +221,9 @@ func (a *App) subLine(s library.Subscription) string {
 	if s.SkippedCount > 0 {
 		parts = append(parts, a.tn("subs.skipped", s.SkippedCount))
 	}
+	if s.Relay != nil && s.Relay.Active() {
+		parts = append(parts, a.t("subs.relay", "relay", a.relayShortLabel(*s.Relay)))
+	}
 	out := ""
 	for i, p := range parts {
 		if i > 0 {

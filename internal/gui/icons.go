@@ -46,6 +46,7 @@ var iconData = map[string]string{
 	"arrow-up":       `<path d="M12 19.5v-15"/><path d="m5.5 11 6.5-6.5 6.5 6.5"/>`,
 	"arrow-down":     `<path d="M12 4.5v15"/><path d="m5.5 13 6.5 6.5 6.5-6.5"/>`,
 	"arrow-right":    `<path d="M4.5 12h15"/><path d="m13 5.5 6.5 6.5-6.5 6.5"/>`,
+	"relay":          `<path d="M5 5v6a4 4 0 0 0 4 4h10.5"/><path d="m15 10.5 4.5 4.5-4.5 4.5"/>`,
 	"clock":          `<circle cx="12" cy="12" r="9"/><path d="M12 6.8V12l3.4 2"/>`,
 	"download":       `<path d="M20.5 15v3.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V15"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M12 15V3.5"/>`,
 	"upload":         `<path d="M20.5 15v3.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V15"/><path d="m16.5 8-4.5-4.5L7.5 8"/><path d="M12 3.5V15"/>`,

@@ -199,7 +199,7 @@ func TestSingBoxProfile(t *testing.T) {
 	for _, n := range res.Nodes {
 		byName[n.Name] = n
 	}
-	if len(res.Nodes) != 4 {
+	if len(res.Nodes) != 5 {
 		t.Fatalf("nodes = %v", names(res.Nodes))
 	}
 	a := byName["a"]
@@ -216,6 +216,12 @@ func TestSingBoxProfile(t *testing.T) {
 	if _, ok := byName["b"].Config["detour"]; ok {
 		t.Error("a detour to direct is meaningless and must be removed")
 	}
+	if byName["b"].Relay != nil {
+		t.Errorf("detour to direct should not become a relay: %+v", byName["b"].Relay)
+	}
+	if ch := byName["chained"]; ch.Relay == nil || ch.Relay.Kind != RelayNode || ch.Relay.Node != "a" {
+		t.Errorf("chained relay = %+v, want node a", ch.Relay)
+	}
 	if byName["h"].Port != 20000 {
 		t.Fatalf("hysteria2 port = %d", byName["h"].Port)
 	}
@@ -228,7 +234,7 @@ func TestSingBoxProfile(t *testing.T) {
 		reasons[s.Name] = s.Code
 	}
 	for name, code := range map[string]string{
-		"chained": SkipUnsupportedFeature, "st": SkipUnsupportedProtocol, "wgsys": SkipUnsupportedFeature,
+		"st": SkipUnsupportedProtocol, "wgsys": SkipUnsupportedFeature,
 	} {
 		if reasons[name] != code {
 			t.Errorf("skip %q = %q, want %q (all: %v)", name, reasons[name], code, reasons)

@@ -161,12 +161,36 @@ func (d *testDialog) answer(a *App, c *ui.Context) {
 		})
 		if ex := res.Exit; ex != nil && ex.Node != nil {
 			line := a.t("testdlg.now", "node", ex.Node.Label())
-			if ex.DelayMS > 0 {
+			col := p.Text2
+			if ri, ok := a.snap.Relays[ex.Node.Key]; ok {
+				switch {
+				case ri.Unavailable:
+					line = a.t("testdlg.now.relay_unavailable", "node", ex.Node.Label())
+					col = p.Warn
+				case ri.Node != nil:
+					line = a.t("testdlg.now.relay", "relay", ri.Node.Label(), "node", ex.Node.Label())
+					if ex.DelayMS > 0 {
+						line += " · " + fmtMillis(ex.DelayMS)
+					}
+				default:
+					if ex.DelayMS > 0 {
+						line += " · " + fmtMillis(ex.DelayMS)
+					}
+				}
+			} else if ex.DelayMS > 0 {
 				line += " · " + fmtMillis(ex.DelayMS)
 			}
-			a.txt(c, line, 12.5, 500, p.Text2).LineHeight(1.45)
+			a.txt(c, line, 12.5, 500, col).LineHeight(1.45)
 		} else if res.Dest.Kind != routing.DestDirect && res.Dest.Kind != routing.DestReject && !a.snap.Phase.Online() {
-			a.txt(c, a.t("testdlg.offline"), 12, 400, p.Text3).LineHeight(1.45)
+			if res.Dest.Kind == routing.DestNode && res.Dest.Node != nil {
+				if n, m := a.nodeFor(*res.Dest.Node); m != routing.MatchNone && n.Relay.Active() {
+					a.txt(c, a.t("testdlg.offline.relay", "relay", a.relayShortLabel(n.Relay.Relay)), 12, 400, p.Text3).LineHeight(1.45)
+				} else {
+					a.txt(c, a.t("testdlg.offline"), 12, 400, p.Text3).LineHeight(1.45)
+				}
+			} else {
+				a.txt(c, a.t("testdlg.offline"), 12, 400, p.Text3).LineHeight(1.45)
+			}
 		}
 		if res.Resolved {
 			if res.ResolveErr != "" {

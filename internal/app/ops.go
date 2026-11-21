@@ -383,7 +383,8 @@ func (s *Service) ExportDiagnostics(ctx context.Context) (filename string, data 
 		"kind": string(st.ActivePlan().Kind), "items": len(view.Rows), "enabled": enabled,
 		"states": states, "destinations": dests, "exceptions": len(st.Exceptions),
 		"plans": len(st.Plans) + 1, "main": string(st.Main.Kind), "fallback": string(view.Fallback.Kind),
-		"gone": len(snap.Plan.Gone), "missingFiles": snap.Plan.Missing,
+		"gone": len(snap.Plan.Gone), "relayIssues": len(snap.Plan.RelayIssues), "relayedNodes": len(snap.Relays),
+		"missingFiles": snap.Plan.Missing,
 	}
 	var urls []string
 	for u := range snap.Plan.Sources {

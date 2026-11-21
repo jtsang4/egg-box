@@ -8,6 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"eggbox/internal/app"
 	"eggbox/internal/configgen"
 	"eggbox/internal/plancompile"
 	"eggbox/internal/routing"
@@ -151,9 +152,17 @@ func (a *App) visibleNodes(nodes []nodeEntry) []nodeEntry {
 }
 
 // matchNode says whether a search finds a node: in its name, protocol,
-// server, subscription or the name of its region in either language.
+// server, subscription, the name of its region in either language, or its
+// configured or active relay.
 func (a *App) matchNode(n nodeEntry, q string) bool {
-	for _, s := range []string{n.Name, n.Protocol, n.Transport, n.Server, n.Region, n.SubName, n.SubAlias, a.regionName(n.Region)} {
+	fields := []string{n.Name, n.Protocol, n.Transport, n.Server, n.Region, n.SubName, n.SubAlias, a.regionName(n.Region)}
+	if n.Relay.Active() {
+		fields = append(fields, a.relayShortLabel(n.Relay.Relay))
+	}
+	if n.RelayLive != nil && n.RelayLive.Node != nil {
+		fields = append(fields, n.RelayLive.Node.Name, n.RelayLive.Node.Label())
+	}
+	for _, s := range fields {
 		if s != "" && strings.Contains(strings.ToLower(s), q) {
 			return true
 		}
@@ -306,6 +315,56 @@ func (a *App) banners() []nodeBanner {
 			key:    "stand|" + k + "|" + ex.Wanted.Name + "|" + ex.Node.Key,
 			text:   a.t("banner.stand_in", "for", a.ownerName(kind, id), "node", want, "using", ex.Node.Label()),
 			repick: func() { a.repick(kind, id) },
+		})
+	}
+	// Relayed nodes whose chosen relay is gone, unavailable, or standing in.
+	relaySeen := map[string]bool{}
+	for _, is := range a.snap.Plan.RelayIssues {
+		is := is
+		target, m := a.nodeFor(is.Target)
+		targetLabel := is.Target.Name
+		if m != routing.MatchNone {
+			targetLabel = target.Label()
+			relaySeen[target.Key] = true
+		}
+		var live *app.RelayInfo
+		if m != routing.MatchNone {
+			live = target.RelayLive
+		}
+		repick := func() {
+			if m != routing.MatchNone {
+				a.openNodeRelay(target)
+			}
+		}
+		bkey := "relay|" + is.Target.Key() + "|" + string(is.Kind) + "|" + is.Region + "|" + is.Relay.Key() + "|" + strconv.FormatBool(is.Blocked)
+		out = append(out, nodeBanner{key: bkey, text: a.relayBannerText(is, targetLabel, live), repick: repick})
+	}
+	rkeys := make([]string, 0, len(a.snap.Relays))
+	for k := range a.snap.Relays {
+		rkeys = append(rkeys, k)
+	}
+	sort.Strings(rkeys)
+	for _, k := range rkeys {
+		if relaySeen[k] {
+			continue
+		}
+		ri := a.snap.Relays[k]
+		if !ri.StandIn || ri.Unavailable || ri.Wanted == nil || ri.Node == nil {
+			continue
+		}
+		target, ok := a.nodeByKey(k)
+		if !ok {
+			continue
+		}
+		want := ri.Wanted.Name
+		if wn, m := a.nodeFor(*ri.Wanted); m != routing.MatchNone {
+			want = wn.Label()
+		}
+		tn := target
+		out = append(out, nodeBanner{
+			key:    "rstand|" + k + "|" + ri.Wanted.Key() + "|" + ri.Node.Key,
+			text:   a.t("banner.relay.stand_in", "target", tn.Label(), "node", want, "using", ri.Node.Label()),
+			repick: func() { a.openNodeRelay(tn) },
 		})
 	}
 	return out
@@ -514,6 +573,8 @@ func (a *App) pinnedCard(id routing.NodeID, now string, standIn bool) routeSpec 
 	}
 	if standIn && now != "" {
 		spec.sub, spec.warn = now, true
+	} else if a.isRelayUnavailable(n) {
+		spec.sub, spec.warn = a.t("relay.unavailable"), true
 	}
 	return spec
 }
@@ -839,7 +900,8 @@ func (a *App) nodeCard(c *ui.Context, n nodeEntry, selected, inUse bool) {
 		b.Grow(1).Basis(0).AlignSelf(ui.Stretch).Padding(0, 6, 0, 16).Gap(14).Radius(radiusCard - 2).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 		b.Children(func() {
 			a.regionBadge(c, n.Region, 44)
-			ui.Column(c).Grow(1).Basis(0).Gap(6).Children(func() {
+			relayed := n.Relay.Active()
+			ui.Column(c).Grow(1).Basis(0).Gap(boolOr[float32](relayed, 4, 6)).Children(func() {
 				ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 					if inUse {
 						a.dot(c, toneGood, 7, true).Tooltip(a.t("nodes.in_use"))
@@ -855,6 +917,29 @@ func (a *App) nodeCard(c *ui.Context, n nodeEntry, selected, inUse bool) {
 						ui.Icon(c, icon("bolt-slash")).Size(13, 13).TextColor(p.Text3).Shrink(0).Tooltip(a.t("nodes.noauto.tip"))
 					}
 				})
+				if relayed {
+					unavail := a.isRelayUnavailable(n)
+					standIn := n.RelayLive != nil && n.RelayLive.StandIn && !unavail
+					glyph, col := "relay", p.Text3
+					text := a.t("relay.via", "relay", a.relayShortLabel(n.Relay.Relay))
+					switch {
+					case unavail:
+						glyph, col, text = "alert", p.Warn, a.t("relay.unavailable")
+					case n.RelayLive != nil && n.RelayLive.Node != nil:
+						text = a.t("relay.via", "relay", n.RelayLive.Node.Label())
+						if standIn {
+							col = p.Warn
+						}
+					}
+					row := ui.Row(c).Gap(4).AlignItems(ui.Center)
+					if tip := a.relayTooltip(n); tip != "" {
+						row.Tooltip(tip)
+					}
+					row.Children(func() {
+						ui.Icon(c, icon(glyph)).Size(11, 11).TextColor(col).Shrink(0)
+						a.txt(c, text, 11.5, boolOr(unavail || standIn, 600, 450), col).SingleLine()
+					})
+				}
 			})
 			ui.Column(c).Gap(6).AlignItems(ui.End).Children(func() {
 				switch {
@@ -922,6 +1007,13 @@ func (a *App) nodeMenu(c *ui.Context, n nodeEntry) func(m *ui.Menu) {
 		}
 		if m.Item(a.t("nodes.set_region")).Chosen() {
 			a.openRegionPicker(n)
+		}
+		relayItem := a.t("relay.menu")
+		if n.Relay.Active() {
+			relayItem = a.t("relay.menu.current", "relay", a.relayShortLabel(n.Relay.Relay))
+		}
+		if m.Item(relayItem).Chosen() {
+			a.openNodeRelay(n)
 		}
 		if n.Imported && m.Item(a.t("nodes.edit_link")).Chosen() {
 			a.openImportedNode(n.SubID, n.SubName, n.Key)

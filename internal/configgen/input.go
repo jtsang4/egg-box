@@ -18,6 +18,35 @@ const (
 	MaxResourceTotal = 64 << 20
 )
 
+// RelayKind says how a node reaches its server.
+type RelayKind string
+
+const (
+	// RelayNone dials the server directly.
+	RelayNone RelayKind = ""
+	// RelayAuto dials through the fastest plain direct node.
+	RelayAuto RelayKind = "auto"
+	// RelayRegion dials through the fastest plain direct node of a region.
+	RelayRegion RelayKind = "region"
+	// RelayNode dials through one plain direct node.
+	RelayNode RelayKind = "node"
+	// RelayBlocked refuses dials because the node's relay is unavailable
+	// (never falling back to a direct connection).
+	RelayBlocked RelayKind = "blocked"
+)
+
+// Relay is the first-hop proxy a node dials through.
+type Relay struct {
+	Kind RelayKind
+	// Region is the two-letter code of a RelayRegion.
+	Region string
+	// Node is the Key of the plain direct node of a RelayNode.
+	Node string
+	// NoStandIn keeps a RelayNode from falling back to the fastest plain
+	// direct node of its region while unhealthy.
+	NoStandIn bool
+}
+
 // Node is a subscription node together with what the generator needs to know
 // about it besides its settings.
 type Node struct {
@@ -26,6 +55,8 @@ type Node struct {
 	Region string
 	// NoAuto keeps the node out of the automatic groups. It can still be chosen.
 	NoAuto bool
+	// Relay is the first-hop proxy this node dials through; zero value dials directly.
+	Relay Relay
 }
 
 // ExitKind is where a class of traffic leaves.
@@ -201,6 +232,9 @@ const (
 	// WarnResolverInvalid: an item or exception names a resolver that is not a
 	// DNS server; its names are looked up as usual. Detail is its id.
 	WarnResolverInvalid = "resolver_invalid"
+	// WarnRelayUnavailable: a node's configured relay has no usable plain
+	// direct node; its detour is blocked rather than falling back to direct.
+	WarnRelayUnavailable = "relay_unavailable"
 )
 
 // Layout records where each node sits in the generated arrays, so an error
@@ -216,6 +250,10 @@ type Output struct {
 	Resources []Resource
 	// Tags maps a node key to its outbound tag.
 	Tags map[string]string
+	// Relays maps a relayed node's key to its detour outbound tag (a plain
+	// node tag, TagRelayAuto, RelayRegionPrefix+code, RelayPinPrefix+n or
+	// TagRelayBlocked). Plain direct nodes have no entry.
+	Relays map[string]string
 	// Groups are the group tags in display order: Proxy, Auto, region groups.
 	Groups []string
 	// Selectors maps an item ID (FallbackID for the fallback) to the tag of the
