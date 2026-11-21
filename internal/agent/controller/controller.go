@@ -139,6 +139,10 @@ type Controller struct {
 	retryMu    sync.Mutex
 	retryTimer *time.Timer
 	retrySeq   uint64
+
+	// coreLogRank is the minimum loghub.Rank a core log line must meet to enter
+	// the hub, kept in sync with settings.LogLevel so changes take effect at once.
+	coreLogRank atomic.Int32
 }
 
 // New builds a controller. Nothing runs until Start.
@@ -161,7 +165,11 @@ func New(cfg Config) (*Controller, error) {
 		genNotify:   make(chan struct{}),
 	}
 	c.st = c.initialState()
+	c.coreLogRank.Store(int32(loghub.Rank(cfg.Settings.Load().LogLevel)))
 	cfg.Engine.SetLogSink(func(level, message string) {
+		if loghub.Rank(level) < int(c.coreLogRank.Load()) {
+			return
+		}
 		cfg.Hub.Write(level, loghub.SourceCore, message)
 	})
 	return c, nil
@@ -300,6 +308,7 @@ func (c *Controller) UpdateSettings(req *agentapi.UpdateSettingsRequest) (*agent
 	if err != nil {
 		return nil, err
 	}
+	c.coreLogRank.Store(int32(loghub.Rank(next.LogLevel)))
 	return toProtoSettings(next), nil
 }
 

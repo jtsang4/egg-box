@@ -815,6 +815,66 @@ func TestLogLevelSettingReachesTheCore(t *testing.T) {
 	}
 }
 
+func TestLogLevelFiltersCoreLogsAndKeepsAgentStatus(t *testing.T) {
+	h := newHarness(t, func(o *hopts) { o.settings = func(s *store.Settings) { s.LogLevel = "warn" } })
+	h.connected(tunConfig)
+
+	h.eng.Log("trace", "core trace")
+	h.eng.Log("debug", "core debug")
+	h.eng.Log("info", "core info")
+	h.eng.Log("warn", "core warn")
+	h.eng.Log("error", "core error")
+
+	has := func(source, msg string) bool {
+		for _, e := range h.c.Logs().Tail(0, "trace") {
+			if e.Source == source && strings.Contains(e.Message, msg) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, dropped := range []string{"core trace", "core debug", "core info"} {
+		if has("core", dropped) {
+			t.Fatalf("%q must be filtered out at warn level", dropped)
+		}
+	}
+	for _, kept := range []string{"core warn", "core error"} {
+		if !has("core", kept) {
+			t.Fatalf("%q must pass at warn level", kept)
+		}
+	}
+	if !has("agent", "connected with revision") {
+		t.Fatal("agent lifecycle status logs must remain visible at warn level")
+	}
+
+	// Changing the level takes effect immediately without restarting the core.
+	debug := "debug"
+	if _, err := h.c.UpdateSettings(&agentapi.UpdateSettingsRequest{LogLevel: &debug}); err != nil {
+		t.Fatal(err)
+	}
+	h.eng.Log("debug", "core debug after switch")
+	h.eng.Log("trace", "core trace after switch")
+	if !has("core", "core debug after switch") {
+		t.Fatal("core debug line must pass once the level is lowered to debug")
+	}
+	if has("core", "core trace after switch") {
+		t.Fatal("core trace line must still be filtered at debug level")
+	}
+
+	errLvl := "error"
+	if _, err := h.c.UpdateSettings(&agentapi.UpdateSettingsRequest{LogLevel: &errLvl}); err != nil {
+		t.Fatal(err)
+	}
+	h.eng.Log("warn", "core warn after switch")
+	h.eng.Log("error", "core error after switch")
+	if has("core", "core warn after switch") {
+		t.Fatal("core warn line must be filtered once the level is raised to error")
+	}
+	if !has("core", "core error after switch") {
+		t.Fatal("core error line must pass at error level")
+	}
+}
+
 func TestRuntimeOperationsMapErrors(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
