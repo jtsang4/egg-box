@@ -27,8 +27,11 @@ func (d *desktop) phoneOptions(o *gui.Options) {
 }
 
 // phoneReady runs once the application is assembled: on Android, it follows
-// the system starting the VPN by itself (systemStarts, phone_android.go).
-func (d *desktop) phoneReady() { d.followSystemStarts() }
+// the system starting the VPN by itself and Quick Settings tile taps.
+func (d *desktop) phoneReady() {
+	d.followSystemStarts()
+	d.followTile()
+}
 
 // phoneSaveFile writes the file in the application's temporary files and lets
 // the person choose where a copy goes, with the system's picker: a phone's

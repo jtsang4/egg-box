@@ -7,6 +7,7 @@ import (
 	"log"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -75,9 +76,14 @@ func allowVPN(ctx context.Context) error {
 	return nil
 }
 
-// systemStarts is the subscription to the system starting the VPN by itself,
-// kept for the life of the process.
-var systemStarts io.Closer
+// systemStarts and tileToggles keep Android's system-initiated callbacks alive
+// for the life of the process.
+var (
+	systemStarts io.Closer
+	tileToggles  io.Closer
+	tileBusy     atomic.Bool
+	tileLast     tileSync
+)
 
 // followSystemStarts connects whenever the system starts the VPN by itself:
 // Android's always-on VPN, at boot or after the VPN went away, which may be
@@ -91,6 +97,76 @@ func (d *desktop) followSystemStarts() {
 		go d.connectForSystem()
 		return nil
 	})
+}
+
+// followTile listens for taps on EggBox's Quick Settings tile and keeps the
+// tile's state in sync with the connection.
+func (d *desktop) followTile() {
+	svc, err := vpnService()
+	if err != nil {
+		return
+	}
+	tileToggles = svc.OnTileToggle(func() error {
+		if tileBusy.CompareAndSwap(false, true) {
+			go d.toggleForTile()
+		}
+		return nil
+	})
+	if !tileBusy.Load() {
+		d.syncPhoneStatus()
+	}
+}
+
+func (d *desktop) hasPhoneStatus() bool { return true }
+
+func (d *desktop) syncPhoneStatus() { d.syncTile(false) }
+
+func (d *desktop) syncTile(force bool) {
+	if d.app == nil {
+		return
+	}
+	d.pushTileState(tileStateFor(d.app.Status()), force)
+}
+
+func (d *desktop) pushTileState(next droidvpn.TileState, force bool) {
+	svc, err := vpnService()
+	if err != nil {
+		return
+	}
+	if err := tileLast.push(next, force, svc.SetTileState); err != nil {
+		log.Printf("quick settings tile: %v", err)
+	}
+}
+
+// toggleForTile connects or disconnects in response to Android's Quick
+// Settings tile, waiting for the in-process agent on a cold headless start and
+// always pushing the settled state back to the tile when done.
+func (d *desktop) toggleForTile() {
+	defer func() {
+		tileBusy.Store(false)
+		d.syncTile(true)
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := d.rt.Agent.WaitReady(ctx); err != nil {
+		log.Printf("quick settings tile: the agent did not answer: %v", err)
+		return
+	}
+	snap := d.rt.Service.Snapshot()
+	if snap != nil && snap.Phase.Transitional() {
+		return
+	}
+	if snap != nil && snap.Phase.Online() {
+		d.pushTileState(droidvpn.TileState{State: droidvpn.TileDisconnecting, Subtitle: d.app.Say("phase.disconnecting")}, true)
+		if err := d.rt.Service.Disconnect(ctx); err != nil {
+			log.Printf("quick settings tile disconnect: %v", err)
+		}
+		return
+	}
+	d.pushTileState(droidvpn.TileState{State: droidvpn.TileConnecting, Subtitle: d.app.Say("phase.connecting")}, true)
+	if err := d.rt.Service.Connect(ctx, app.ConnectOptions{}); err != nil {
+		log.Printf("quick settings tile connect: %v", err)
+	}
 }
 
 // connectForSystem connects as the system asked, with what the person chose

@@ -1,7 +1,6 @@
-<!-- The VPN service of the core, merged into the application's manifest. The
-     system alone binds it (BIND_VPN_SERVICE). It supports always-on VPN: when
-     the system starts it by itself, it starts the application's Go, without a
-     window, and the application connects. -->
+<!-- Android services of the core, merged into the application's manifest:
+     the VpnService (always-on capable, bound only by the system) and the
+     Quick Settings tile that toggles the connection directly from the shade. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <service
@@ -15,5 +14,32 @@
                 android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON"
                 android:value="true" />
         </service>
+
+        <service
+            android:name="eggbox.internal.phone.droidvpn.EggBoxTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_eggbox_tile"
+            android:label="@string/eggbox_tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="false" />
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
+
+        <activity-alias
+            android:name="eggbox.internal.phone.droidvpn.TilePreferencesActivity"
+            android:exported="true"
+            android:targetActivity="dev.mygo.MyGoActivity">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
     </application>
 </manifest>

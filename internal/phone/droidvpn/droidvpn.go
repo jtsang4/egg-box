@@ -41,8 +41,31 @@ type Service interface {
 	// system may start the application's process for it, Go with it; a start
 	// that came before f was given is told as f is given.
 	OnSystemStart(f func() error) io.Closer
+	// OnTileToggle calls f when the person taps EggBox's Quick Settings tile.
+	// The system may start the application's process for it without a window;
+	// a tap that arrived before f was given is delivered as f is given.
+	OnTileToggle(f func() error) io.Closer
+	// SetTileState updates EggBox's Quick Settings tile so its state and
+	// subtitle follow the connection.
+	SetTileState(state TileState) error
 	// Owner finds the application that opened a connection.
 	Owner(protocol int, source string, sourcePort int, destination string, destinationPort int) (ConnectionOwner, error)
+}
+
+// Tile state values carried by TileState.State.
+const (
+	TileInactive      = "inactive"
+	TileConnecting    = "connecting"
+	TileActive        = "active"
+	TileDisconnecting = "disconnecting"
+)
+
+// TileState describes what Android's Quick Settings tile shows.
+type TileState struct {
+	// State is TileInactive, TileConnecting, TileActive or TileDisconnecting.
+	State string
+	// Subtitle is shown under the tile's label on Android 10+. Empty clears it.
+	Subtitle string
 }
 
 // TunSettings are what the VPN interface is made with. Addresses and routes

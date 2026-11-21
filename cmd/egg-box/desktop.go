@@ -238,6 +238,7 @@ func (d *desktop) onLanguage(lang string) {
 		d.lang = lang
 		d.buildMenu()
 		d.syncTray()
+		d.syncPhoneStatus()
 	}
 }
 

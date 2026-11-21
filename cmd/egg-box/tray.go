@@ -60,16 +60,19 @@ func trayIcon(on bool) []byte {
 // changed is called, from any goroutine, whenever the service's state moves.
 // Several changes close together make one update.
 func (d *desktop) changed() {
-	if d.tray == nil && d.menu.connect == nil {
+	if d.tray == nil && d.menu.connect == nil && !d.hasPhoneStatus() {
 		return
 	}
 	if d.syncing.CompareAndSwap(false, true) {
 		time.AfterFunc(200*time.Millisecond, func() {
 			d.syncing.Store(false)
-			mygo.RunOnMain(func() {
-				d.syncTray()
-				d.syncMenu()
-			})
+			d.syncPhoneStatus()
+			if d.tray != nil || d.menu.connect != nil {
+				mygo.RunOnMain(func() {
+					d.syncTray()
+					d.syncMenu()
+				})
+			}
 		})
 	}
 }

@@ -36,6 +36,11 @@ EggBox (one process)                            EggBox (application)          Pa
   the VPN again (at the next boot). Android 16 starts it again neither after the application stopped it nor after its
   process died (killed, crashed or force-stopped): the next time EggBox opens, the agent resumes the connection
   (Settings › Resume after an unexpected restart).
+- **Android's Quick Settings tile** (`EggBoxTileService` in `droidvpn`) lets the person toggle the connection directly
+  from the control shade (including from the lock screen once VPN consent was granted), starting Go headlessly if the
+  process is not running yet. When VPN consent has not been granted yet, tapping the tile opens EggBox to request it;
+  long-pressing the tile opens EggBox through `ACTION_QS_TILE_PREFERENCES`. On Android 10+, the tile subtitle shows the
+  active exit node or transition phase.
 - **The interface** lays itself out for a phone (`gui.Options.Phone`): a bar of tabs (Home, Nodes and Subscriptions,
   Routing, Connections and Logs, Settings), single-column pages, and texts that speak of a device and the system's VPN.
   Desktop-only settings (tray, login item, TUN off with a local proxy, reconnect on network change, the privileged

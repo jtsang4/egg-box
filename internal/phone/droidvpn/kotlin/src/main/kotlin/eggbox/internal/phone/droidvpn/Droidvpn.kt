@@ -1,8 +1,11 @@
 package eggbox.internal.phone.droidvpn
 
 import android.app.Activity
+import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.net.ConnectivityManager
 import android.net.IpPrefix
 import android.net.LinkProperties
@@ -12,8 +15,11 @@ import android.net.VpnService
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.Process
+import android.service.quicksettings.Tile
+import android.service.quicksettings.TileService
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,6 +28,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -39,12 +46,23 @@ fun makeService(): Service = AndroidVpn
 internal object AndroidVpn : Service {
     private val context: Context get() = Native.context
     private val connectivity: ConnectivityManager get() = context.getSystemService(ConnectivityManager::class.java)
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val revoked = CopyOnWriteArrayList<(String) -> Unit>()
     private val systemStarts = CopyOnWriteArrayList<() -> Unit>()
+    private val tileToggles = CopyOnWriteArrayList<() -> Unit>()
 
     /** The system started the VPN before Go listened for it. */
     @Volatile
     private var pendingSystemStart = false
+
+    /** The Quick Settings tile was tapped before Go listened for it. */
+    private val pendingTileToggle = AtomicBoolean(false)
+
+    @Volatile
+    private var tileState = TileState(state = "inactive", subtitle = "")
+
+    @Volatile
+    private var tileStateKnown = false
 
     /** Whether the application wants the VPN up: a start by anyone else is refused. */
     @Volatile
@@ -196,6 +214,67 @@ internal object AndroidVpn : Service {
         return AutoCloseable { systemStarts.remove(f) }
     }
 
+    override fun onTileToggle(f: () -> kotlin.Unit): AutoCloseable {
+        tileToggles.add(f)
+        if (pendingTileToggle.compareAndSet(true, false)) {
+            try {
+                f()
+            } catch (_: Exception) {
+            }
+        }
+        return AutoCloseable { tileToggles.remove(f) }
+    }
+
+    override fun setTileState(state: TileState) {
+        updateTileState(context.applicationContext, state, markKnown = true)
+    }
+
+    internal fun currentTileState(): TileState {
+        if (tileStateKnown) return tileState
+        if (tileState.state == "connecting" || tileState.state == "disconnecting") return tileState
+        return if (EggBoxVpnService.running != null && wanted) {
+            TileState(state = "active", subtitle = "")
+        } else {
+            TileState(state = "inactive", subtitle = "")
+        }
+    }
+
+    internal fun updateTileState(c: Context, state: TileState, markKnown: Boolean) {
+        tileState = state
+        if (markKnown) tileStateKnown = true
+        mainHandler.post { EggBoxTileService.listening?.applyState(state) }
+        try {
+            TileService.requestListeningState(c, ComponentName(c, EggBoxTileService::class.java))
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * The person tapped EggBox's Quick Settings tile. Starts Go headlessly
+     * when the process is not running yet, otherwise toggles immediately.
+     */
+    internal fun tileToggled(c: Context) {
+        val cur = currentTileState()
+        if (cur.state == "connecting" || cur.state == "disconnecting") return
+        val optimistic = if (cur.state == "active") {
+            TileState(state = "disconnecting", subtitle = "")
+        } else {
+            TileState(state = "connecting", subtitle = "")
+        }
+        updateTileState(c.applicationContext, optimistic, markKnown = false)
+        if (tileToggles.isEmpty()) {
+            pendingTileToggle.set(true)
+            HostImpl.startHeadless(c.applicationContext)
+            return
+        }
+        for (f in tileToggles) {
+            try {
+                f()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     /**
      * The system started the VPN by itself (always-on VPN). Go may not run:
      * the system can start the process for the service alone, and Go starts
@@ -341,5 +420,79 @@ class EggBoxVpnService : VpnService() {
         val slash = s.lastIndexOf('/')
         val addr = InetAddress.getByName(s.substring(0, slash))
         return addr to s.substring(slash + 1).toInt()
+    }
+}
+
+/**
+ * Quick Settings tile in Android's control shade: taps toggle the VPN directly
+ * (including from the lock screen once VPN consent was granted), and long
+ * presses open EggBox through ACTION_QS_TILE_PREFERENCES.
+ */
+class EggBoxTileService : TileService() {
+    companion object {
+        @Volatile
+        internal var listening: EggBoxTileService? = null
+    }
+
+    override fun onTileAdded() {
+        super.onTileAdded()
+        applyState(AndroidVpn.currentTileState())
+    }
+
+    override fun onStartListening() {
+        super.onStartListening()
+        listening = this
+        applyState(AndroidVpn.currentTileState())
+    }
+
+    override fun onStopListening() {
+        if (listening === this) listening = null
+        super.onStopListening()
+    }
+
+    override fun onClick() {
+        super.onClick()
+        if (VpnService.prepare(this) != null) {
+            // Granting VPN permission requires a visible Activity.
+            if (isLocked) {
+                unlockAndRun { openApp() }
+            } else {
+                openApp()
+            }
+            return
+        }
+        AndroidVpn.tileToggled(this)
+    }
+
+    internal fun applyState(s: TileState) {
+        val tile = qsTile ?: return
+        tile.label = getString(R.string.eggbox_tile_label)
+        tile.icon = Icon.createWithResource(this, R.drawable.ic_eggbox_tile)
+        tile.state = when (s.state) {
+            "active", "connecting" -> Tile.STATE_ACTIVE
+            else -> Tile.STATE_INACTIVE
+        }
+        if (Build.VERSION.SDK_INT >= 29) {
+            tile.subtitle = s.subtitle.ifEmpty { null }
+        }
+        tile.updateTile()
+    }
+
+    private fun openApp() {
+        val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        } ?: return
+        if (Build.VERSION.SDK_INT >= 34) {
+            val pi = PendingIntent.getActivity(
+                this,
+                0,
+                intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            startActivityAndCollapse(pi)
+        } else {
+            @Suppress("DEPRECATION")
+            startActivityAndCollapse(intent)
+        }
     }
 }

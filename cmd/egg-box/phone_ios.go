@@ -97,3 +97,8 @@ func allowVPN(ctx context.Context) error {
 // extension, the configuration the agent accepted last, without the agent
 // knowing (docs/mobile.md, known limits).
 func (d *desktop) followSystemStarts() {}
+func (d *desktop) followTile()         {}
+func (d *desktop) hasPhoneStatus() bool {
+	return false
+}
+func (d *desktop) syncPhoneStatus() {}
