@@ -1199,7 +1199,7 @@ func (f *fixtureBackend) EditImportedNode(ctx context.Context, subID, key, link 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for i, n := range f.nodes {
-		if n.SubID != subID || n.Key() != key {
+		if n.SubID != subID || n.Node.Key() != key {
 			continue
 		}
 		next, err := subscription.EditedLink(n.Node, link)

@@ -1204,7 +1204,7 @@ func (a *App) nodeMenu(c *ui.Context, n nodeEntry) func(m *ui.Menu) {
 			a.openNodeRelay(n)
 		}
 		if n.Imported && m.Item(a.t("nodes.edit_link")).Chosen() {
-			a.openImportedNode(n.SubID, n.SubName, n.Key)
+			a.openImportedNode(n.SubID, n.SubName, n.ID.Hash)
 		}
 		m.Separator()
 		if m.Item(a.t("nodes.copy_name")).Chosen() {

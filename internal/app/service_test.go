@@ -583,7 +583,7 @@ func TestMainExitIsRememberedAndPassedToTheCore(t *testing.T) {
 	if item.DelayMS != 123 || item.Node.Key != jp.Key() || item.Node.Protocol != "Trojan" || item.Node.Region != "JP" || item.Node.SubName == "" {
 		t.Errorf("%+v / %+v", item, item.Node)
 	}
-	if got := item.Node.ID; got.Sub != jp.SubID || got.Name != jp.Node.Name || got.Hash != jp.Key() || got.Region != "JP" {
+	if got := item.Node.ID; got.Sub != jp.SubID || got.Name != jp.Node.Name || got.Hash != jp.Node.Key() || got.Region != "JP" {
 		t.Errorf("identity %+v", got)
 	}
 	// Connecting put the Proxy group on the remembered node.

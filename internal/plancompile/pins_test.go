@@ -29,7 +29,7 @@ func nodeKey(t *testing.T, ns []plancompile.Node, name string) string {
 	t.Helper()
 	for _, n := range ns {
 		if n.Node.Name == name {
-			return n.Node.Key()
+			return (configgen.Node{Node: n.Node, Sub: n.Sub}).Key()
 		}
 	}
 	t.Fatalf("no node %q", name)
@@ -266,12 +266,21 @@ func TestNodeChoices(t *testing.T) {
 	}
 }
 
-func TestSameServerOnce(t *testing.T) {
+func TestSameServerDeduplicatedPerSubscriptionOnly(t *testing.T) {
 	ns := fleet(t)
-	dup := append(slices.Clone(ns), plancompile.Node{Sub: "s2", Node: ns[0].Node, Auto: true})
-	res := compile(t, plancompile.New(), planWith(nil, routing.Follow()), newData(), dup)
+	// Same server twice inside the same subscription collapses to one entry.
+	sameSub := append(slices.Clone(ns), plancompile.Node{Sub: ns[0].Sub, Node: ns[0].Node, Auto: true})
+	res := compile(t, plancompile.New(), planWith(nil, routing.Follow()), newData(), sameSub)
 	if len(res.Input.Nodes) != len(ns) {
-		t.Fatalf("%d nodes, want %d: one entry per server", len(res.Input.Nodes), len(ns))
+		t.Fatalf("same subscription: %d nodes, want %d", len(res.Input.Nodes), len(ns))
+	}
+	accept(t, res)
+
+	// Same server in a second subscription stays as its own entry with a distinct key.
+	otherSub := append(slices.Clone(ns), plancompile.Node{Sub: "s2", Node: ns[0].Node, Auto: true})
+	res = compile(t, plancompile.New(), planWith(nil, routing.Follow()), newData(), otherSub)
+	if len(res.Input.Nodes) != len(ns)+1 {
+		t.Fatalf("other subscription: %d nodes, want %d", len(res.Input.Nodes), len(ns)+1)
 	}
 	accept(t, res)
 }

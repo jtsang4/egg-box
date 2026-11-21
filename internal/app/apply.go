@@ -318,7 +318,7 @@ func (s *Service) setGenerated(p *prepared, report *ApplyReport, revision uint64
 			Key: key, Name: a.Node.Name, Protocol: a.Node.Protocol(), Transport: a.Node.Transport(),
 			Region: subscription.Region(a.Node.Name), Server: a.Node.Server, Port: a.Node.Port,
 			SubID: a.SubID, SubName: a.SubName, SubAlias: a.SubAlias,
-			ID:        routing.NodeID{Sub: a.SubID, Name: a.Node.Name, Hash: key, Region: regionFor(p.view.state, a)},
+			ID:        routing.NodeID{Sub: a.SubID, Name: a.Node.Name, Hash: a.Node.Key(), Region: regionFor(p.view.state, a)},
 			Ambiguous: len(names[a.Node.Name]) > 1,
 		}
 	}

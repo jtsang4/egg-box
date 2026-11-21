@@ -109,7 +109,7 @@ func (a *App) openImportedNode(subID, subName, key string) {
 		return
 	}
 	for _, n := range nodes {
-		if n.Key() == key {
+		if n.Key() == key || (subID != "" && subID+"/"+n.Key() == key) {
 			a.openNodeLink(subID, subName, n)
 			return
 		}

@@ -702,8 +702,13 @@ type ActiveNode struct {
 	Imported bool
 }
 
-// Key identifies the node's server (see subscription.Node.Key).
-func (a ActiveNode) Key() string { return a.Node.Key() }
+// Key uniquely identifies this active node across subscriptions.
+func (a ActiveNode) Key() string {
+	if a.SubID == "" {
+		return a.Node.Key()
+	}
+	return a.SubID + "/" + a.Node.Key()
+}
 
 // ID is the identity a person's choices about the node are kept under: the
 // subscription and the name the provider gave it.
@@ -712,15 +717,14 @@ func (a ActiveNode) ID() routing.NodeID {
 }
 
 // ActiveNodes returns the nodes of the enabled subscriptions, in subscription
-// order, with each subscription's filters applied. Where two subscriptions
-// offer the same server only the first is kept. Names are the providers': two
-// nodes of different subscriptions may share one, which is why a node's
-// identity includes its subscription.
+// order, with each subscription's filters applied. Each subscription keeps its
+// own nodes (duplicates within one subscription are dropped on import and
+// refresh). Names are the providers': two nodes of different subscriptions may
+// share one, which is why a node's identity includes its subscription.
 func (l *Library) ActiveNodes() ([]ActiveNode, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	var out []ActiveNode
-	seen := map[string]bool{}
 	for _, s := range l.data.Subscriptions {
 		if !s.Enabled {
 			continue
@@ -729,6 +733,7 @@ func (l *Library) ActiveNodes() ([]ActiveNode, error) {
 		if err != nil {
 			return nil, err
 		}
+		seen := map[string]bool{}
 		for _, n := range FilterNodes(nodes, s.Include, s.Exclude) {
 			if seen[n.Key()] {
 				continue

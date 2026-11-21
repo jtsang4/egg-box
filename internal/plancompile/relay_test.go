@@ -59,8 +59,9 @@ func TestCompileRelays(t *testing.T) {
 	for _, n := range res.Input.Nodes {
 		byName[n.Name] = n
 	}
-	if byName["US Provider"].Relay.Kind != configgen.RelayNode || byName["US Provider"].Relay.Node != hk1.Key() {
-		t.Errorf("US Provider relay = %+v", byName["US Provider"].Relay)
+	hk1Key := (configgen.Node{Node: hk1, Sub: "s1"}).Key()
+	if byName["US Provider"].Relay.Kind != configgen.RelayNode || byName["US Provider"].Relay.Node != hk1Key {
+		t.Errorf("US Provider relay = %+v, want node %q", byName["US Provider"].Relay, hk1Key)
 	}
 	if byName["US Home 01"].Relay.Kind != configgen.RelayRegion || byName["US Home 01"].Relay.Region != "HK" {
 		t.Errorf("US Home 01 relay = %+v, want region HK stand-in", byName["US Home 01"].Relay)
@@ -88,5 +89,52 @@ func TestCompileRelays(t *testing.T) {
 	}
 	if !gotGone || !gotUnavail {
 		t.Fatalf("notices = %+v, want gone(US Home 01) + unavail(US Home 02)", res.Notices)
+	}
+}
+
+func TestCompileIdenticalServersInTwoSubscriptionsStayDistinct(t *testing.T) {
+	shared := makeNode("US Reality 01", "us.example.com")
+	relay := makeNode("Tokyo 01", "jp.example.com")
+	subRelay := routing.RelayRegionVal("JP")
+
+	st := routing.NewState()
+	// Pin main exit specifically to sub-b's copy of the shared server.
+	_ = st.SetMain(routing.ToNode(routing.NodeID{Sub: "sub-b", Name: shared.Name, Hash: shared.Key(), Region: "US"}))
+
+	res, err := New().Compile(Options{
+		State: st,
+		Prefs: configgen.DefaultPrefs(),
+		Nodes: []Node{
+			{Sub: "sub-a", Node: relay, Auto: true},
+			{Sub: "sub-a", Node: shared, Auto: true},
+			{Sub: "sub-b", Node: shared, Auto: false, SubRelay: &subRelay},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Input.Nodes) != 3 {
+		t.Fatalf("compiled %d nodes, want 3 (both subscriptions' copies kept)", len(res.Input.Nodes))
+	}
+	bySub := map[string]configgen.Node{}
+	for _, n := range res.Input.Nodes {
+		if n.Name == shared.Name {
+			bySub[n.Sub] = n
+		}
+	}
+	if len(bySub) != 2 {
+		t.Fatalf("expected shared node in both sub-a and sub-b, got %+v", bySub)
+	}
+	if bySub["sub-a"].Key() == bySub["sub-b"].Key() {
+		t.Fatalf("shared server across two subscriptions got identical keys: %q", bySub["sub-a"].Key())
+	}
+	if bySub["sub-a"].Relay.Kind != configgen.RelayNone {
+		t.Errorf("sub-a copy relay = %+v, want direct", bySub["sub-a"].Relay)
+	}
+	if bySub["sub-b"].Relay.Kind != configgen.RelayRegion || bySub["sub-b"].Relay.Region != "JP" {
+		t.Errorf("sub-b copy relay = %+v, want region JP", bySub["sub-b"].Relay)
+	}
+	if res.Input.Main.Kind != configgen.ExitNode || res.Input.Main.Node != bySub["sub-b"].Key() {
+		t.Errorf("main exit = %+v, want sub-b copy (%q)", res.Input.Main, bySub["sub-b"].Key())
 	}
 }

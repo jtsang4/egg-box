@@ -27,8 +27,8 @@ type Backend interface {
 	SetNotify(fn func())
 
 	Subscriptions() []library.Subscription
-	// ActiveNodes are the nodes of the enabled subscriptions, filtered and
-	// deduplicated, as the configuration will use them. It reads files: the
+	// ActiveNodes are the nodes of the enabled subscriptions, filtered per
+	// subscription, as the configuration will use them. It reads files: the
 	// interface calls it when the subscriptions change, not every frame.
 	ActiveNodes() ([]library.ActiveNode, error)
 	Settings() library.Settings

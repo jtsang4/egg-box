@@ -241,7 +241,7 @@ func TestActiveNodesApplyFiltersAndMergeSubscriptions(t *testing.T) {
 			t.Errorf("two nodes with the identity %q", id.Key())
 		}
 		identities[id.Key()] = true
-		if id.Sub != n.SubID || id.Name != n.Node.Name || id.Hash != n.Key() {
+		if id.Sub != n.SubID || id.Name != n.Node.Name || id.Hash != n.Node.Key() {
 			t.Errorf("identity %+v of %s", id, n.Node.Name)
 		}
 		if !n.Auto {
@@ -276,18 +276,38 @@ func TestActiveNodesApplyFiltersAndMergeSubscriptions(t *testing.T) {
 	}
 }
 
-func TestIdenticalServersInTwoSubscriptionsAreOneNode(t *testing.T) {
+func TestIdenticalServersInTwoSubscriptionsStaySeparate(t *testing.T) {
 	body := linkList("HK 01", "JP 01")
 	pa, pb := newProvider(t, body), newProvider(t, body)
 	l := open(t, t.TempDir(), nil)
-	for _, p := range []*provider{pa, pb} {
-		s, _ := l.AddRemote("", p.link(), library.RemoteOptions{})
-		if _, err := l.Refresh(context.Background(), s.ID, library.RefreshOptions{Client: p.srv.Client()}); err != nil {
+	sa, _ := l.AddRemote("Sub A", pa.link(), library.RemoteOptions{})
+	sb, _ := l.AddRemote("Sub B", pb.link(), library.RemoteOptions{})
+	for _, x := range []struct {
+		id string
+		p  *provider
+	}{{sa.ID, pa}, {sb.ID, pb}} {
+		if _, err := l.Refresh(context.Background(), x.id, library.RefreshOptions{Client: x.p.srv.Client()}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if nodes, _ := l.ActiveNodes(); len(nodes) != 2 {
-		t.Fatalf("got %d nodes, want the same two servers once", len(nodes))
+	nodes, err := l.ActiveNodes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 4 {
+		t.Fatalf("got %d nodes, want both subscriptions' nodes kept (4)", len(nodes))
+	}
+	keys := map[string]bool{}
+	ids := map[string]bool{}
+	for _, n := range nodes {
+		if keys[n.Key()] {
+			t.Errorf("duplicate active key %q", n.Key())
+		}
+		keys[n.Key()] = true
+		if ids[n.ID().Key()] {
+			t.Errorf("duplicate identity %q", n.ID().Key())
+		}
+		ids[n.ID().Key()] = true
 	}
 }
 

@@ -353,3 +353,36 @@ func TestNodeCardHasAButtonForItsMenu(t *testing.T) {
 		t.Fatal("opening the menu changed the main exit")
 	}
 }
+
+func TestNodesPageKeepsIdenticalServersAcrossSubscriptions(t *testing.T) {
+	h := nodesHarness(t, func(be *fixtureBackend, _ *Options) {
+		// Copy Tokyo 01 (same underlying subscription.Node config) into Nimbus Net.
+		tk, ok := be.node("Tokyo 01")
+		if !ok {
+			panic("missing Tokyo 01")
+		}
+		dup := library.ActiveNode{
+			Node: tk.Node.Clone(), SubID: "sub-nimbus", SubName: "Nimbus Net", Auto: true,
+		}
+		be.nodes = append(be.nodes, dup)
+		for i := range be.subs {
+			if be.subs[i].ID == "sub-nimbus" {
+				be.subs[i].NodeCount++
+			}
+		}
+		be.refresh()
+	})
+	// Nimbus Net now has 6 nodes (5 original + 1 copy of Tokyo 01).
+	h.click("Nimbus Net")
+	h.settle()
+	h.mustHave("Tokyo 01", "Frankfurt 01")
+	if got := len(h.app.visibleNodes(h.app.liveNodes())); got != 6 {
+		t.Fatalf("Nimbus Net shows %d nodes, want 6", got)
+	}
+	// Clicking Tokyo 01 under Nimbus Net selects Nimbus Net's copy, not Aurora Cloud's.
+	h.click("Tokyo 01")
+	h.settle()
+	if m := h.state().Main; m.Kind != routing.DestNode || m.Node == nil || m.Node.Sub != "sub-nimbus" {
+		t.Fatalf("main exit = %+v, want sub-nimbus copy", m)
+	}
+}

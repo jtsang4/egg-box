@@ -51,12 +51,24 @@ type Relay struct {
 // about it besides its settings.
 type Node struct {
 	subscription.Node
+	// Sub, when set, identifies the subscription the node belongs to so the
+	// same server in two subscriptions keeps a distinct key, outbound tag and
+	// relay.
+	Sub string
 	// Region is the two-letter code the node counts as; "" when unknown.
 	Region string
 	// NoAuto keeps the node out of the automatic groups. It can still be chosen.
 	NoAuto bool
 	// Relay is the first-hop proxy this node dials through; zero value dials directly.
 	Relay Relay
+}
+
+// Key uniquely identifies this node in a generated configuration.
+func (n Node) Key() string {
+	if n.Sub == "" {
+		return n.Node.Key()
+	}
+	return n.Sub + "/" + n.Node.Key()
 }
 
 // ExitKind is where a class of traffic leaves.

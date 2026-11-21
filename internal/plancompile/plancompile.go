@@ -69,8 +69,7 @@ func ProviderRelay(subID string, spec *subscription.RelaySpec) *routing.Relay {
 // Options are the inputs of a compilation.
 type Options struct {
 	State routing.State
-	// Nodes are the nodes in force, one per distinct server: where two
-	// subscriptions offer the same one, only the first is here.
+	// Nodes are the active nodes of enabled subscriptions.
 	Nodes []Node
 	Data  Data
 	Prefs configgen.Prefs
@@ -266,8 +265,8 @@ type nodeSet struct {
 }
 
 // nodes prepares the nodes: regions as the person corrected them, the ones
-// they keep out of the automatic choice, one entry per server, and each
-// relayed node's resolved first-hop relay.
+// they keep out of the automatic choice, one entry per subscription node, and
+// each relayed node's resolved first-hop relay.
 func (c *Compiler) nodes(o Options, res *Result) *nodeSet {
 	ns := &nodeSet{}
 	seen := map[string]bool{}
@@ -277,12 +276,14 @@ func (c *Compiler) nodes(o Options, res *Result) *nodeSet {
 	var plainAutoFlags []bool
 
 	for _, n := range o.Nodes {
-		key := n.Node.Key()
+		cn := configgen.Node{Node: n.Node, Sub: n.Sub}
+		key := cn.Key()
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
-		id := routing.NodeID{Sub: n.Sub, Name: n.Node.Name, Hash: key}
+		hash := n.Node.Key()
+		id := routing.NodeID{Sub: n.Sub, Name: n.Node.Name, Hash: hash}
 		pref := o.State.NodePref(id)
 		region := subscription.Region(n.Node.Name)
 		if pref.Region != "" {
@@ -293,10 +294,10 @@ func (c *Compiler) nodes(o Options, res *Result) *nodeSet {
 		noAuto := pref.NoAuto || !n.Auto
 		eff := routing.ResolveRelay(id, o.State, n.SubRelay, ProviderRelay(n.Sub, n.Node.Relay))
 
-		ns.configNodes = append(ns.configNodes, configgen.Node{
-			Node: n.Node, Region: region, NoAuto: noAuto,
-		})
-		live := routing.LiveNode{Sub: n.Sub, Name: n.Node.Name, Hash: key, Region: region}
+		cn.Region = region
+		cn.NoAuto = noAuto
+		ns.configNodes = append(ns.configNodes, cn)
+		live := routing.LiveNode{Sub: n.Sub, Name: n.Node.Name, Hash: hash, Region: region}
 		ns.live = append(ns.live, live)
 		ns.keys = append(ns.keys, key)
 		effs = append(effs, eff)

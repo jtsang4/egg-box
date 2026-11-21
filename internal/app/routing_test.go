@@ -1414,8 +1414,8 @@ func TestANodeNamedLikeOneOfAnotherSubscriptionSaysWhichOneItIs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Its "HK 01" is the third entry of the list, so another server than the
-	// first subscription's (the same server twice would be one node).
+	// Its "HK 01" is the third entry of the list, a distinct server from the
+	// first subscription's.
 	other := newProvider(t, links("JP 02", "SG 01", "HK 01"))
 	second, _, err := h.svc.AddSubscription(h.ctx(), "Second", other.link(), library.RemoteOptions{})
 	if err != nil {
@@ -1456,4 +1456,48 @@ func TestANodeNamedLikeOneOfAnotherSubscriptionSaysWhichOneItIs(t *testing.T) {
 	h.eventually("the name alone", func() bool {
 		return slices.Equal(shownAs(h.svc.Snapshot(), "HK 01"), []string{"HK 01"})
 	})
+}
+
+func TestIdenticalServersInTwoSubscriptionsAreBothAvailable(t *testing.T) {
+	h := newHarness(t, nil)
+	first, _, err := h.svc.AddSubscription(h.ctx(), "First", h.prov.link(), library.RemoteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := h.svc.AddSubscription(h.ctx(), "Second", h.prov.link(), library.RemoteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	active, err := h.lib.ActiveNodes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 6 {
+		t.Fatalf("got %d active nodes, want 6 (3 from each subscription)", len(active))
+	}
+	h.connect()
+	h.coreOffersTheNodes()
+	h.eventually("all 6 nodes in core", func() bool {
+		total := 0
+		for _, refs := range proxyNodes(h.svc.Snapshot()) {
+			total += len(refs)
+		}
+		return total == 6
+	})
+	snap := h.svc.Snapshot()
+	if got := shownAs(snap, "HK 01"); !slices.Equal(got, []string{"HK 01 · First", "HK 01 · Second"}) {
+		t.Fatalf("HK 01 shown as %q, want both subscriptions", got)
+	}
+	var secondHK library.ActiveNode
+	for _, n := range active {
+		if n.SubID == second.ID && n.Node.Name == "HK 01" {
+			secondHK = n
+		}
+	}
+	if err := h.svc.SetMainExit(h.ctx(), routing.ToNode(secondHK.ID())); err != nil {
+		t.Fatal(err)
+	}
+	if m := h.lib.Routing().Main; m.Kind != routing.DestNode || m.Node == nil || m.Node.Sub != second.ID {
+		t.Fatalf("main exit = %+v, want sub %s (not %s)", m, second.ID, first.ID)
+	}
 }

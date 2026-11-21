@@ -175,3 +175,38 @@ func TestGenerateAllNodesRelayedNeverFallsBackDirect(t *testing.T) {
 		t.Fatalf("policy rejected all-relayed config: %v", res.Errors())
 	}
 }
+
+func TestGenerateIdenticalServersAcrossTwoSubscriptions(t *testing.T) {
+	jp := Node{Sub: "sub-a", Node: testNode("Tokyo 01", "socks", "jp.example.com", 1080), Region: "JP"}
+	shared := testNode("US Reality 01", "socks", "us.example.com", 1080)
+	copyA := Node{Sub: "sub-a", Node: shared, Region: "US"}
+	copyB := Node{Sub: "sub-b", Node: shared, Region: "US", NoAuto: true, Relay: Relay{Kind: RelayNode, Node: jp.Key(), NoStandIn: true}}
+
+	out, err := Generate(Input{
+		Prefs:    DefaultPrefs(),
+		Main:     Exit{Kind: ExitNode, Node: copyB.Key(), NoStandIn: true},
+		Fallback: Exit{Kind: ExitMain},
+		Nodes:    []Node{jp, copyA, copyB},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tagA, tagB := out.Tags[copyA.Key()], out.Tags[copyB.Key()]
+	if tagA == "" || tagB == "" || tagA == tagB {
+		t.Fatalf("distinct subscriptions must get distinct outbound tags: tagA=%q tagB=%q", tagA, tagB)
+	}
+	if got := out.Selections[TagProxy]; got != tagB {
+		t.Errorf("Proxy selected %q, want sub-b copy %q", got, tagB)
+	}
+	if _, relayed := out.Relays[copyA.Key()]; relayed {
+		t.Errorf("sub-a copy should be plain direct, got relay %q", out.Relays[copyA.Key()])
+	}
+	if got := out.Relays[copyB.Key()]; got != out.Tags[jp.Key()] {
+		t.Errorf("sub-b copy relay = %q, want %q", got, out.Tags[jp.Key()])
+	}
+	pol := policy.New(policy.Options{WireGuard: true, QUIC: true, DHCP: true, UTLS: true})
+	res := pol.Normalize(out.JSON, policy.Env{ResourceDir: t.TempDir(), Resources: map[string]bool{}, CachePath: t.TempDir() + "/cache.db", LogLevel: "info"})
+	if res.HasErrors() {
+		t.Fatalf("policy rejected config with duplicate servers across subscriptions: %v", res.Errors())
+	}
+}
